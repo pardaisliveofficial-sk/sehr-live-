@@ -235,3 +235,26 @@
   animation: ribbon-sparkle 2s infinite ease-in-out;
 }
 
+/* Safe Area Inset Padding Utilities */
+.safe-padding-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-padding-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.safe-padding-left {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+.safe-padding-right {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Scroll View Helper for Android & iOS Viewports */
+.scroll-view-y {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  flex: 1;
+  width: 100%;
+}
+

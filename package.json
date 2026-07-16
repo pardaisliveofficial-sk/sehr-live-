@@ -11,7 +11,11 @@
     "lint": "tsc --noEmit",
     "cap:copy": "cap copy",
     "cap:sync": "cap sync",
-    "android": "cap open android"
+    "android": "cap open android",
+    "android:prep": "npm run build && node android-recreate-icons.cjs && npx cap sync android",
+    "android:build:apk": "npm run android:prep && cd android && ./gradlew assembleRelease",
+    "android:build:aab": "npm run android:prep && cd android && ./gradlew bundleRelease",
+    "android:build:debug": "npm run android:prep && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
     "@capacitor/core": "^8.4.2",

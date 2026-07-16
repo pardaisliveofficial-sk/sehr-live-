@@ -999,6 +999,44 @@ export default function App() {
 
   // Client Navigation View (within mobile)
   const [clientView, setClientView] = useState<"feed" | "live-room" | "profile" | "wallet" | "family-agency" | "chat" | "reels" | "user-live" | "camera-prep">("feed");
+  const [viewHistory, setViewHistory] = useState<string[]>(["feed"]);
+
+  useEffect(() => {
+    if (clientView === "feed") {
+      setViewHistory(["feed"]);
+      return;
+    }
+    setViewHistory((prev) => {
+      if (prev[prev.length - 1] === clientView) return prev;
+      if (prev.length > 1 && prev[prev.length - 2] === clientView) {
+        const copy = [...prev];
+        copy.pop();
+        return copy;
+      }
+      return [...prev, clientView];
+    });
+  }, [clientView]);
+
+  const goBack = () => {
+    if (viewHistory.length > 1) {
+      const prevView = viewHistory[viewHistory.length - 2];
+      setClientView(prevView as any);
+    } else {
+      setClientView("feed");
+    }
+  };
+
+  useEffect(() => {
+    const handleHardwareBack = (e: any) => {
+      e.preventDefault();
+      goBack();
+    };
+    document.addEventListener("backbutton", handleHardwareBack);
+    return () => {
+      document.removeEventListener("backbutton", handleHardwareBack);
+    };
+  }, [viewHistory]);
+
   const [walletTab, setWalletTab] = useState<"creator_center" | "user_wallet">("creator_center");
   const [coinPurchaseMethod, setCoinPurchaseMethod] = useState<"online" | "offline">("online");
   const [transferTargetId, setTransferTargetId] = useState<string>("h-sahar");
@@ -3845,13 +3883,13 @@ export default function App() {
       {/* 2. MAIN PLATFORM WORKSPACE CONTAINER */}
       <div className="w-full h-[100dvh] sm:h-[92vh] sm:max-w-[430px] sm:rounded-[36px] bg-[#12121a] sm:shadow-2xl sm:border-8 sm:border-[#303040] flex flex-col overflow-hidden relative">
         {/* PHONE CLIENT CORE VIEW */}
-        <div id="sehr-phone-simulator" className={`flex-1 bg-[#12121a] flex flex-col text-sm theme-${appTheme}`}>
+        <div id="sehr-phone-simulator" className={`flex-1 bg-[#12121a] flex flex-col text-sm theme-${appTheme} min-h-0 overflow-hidden`}>
                 
                 {showSplash ? (
                   /* ========================================= */
                   /* SEHR LIVE BRAND SPLASH SCREEN */
                   /* ========================================= */
-                  <div className="flex-1 flex flex-col justify-between p-6 bg-gradient-to-b from-[#0b0c10] via-[#1a0e2e] to-[#12121a] relative overflow-hidden">
+                  <div className="flex-1 flex flex-col justify-between p-6 bg-gradient-to-b from-[#0b0c10] via-[#1a0e2e] to-[#12121a] relative scroll-view-y safe-padding-top safe-padding-bottom">
                     {/* Glowing neon accent background dots */}
                     <div className="absolute top-1/4 left-1/4 w-32 h-32 bg-[#ff007f]/10 rounded-full blur-[60px] pointer-events-none"></div>
                     <div className="absolute bottom-1/3 right-1/4 w-32 h-32 bg-[#7b2cbf]/15 rounded-full blur-[60px] pointer-events-none"></div>
@@ -3914,7 +3952,7 @@ export default function App() {
                   /* ========================================= */
                   /* MOCK AUTHENTICATION & LOGIN FORM */
                   /* ========================================= */
-                  <div className="flex-1 flex flex-col justify-between p-6 bg-gradient-to-b from-[#1a112c] via-[#12121a] to-[#12121a] relative overflow-y-auto">
+                  <div className="flex-1 flex flex-col justify-between p-6 bg-gradient-to-b from-[#1a112c] via-[#12121a] to-[#12121a] relative scroll-view-y safe-padding-top safe-padding-bottom">
                     
                     {/* Brand header */}
                     <div className="text-center mt-3">
@@ -4405,7 +4443,7 @@ export default function App() {
                   /* ========================================= */
                   /* BANNED / COMPLIANCE BLOCKED SCREEN */
                   /* ========================================= */
-                  <div className="flex-1 flex flex-col justify-center items-center p-6 bg-gradient-to-b from-[#1a0505] to-[#0d0202] text-center space-y-6 relative overflow-hidden">
+                  <div className="flex-1 flex flex-col justify-center items-center p-6 bg-gradient-to-b from-[#1a0505] to-[#0d0202] text-center space-y-6 relative scroll-view-y safe-padding-top safe-padding-bottom">
                     {/* Glowing crimson aura */}
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.12)_0%,transparent_70%)] pointer-events-none"></div>
                     
@@ -4451,11 +4489,11 @@ export default function App() {
                   /* ========================================= */
                   /* SIGNED IN APP INTERFACE */
                   /* ========================================= */
-                  <div className="flex-1 flex flex-col justify-between h-full overflow-hidden relative">
+                  <div className="flex-1 flex flex-col justify-between min-h-0 overflow-hidden relative">
                     
                     {/* TOP USER BALANCE / STATUS BAR (Only shown on non-live views) */}
                     {clientView !== "live-room" && (
-                      <div className="bg-[#1a1a24] p-3 border-b border-[#303040] flex items-center justify-between z-40">
+                      <div className="bg-[#1a1a24] p-3 pt-4 safe-padding-top border-b border-[#303040] flex items-center justify-between z-40">
                         {/* Beautiful Brand Header */}
                         <div className="flex items-center space-x-2">
                           <div className="w-2.5 h-2.5 rounded-full bg-[#ff007f] animate-pulse"></div>
@@ -4566,7 +4604,7 @@ export default function App() {
                     {/* VIEW 1: HOME FEED (Discover trending live streams, audio rooms) */}
                     {/* ===================================================================== */}
                     {clientView === "feed" && (
-                      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                      <div className="flex-1 scroll-view-y p-3 pb-24 space-y-3">
                         
                         {/* 📖 24-HOUR STYLISH STORIES TRAY */}
                         <div className="bg-[#12121a]/90 border border-[#303040]/30 rounded-xl p-3 space-y-2 shadow-lg text-left no-double-tap">
@@ -4920,7 +4958,7 @@ export default function App() {
                     {/* VIEW 2: ACTIVE LIVE ROOM SCREEN (Video, Audio, PK, & Gifts) */}
                     {/* ===================================================================== */}
                     {clientView === "live-room" && (
-                      <div className="flex-1 flex flex-col justify-between bg-[#08080f] overflow-hidden relative">
+                      <div className="flex-1 flex flex-col justify-between bg-[#08080f] scroll-view-y relative pb-24">
                         {/* ABSOLUTE FLAME RANKING BUTTON - ACCESSIBLE TO EVERYONE UNDER HOST PROFILE */}
                         <div className="absolute top-14 left-3 z-45">
                           <button
@@ -5574,10 +5612,11 @@ export default function App() {
                                   <span>{viewersCount}</span>
                                 </div>
                                 <button
-                                  onClick={() => setClientView("feed")}
-                                  className="w-6 h-6 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center text-xs border border-white/10"
+                                  onClick={goBack}
+                                  className="w-6 h-6 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center border border-white/10"
+                                  title="Go Back"
                                 >
-                                  ✕
+                                  <ArrowLeft className="w-3.5 h-3.5" />
                                 </button>
                               </div>
                             </div>
@@ -6818,8 +6857,17 @@ export default function App() {
                     {/* VIEW 3: USER PROFILE & MISSION BADGES */}
                     {/* ===================================================================== */}
                     {clientView === "profile" && (
-                      <div className="flex-1 overflow-y-auto bg-[#12121a]">
+                      <div className="flex-1 scroll-view-y bg-[#12121a] pb-24">
                         <div className="relative">
+                          {/* Floating Back Button */}
+                          <button
+                            type="button"
+                            onClick={goBack}
+                            className="absolute top-3 left-3 z-30 p-1.5 rounded-full bg-[#12121a]/80 backdrop-blur-md border border-[#303040]/50 text-white hover:bg-white hover:text-black transition-all cursor-pointer"
+                            title="Back"
+                          >
+                            <ArrowLeft className="w-4 h-4" />
+                          </button>
                           <img src={user.coverPhoto} className="w-full h-24 object-cover" alt="cover" />
                           
                           {/* LARGER PROFILE PICTURE WITH STORIES RINGS AND PLUS (+) OVERLAY BUTTON */}
@@ -8136,7 +8184,16 @@ export default function App() {
                     {/* VIEW: REELS (SHORT VERTICAL VIDEOS) WITH COMPLETE TIKTOK INTERACTIONS */}
                     {/* ===================================================================== */}
                     {clientView === "reels" && (
-                      <div className="flex-1 flex flex-col bg-[#09090e] relative overflow-hidden select-none">
+                      <div className="flex-1 flex flex-col bg-[#09090e] relative scroll-view-y select-none pb-24">
+                        {/* Floating Back Button */}
+                        <button
+                          type="button"
+                          onClick={goBack}
+                          className="absolute top-14 left-3 z-50 p-1.5 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-white hover:bg-white hover:text-black transition-all cursor-pointer"
+                          title="Back"
+                        >
+                          <ArrowLeft className="w-3.5 h-3.5" />
+                        </button>
                         
                         {/* Custom Style Injections for Floating Rose and Car Animations */}
                         <style>{`
@@ -9053,7 +9110,7 @@ export default function App() {
                     {/* VIEW: CAMERA PREP SCREEN FOR SEHR LIVE */}
                     {/* ===================================================================== */}
                     {clientView === "camera-prep" && (
-                      <div className="flex-1 flex flex-col bg-[#08070d] relative overflow-hidden select-none text-white h-full w-full">
+                      <div className="flex-1 flex flex-col bg-[#08070d] relative scroll-view-y select-none text-white h-full w-full pb-24">
                         {/* 1. Camera Live Preview Frame (100% full screen background) */}
                         <div className="absolute inset-0 z-0">
                           <img 
@@ -9149,11 +9206,11 @@ export default function App() {
                         {/* 3. Top Action Controls (Close, Flip) */}
                         <div className="absolute top-18 inset-x-4 z-10 flex items-center justify-between px-1 bg-transparent">
                           <button 
-                            onClick={() => setClientView("feed")} 
+                            onClick={goBack} 
                             className="w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/10 flex items-center justify-center text-white cursor-pointer select-none"
-                            title="Cancel"
+                            title="Back"
                           >
-                            <X className="w-4 h-4" />
+                            <ArrowLeft className="w-4 h-4" />
                           </button>
 
                           <button 
@@ -9607,7 +9664,7 @@ export default function App() {
                     {/* VIEW: USER SOLO LIVE BROADCAST SIMULATOR */}
                     {/* ===================================================================== */}
                     {clientView === "user-live" && (
-                      <div className="flex-1 flex flex-col bg-[#0b0b11] relative overflow-hidden select-none">
+                      <div className="flex-1 flex flex-col bg-[#0b0b11] relative scroll-view-y select-none pb-24">
                         
                         {/* 1. BROADCAST SUMMARY SHOWCASE END SCREEN */}
                         {userLiveShowSummary ? (
@@ -12864,18 +12921,28 @@ export default function App() {
                     {/* VIEW 4: SEHR VAULT WALLET & CREATOR CENTER */}
                     {/* ===================================================================== */}
                     {clientView === "wallet" && (
-                      <div className="flex-1 overflow-y-auto bg-[#12121a] p-4 space-y-4 text-left">
-                        <div>
-                          <h4 className="text-base font-black text-white flex items-center justify-between">
-                            <span className="flex items-center">
-                              <Wallet className="w-5 h-5 text-[#ff007f] mr-1.5 animate-pulse" />
-                              <span>Sehr Vault Wallet</span>
-                            </span>
-                            <span className="text-[9px] bg-pink-500/10 text-pink-400 border border-pink-500/30 px-2 py-0.5 rounded font-mono font-bold">
-                              SECURE WALLET v2.1
-                            </span>
-                          </h4>
-                          <p className="text-[10px] text-gray-400">Manage stream earnings, convert diamonds, recharge coins & transfer safely</p>
+                      <div className="flex-1 scroll-view-y bg-[#12121a] p-4 pb-24 space-y-4 text-left">
+                        <div className="flex items-center space-x-2.5 mb-2">
+                          <button
+                            type="button"
+                            onClick={goBack}
+                            className="p-1.5 rounded-lg bg-[#1e1e2d] border border-[#303040] text-gray-300 hover:text-white transition-all shrink-0 cursor-pointer"
+                            title="Back"
+                          >
+                            <ArrowLeft className="w-4 h-4" />
+                          </button>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-base font-black text-white flex items-center justify-between">
+                              <span className="flex items-center">
+                                <Wallet className="w-5 h-5 text-[#ff007f] mr-1.5 animate-pulse shrink-0" />
+                                <span className="truncate">Sehr Vault Wallet</span>
+                              </span>
+                              <span className="text-[9px] bg-pink-500/10 text-pink-400 border border-pink-500/30 px-2 py-0.5 rounded font-mono font-bold shrink-0">
+                                SECURE WALLET v2.1
+                              </span>
+                            </h4>
+                            <p className="text-[10px] text-gray-400">Manage stream earnings, convert diamonds, recharge coins & transfer safely</p>
+                          </div>
                         </div>
 
                         {/* Top sub-tabs: 1. Creator Center vs 2. User Coins Wallet */}
@@ -13427,10 +13494,20 @@ export default function App() {
                     {/* VIEW 5: FAMILY & AGENCY DASHBOARD VIEW */}
                     {/* ===================================================================== */}
                     {clientView === "family-agency" && (
-                      <div className="flex-1 overflow-y-auto bg-[#12121a] p-4 space-y-4">
-                        <div>
-                          <h4 className="text-base font-black text-white">Family & Talent Agency Dashboard</h4>
-                          <p className="text-[10px] text-gray-400">Join a family to join PK team wars and secure salary bonuses!</p>
+                      <div className="flex-1 scroll-view-y bg-[#12121a] p-4 pb-24 space-y-4">
+                        <div className="flex items-center space-x-2.5 text-left mb-2">
+                          <button
+                            type="button"
+                            onClick={goBack}
+                            className="p-1.5 rounded-lg bg-[#1e1e2d] border border-[#303040] text-gray-300 hover:text-white transition-all shrink-0 cursor-pointer"
+                            title="Back"
+                          >
+                            <ArrowLeft className="w-4 h-4" />
+                          </button>
+                          <div>
+                            <h4 className="text-base font-black text-white">Family & Talent Agency Dashboard</h4>
+                            <p className="text-[10px] text-gray-400">Join a family to join PK team wars and secure salary bonuses!</p>
+                          </div>
                         </div>
 
                         {/* Family Section */}
@@ -13476,6 +13553,14 @@ export default function App() {
                         {/* Header */}
                         <div className="bg-[#1e1e2d] p-3 border-b border-[#303040] flex items-center justify-between z-10">
                           <div className="flex items-center">
+                            <button
+                              type="button"
+                              onClick={goBack}
+                              className="p-1.5 rounded-lg bg-[#12121a] border border-[#303040] text-gray-300 hover:text-white transition-all mr-2 shrink-0 cursor-pointer"
+                              title="Back"
+                            >
+                              <ArrowLeft className="w-4 h-4" />
+                            </button>
                             <div className="w-8 h-8 rounded-full overflow-hidden border border-[#ff007f] mr-2">
                               <img src={activeHost.avatar} className="w-full h-full object-cover" alt="avatar" />
                             </div>
@@ -13540,7 +13625,7 @@ export default function App() {
 
                         {currentChatTab === "couples" ? (
                           /* Couples Ranking List View */
-                          <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-[#0f0f18] text-white">
+                          <div className="flex-1 scroll-view-y p-3 pb-24 space-y-3 bg-[#0f0f18] text-white">
                             <div className="bg-gradient-to-r from-pink-500/20 to-purple-500/20 border border-pink-500/30 rounded-xl p-2.5 text-center">
                               <span className="text-[10px] font-mono font-black text-pink-300 block">💖 COUPLERS RANKING BOARD 💖</span>
                               <p className="text-[8px] text-gray-300">Boost CP points with gold coins to raise couple positions on Sehr Live!</p>
@@ -13606,7 +13691,7 @@ export default function App() {
                           /* Messages View Tab */
                           <>
                             {/* Chat history list */}
-                            <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+                            <div className="flex-1 scroll-view-y p-3 pb-24 space-y-2.5">
                               {directMessages
                                 .filter(msg => !msg.deletedForSelf)
                                 .map((msg) => (
@@ -14174,7 +14259,7 @@ export default function App() {
                     )}
 
                     {/* CLIENT FOOTER NAVIGATION BAR */}
-                    <footer className="bg-[#1e1e2d] border-t border-[#303040] py-2 px-3 flex items-center justify-between text-xs text-gray-400">
+                    <footer className="bg-[#1e1e2d] border-t border-[#303040] py-2 px-3 pb-3 safe-padding-bottom flex items-center justify-between text-xs text-gray-400">
                       <button
                         onClick={() => setClientView("feed")}
                         className={`flex flex-col items-center flex-1 py-1 ${clientView === "feed" ? "text-[#ff007f]" : "hover:text-white"}`}
