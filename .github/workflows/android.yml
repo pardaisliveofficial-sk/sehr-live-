@@ -47,7 +47,33 @@ jobs:
       - name: Grant Execute Permission to Gradlew
         run: chmod +x android/gradlew
 
-      - name: Build Android Release APK (Unsigned)
+      - name: Configure Android Signing Key
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "Decoding custom release keystore..."
+            echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+            echo "RELEASE_STORE_FILE=release.keystore" >> $GITHUB_ENV
+            echo "RELEASE_STORE_PASSWORD=$RELEASE_STORE_PASSWORD" >> $GITHUB_ENV
+            echo "RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS" >> $GITHUB_ENV
+            echo "RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD" >> $GITHUB_ENV
+          else
+            echo "No custom release keystore secret found. Generating temporary build-time keystore..."
+            keytool -genkey -v -keystore android/app/release.keystore \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass android -keypass android \
+              -dname "CN=Android Build, O=Android, C=US"
+            echo "RELEASE_STORE_FILE=release.keystore" >> $GITHUB_ENV
+            echo "RELEASE_STORE_PASSWORD=android" >> $GITHUB_ENV
+            echo "RELEASE_KEY_ALIAS=androiddebugkey" >> $GITHUB_ENV
+            echo "RELEASE_KEY_PASSWORD=android" >> $GITHUB_ENV
+          fi
+
+      - name: Build Android Release APK (Signed)
         run: |
           cd android
           ./gradlew assembleRelease
