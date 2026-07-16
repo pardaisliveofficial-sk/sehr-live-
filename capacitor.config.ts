@@ -5,7 +5,11 @@ const config: CapacitorConfig = {
   appName: 'Sehr Live',
   webDir: 'dist',
   server: {
-    androidScheme: 'https'
+    androidScheme: 'https',
+    allowNavigation: [
+      'sehrlive.soulverseapps.com',
+      '*.soulverseapps.com'
+    ]
   }
 };
 
