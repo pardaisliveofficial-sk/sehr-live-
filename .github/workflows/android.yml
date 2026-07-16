@@ -39,7 +39,7 @@ jobs:
 
       - name: Download Valid Gradle Wrapper JAR
         run: |
-          curl -L https://raw.githubusercontent.com/ionic-team/capacitor/main/android/gradle/wrapper/gradle-wrapper.jar -o android/gradle/wrapper/gradle-wrapper.jar
+          curl -L https://raw.githubusercontent.com/gradle/gradle/v8.13.0/gradle/wrapper/gradle-wrapper.jar -o android/gradle/wrapper/gradle-wrapper.jar
 
       - name: Grant Execute Permission to Gradlew
         run: chmod +x android/gradlew
