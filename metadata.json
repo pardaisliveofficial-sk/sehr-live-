@@ -1,0 +1,6 @@
+{
+  "name": "Sehr Live",
+  "description": "Premium Live Streaming & Social Entertainment Platform featuring video streams, audio rooms, real-time PK battles, dynamic gift engines, level rewards, family agency panels, and full AI moderation/translation.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
