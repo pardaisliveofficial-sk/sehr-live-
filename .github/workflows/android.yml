@@ -24,7 +24,7 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Recreate Android Launcher Icons from Base64
+      - name: Recreate Android Assets from SVG (Icons & Splash)
         run: node android-recreate-icons.cjs
 
       - name: Build Web Application
