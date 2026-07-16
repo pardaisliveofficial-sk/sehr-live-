@@ -16,7 +16,9 @@
     "android:prep": "npm run build && node android-recreate-icons.cjs && npx cap sync android",
     "android:build:apk": "npm run android:prep && cd android && ./gradlew assembleRelease",
     "android:build:aab": "npm run android:prep && cd android && ./gradlew bundleRelease",
-    "android:build:debug": "npm run android:prep && cd android && ./gradlew assembleDebug"
+    "android:build:debug": "npm run android:prep && cd android && ./gradlew assembleDebug",
+    "deploy": "npm run build && wrangler deploy",
+    "preview": "npm run build && wrangler dev"
   },
   "dependencies": {
     "@capacitor/core": "^8.4.2",
@@ -34,6 +36,7 @@
   "devDependencies": {
     "@capacitor/android": "^8.4.2",
     "@capacitor/cli": "^8.4.2",
+    "@cloudflare/vite-plugin": "^1.45.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
@@ -42,6 +45,7 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "wrangler": "^4.111.0"
   }
 }
