@@ -119,6 +119,102 @@ function authenticateUser(req: any, res: any, next: any) {
 // AUTHENTICATION & PROFILE PERSISTENCE ENDPOINTS
 // ------------------------------------------------------------------
 
+// 0. Authenticate or register with Google Authentication details
+app.post("/api/v1/auth/google-login", (req, res) => {
+  const { email, displayName, photoURL, uid } = req.body;
+  if (!email || typeof email !== "string") {
+    return res.status(400).json({ error: "Email is required for Google Sign-In" });
+  }
+
+  // Construct standard unique username and unique ID from Google details
+  const username = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_") || `google_user_${uid?.substring(0, 5)}`;
+  let user = dbData.users.find((u: any) => u.email === email || u.username === username);
+
+  if (!user) {
+    // Automatically register a new user using their real Google account profile
+    const suffix = Math.floor(1000 + Math.random() * 9000);
+    const uniqueId = `sehr_${suffix}`;
+    user = {
+      username,
+      uniqueId,
+      email,
+      avatar: photoURL || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+      coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+      bio: "New Sehr Live member! Verified via Google. 🇵🇰",
+      gender: "Male",
+      country: "Pakistan",
+      language: "Urdu / Hinglish",
+      coins: 25000, // starting gift coins for Google verified sign-ups
+      diamonds: 0,
+      vipLevel: 0,
+      userLevel: 1,
+      hostLevel: 1,
+      wealthLevel: 1,
+      xp: 0,
+      familyId: "",
+      agencyId: "",
+      isVerified: true, // Google accounts are pre-verified
+      isBanned: false,
+      twoFactorEnabled: false,
+      fullName: displayName || `User_${username}`,
+      dob: "",
+      phoneNumber: "",
+      kycStatus: "approved", // pre-approved KYC
+      followersCount: 0,
+      followingCount: 0,
+      totalLikesCount: 0,
+      selectedFrameId: "",
+      vipSuspended: false
+    };
+    dbData.users.push(user);
+
+    const adminUser = {
+      username: user.username,
+      fullName: user.fullName,
+      isVerified: user.isVerified,
+      kycStatus: user.kycStatus,
+      isBanned: user.isBanned,
+      coins: user.coins,
+      userLevel: user.userLevel,
+      vipLevel: user.vipLevel
+    };
+    dbData.adminUsersList.push(adminUser);
+
+    // Sync to Firestore
+    syncDocument("users", user.username, user);
+    syncDocument("adminUsersList", user.username, adminUser);
+  } else {
+    // Existing user - ensure standard properties are fully initialized and not undefined
+    if (photoURL && user.avatar === "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80") {
+      user.avatar = photoURL;
+      syncDocument("users", user.username, user);
+    }
+  }
+
+  // Generate session Token
+  const token = `sehr_session_${user.username}_${Math.random().toString(36).substring(2, 10)}`;
+  const sessionData = {
+    username: user.username,
+    loginTime: new Date().toISOString()
+  };
+  dbData.sessions[token] = sessionData;
+
+  // Sync active legacy user reference
+  dbData.user = user;
+
+  saveDatabase();
+
+  syncDocument("sessions", token, sessionData);
+  writeMetadata("user_profile", user);
+
+  res.json({
+    success: true,
+    message: "Authenticated via Google successfully.",
+    token,
+    user
+  });
+});
+
 // 1. Send OTP (or auto-register if phone is new)
 app.post("/api/v1/auth/send-otp", (req, res) => {
   const { phoneNumber } = req.body;
@@ -538,17 +634,99 @@ app.post("/api/v1/transactions", (req, res) => {
   res.status(201).json(newTxn);
 });
 
-// Notifications inbox dispatcher
-app.get("/api/v1/notifications", (req, res) => {
-  res.json(dbData.notifications);
+// Notifications inbox dispatcher with auto-cleanup (24 hours expiry)
+async function cleanupExpiredNotifications() {
+  try {
+    const now = Date.now();
+    const expiryLimit = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+    const activeNotifs: any[] = [];
+    const expiredNotifs: any[] = [];
+
+    const notifsList = dbData.notifications || [];
+    for (const item of notifsList) {
+      const ts = item.timestamp ? new Date(item.timestamp).getTime() : (item.id && typeof item.id === 'number' ? item.id : now);
+      if (now - ts > expiryLimit) {
+        expiredNotifs.push(item);
+      } else {
+        activeNotifs.push(item);
+      }
+    }
+
+    if (expiredNotifs.length > 0) {
+      console.log(`[SEHR-LIVE NOTIFICATION CLEANER] Automatically cleaning up ${expiredNotifs.length} expired notifications.`);
+      dbData.notifications = activeNotifs;
+      saveDatabase();
+      for (const expired of expiredNotifs) {
+        if (expired.id) {
+          await deleteDocument("notifications", String(expired.id));
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[SEHR-LIVE NOTIFICATION CLEANER] Error during clean-up:", err);
+  }
+}
+
+// Periodically run cleanup every 10 minutes
+setInterval(() => {
+  cleanupExpiredNotifications();
+}, 10 * 60 * 1000);
+
+app.get("/api/v1/notifications", async (req, res) => {
+  await cleanupExpiredNotifications();
+  res.json(dbData.notifications || []);
 });
 
-app.post("/api/v1/notifications", (req, res) => {
-  const newNotif = { id: Date.now(), isNew: true, time: "Just Now", ...req.body };
+app.post("/api/v1/notifications", async (req, res) => {
+  const notifId = Date.now();
+  const newNotif = {
+    id: notifId,
+    isNew: true,
+    time: "Just Now",
+    timestamp: new Date().toISOString(),
+    ...req.body
+  };
+  if (!dbData.notifications) {
+    dbData.notifications = [];
+  }
   dbData.notifications.unshift(newNotif);
   saveDatabase();
-  syncDocument("notifications", String(newNotif.id), newNotif);
+  await syncDocument("notifications", String(newNotif.id), newNotif);
   res.status(201).json(newNotif);
+});
+
+app.post("/api/v1/notifications/read-all", async (req, res) => {
+  try {
+    const notifs = dbData.notifications || [];
+    for (const item of notifs) {
+      if (item.isNew) {
+        item.isNew = false;
+        await syncDocument("notifications", String(item.id), item);
+      }
+    }
+    saveDatabase();
+    res.json({ success: true, message: "All notifications marked as read" });
+  } catch (error) {
+    console.error("Error marking all as read:", error);
+    res.status(500).json({ error: "Failed to mark all as read" });
+  }
+});
+
+app.post("/api/v1/notifications/clear", async (req, res) => {
+  try {
+    const notifs = [...(dbData.notifications || [])];
+    dbData.notifications = [];
+    saveDatabase();
+    for (const item of notifs) {
+      if (item.id) {
+        await deleteDocument("notifications", String(item.id));
+      }
+    }
+    res.json({ success: true, message: "All notifications cleared" });
+  } catch (error) {
+    console.error("Error clearing notifications:", error);
+    res.status(500).json({ error: "Failed to clear notifications" });
+  }
 });
 
 // Reports management
@@ -562,6 +740,134 @@ app.post("/api/v1/reports", (req, res) => {
   saveDatabase();
   syncDocument("reports", newReport.id, newReport);
   res.status(201).json(newReport);
+});
+
+// Reels endpoints
+app.get("/api/v1/reels", (req, res) => {
+  res.json(dbData.reels || []);
+});
+
+app.post("/api/v1/reels", (req, res) => {
+  const newReel = {
+    id: `r-${Date.now()}`,
+    likes: 0,
+    commentsCount: 0,
+    liked: false,
+    saves: 0,
+    saved: false,
+    shares: 0,
+    downloads: 0,
+    comments: [],
+    ...req.body
+  };
+  if (!dbData.reels) dbData.reels = [];
+  dbData.reels.unshift(newReel);
+  saveDatabase();
+  syncDocument("reels", newReel.id, newReel);
+  res.status(201).json(newReel);
+});
+
+app.put("/api/v1/reels/:id", (req, res) => {
+  const { id } = req.params;
+  const index = dbData.reels.findIndex((r: any) => r.id === id);
+  if (index !== -1) {
+    dbData.reels[index] = { ...dbData.reels[index], ...req.body };
+    saveDatabase();
+    syncDocument("reels", id, dbData.reels[index]);
+    res.json(dbData.reels[index]);
+  } else {
+    res.status(404).json({ error: "Reel not found" });
+  }
+});
+
+// Stories endpoints
+app.get("/api/v1/stories", (req, res) => {
+  res.json(dbData.stories || []);
+});
+
+app.post("/api/v1/stories", (req, res) => {
+  const newStory = {
+    id: `story-${Date.now()}`,
+    likes: 0,
+    liked: false,
+    replies: [],
+    ...req.body
+  };
+  if (!dbData.stories) dbData.stories = [];
+  dbData.stories.unshift(newStory);
+  saveDatabase();
+  syncDocument("stories", newStory.id, newStory);
+  res.status(201).json(newStory);
+});
+
+app.put("/api/v1/stories/:id", (req, res) => {
+  const { id } = req.params;
+  const index = dbData.stories.findIndex((s: any) => s.id === id);
+  if (index !== -1) {
+    dbData.stories[index] = { ...dbData.stories[index], ...req.body };
+    saveDatabase();
+    syncDocument("stories", id, dbData.stories[index]);
+    res.json(dbData.stories[index]);
+  } else {
+    res.status(404).json({ error: "Story not found" });
+  }
+});
+
+// Chats / Direct messages endpoints
+app.get("/api/v1/chats", (req, res) => {
+  res.json(dbData.chats || []);
+});
+
+app.post("/api/v1/chats", (req, res) => {
+  const newMsg = {
+    id: `msg-${Date.now()}`,
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    ...req.body
+  };
+  if (!dbData.chats) dbData.chats = [];
+  dbData.chats.push(newMsg);
+  saveDatabase();
+  syncDocument("chats", newMsg.id, newMsg);
+  res.status(201).json(newMsg);
+});
+
+app.post("/api/v1/reels/sync", (req, res) => {
+  dbData.reels = req.body;
+  saveDatabase();
+  if (Array.isArray(req.body)) {
+    req.body.forEach((r: any) => {
+      if (r.id) syncDocument("reels", r.id, r);
+    });
+  }
+  res.json({ success: true });
+});
+
+app.post("/api/v1/stories/sync", (req, res) => {
+  dbData.stories = req.body;
+  saveDatabase();
+  if (Array.isArray(req.body)) {
+    req.body.forEach((s: any) => {
+      if (s.id) syncDocument("stories", s.id, s);
+    });
+  }
+  res.json({ success: true });
+});
+
+app.post("/api/v1/chats/sync", (req, res) => {
+  dbData.chats = req.body;
+  saveDatabase();
+  if (Array.isArray(req.body)) {
+    req.body.forEach((c: any) => {
+      if (c.id) syncDocument("chats", c.id, c);
+    });
+  }
+  res.json({ success: true });
+});
+
+app.delete("/api/v1/chats", (req, res) => {
+  dbData.chats = [];
+  saveDatabase();
+  res.json({ success: true, message: "Chats cleared" });
 });
 
 app.put("/api/v1/reports/:id", (req, res) => {

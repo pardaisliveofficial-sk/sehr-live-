@@ -42,7 +42,11 @@ export const COLLECTIONS = [
   "reports",
   "kycRequests",
   "events",
-  "adminUsersList"
+  "adminUsersList",
+  "reels",
+  "stories",
+  "chats",
+  "messages"
 ];
 
 // Memory Cache synced with Firestore
@@ -91,6 +95,10 @@ export const dbDataCache: any = {
   events: [],
   configurations: {},
   adminUsersList: [],
+  reels: [],
+  stories: [],
+  chats: [],
+  messages: [],
   sessions: {},
   otps: {}
 };

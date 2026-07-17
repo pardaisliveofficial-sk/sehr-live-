@@ -81,11 +81,21 @@ import {
   Upload,
   FileUp,
   AlertCircle,
-  Pencil
+  Pencil,
+  Database
 } from "lucide-react";
 import { Gift, GiftType, ChatMessage, HostProfile, UserProfile, Family, Agency, Transaction, LiveAnnouncement, KycRequest, UserStory } from "./types";
 import { DEFAULT_USER, MOCK_GIFTS, MOCK_HOSTS, MOCK_FAMILIES, MOCK_AGENCIES, DAILY_MISSIONS, STATIC_COMMENTS_POOL } from "./data";
 import { getRankingData } from "./rankingData";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import firebaseConfig from "../firebase-applet-config.json";
+
+// Initialize Firebase client-side for authenticating via Google Sign-In popup
+const clientApps = getApps();
+const clientApp = clientApps.length === 0 ? initializeApp(firebaseConfig) : getApp();
+const clientAuth = getAuth(clientApp);
+const googleProvider = new GoogleAuthProvider();
 import { 
   ViewerGiftBox, 
   GiftAnimationEngine, 
@@ -482,108 +492,7 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   // 📖 24-HOUR INTERACTIVE STORIES SYSTEM STATE
-  const [stories, setStories] = useState<UserStory[]>(() => {
-    const saved = localStorage.getItem("sehr_stories_list");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        // ignore
-      }
-    }
-    const now = Date.now();
-    return [
-      {
-        id: "mock_story_1",
-        username: "alina_malik",
-        fullName: "Alina Malik",
-        avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80",
-        type: "photo",
-        content: "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=600&q=80",
-        caption: "Aj ki live stream bht special hogi! 🌟 Tayar ho jao sab 💖",
-        createdAt: now - 3 * 3600 * 1000,
-        expiresAt: now + 21 * 3600 * 1000,
-        likes: 42,
-        likedBy: [],
-        reactions: [
-          { username: "Malik_Saad", emoji: "❤️" },
-          { username: "Arooj_Queen", emoji: "🔥" }
-        ],
-        replies: [
-          {
-            id: "r1",
-            username: "malik_saad",
-            fullName: "Malik Saad",
-            avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80",
-            text: "Looking forward to it! Main support krne zaroor aunga! 👍",
-            createdAt: now - 2.5 * 3600 * 1000
-          },
-          {
-            id: "r2",
-            username: "arooj_queen",
-            fullName: "Arooj Queen",
-            avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80",
-            text: "Yes, Alina! Let's do a joint live stream or PK battle today! 🔥",
-            createdAt: now - 2 * 3600 * 1000
-          }
-        ]
-      },
-      {
-        id: "mock_story_2",
-        username: "sahar",
-        fullName: "Sahar",
-        avatar: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&w=150&q=80",
-        type: "text",
-        bgColor: "from-pink-500 via-[#ff007f] to-purple-600",
-        content: "Sahr Live family kesi hai? Sub-admins or members, kindly check your Experience Levels in the Admin Panel or Level Center! Let's level up together! 🇵🇰✨",
-        createdAt: now - 5 * 3600 * 1000,
-        expiresAt: now + 19 * 3600 * 1000,
-        likes: 125,
-        likedBy: [],
-        reactions: [
-          { username: "Zain_Killer", emoji: "🙌" },
-          { username: "Sana_Khan", emoji: "👏" }
-        ],
-        replies: [
-          {
-            id: "r3",
-            username: "zain_killer",
-            fullName: "Zain Killer",
-            avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80",
-            text: "Boss, main ne check kiya! Level 85 ho gaya mera. Gamified rank systems are best! 🏆",
-            createdAt: now - 4 * 3600 * 1000
-          }
-        ]
-      },
-      {
-        id: "mock_story_3",
-        username: "arooj_queen",
-        fullName: "Arooj Queen",
-        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80",
-        type: "video",
-        content: "https://assets.mixkit.co/videos/preview/mixkit-holding-a-glowing-neon-heart-41484-large.mp4",
-        caption: "Sending virtual love to all my viewers tonight! 💖 Audio slot 1 is open for VIPs!",
-        createdAt: now - 1 * 3600 * 1000,
-        expiresAt: now + 23 * 3600 * 1000,
-        likes: 89,
-        likedBy: [],
-        reactions: [
-          { username: "Aisha_Vibe", emoji: "❤️" },
-          { username: "Fatima_Gill", emoji: "😂" }
-        ],
-        replies: [
-          {
-            id: "r4",
-            username: "aisha_vibe",
-            fullName: "Aisha Vibe",
-            avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=150&q=80",
-            text: "OMG! Love the neon heart effect 💖 I will request the seat right now!",
-            createdAt: now - 30 * 60 * 1000
-          }
-        ]
-      }
-    ];
-  });
+  const [stories, setStories] = useState<UserStory[]>([]);
 
   const [showCreateStoryModal, setShowCreateStoryModal] = useState<boolean>(false);
   const [showStoryViewerModal, setShowStoryViewerModal] = useState<boolean>(false);
@@ -600,12 +509,184 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem("sehr_stories_list", JSON.stringify(stories));
+    if (stories.length > 0) {
+      fetch("/api/v1/stories/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(stories)
+      }).catch(err => console.error("Error syncing stories to backend:", err));
+    }
   }, [stories]);
 
   // Top header interactive states
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
   const [hasUnreadNotifications, setHasUnreadNotifications] = useState<boolean>(true);
   const [showSettingsDrawer, setShowSettingsDrawer] = useState<boolean>(false);
+  const [showNotifMenu, setShowNotifMenu] = useState<boolean>(false);
+  const [showNotifSettingsDrawer, setShowNotifSettingsDrawer] = useState<boolean>(false);
+  const [notifSettings, setNotifSettings] = useState(() => {
+    const saved = localStorage.getItem("sehr_notif_settings");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {
+      followers: true,
+      likes: true,
+      comments: true,
+      gifts: true,
+      transactions: true,
+      announcements: true,
+    };
+  });
+
+  const saveNotifSettings = (newSettings: any) => {
+    setNotifSettings(newSettings);
+    localStorage.setItem("sehr_notif_settings", JSON.stringify(newSettings));
+  };
+
+  const [appCaches, setAppCaches] = useState(() => {
+    const saved = localStorage.getItem("sehr_app_caches");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {
+      images: 45200, // in KB
+      videos: 78100, // in KB
+      temp: 12400, // in KB
+      downloads: 5800, // in KB
+      search: 1200, // in KB
+      activity: 3400, // in KB
+      notifications: 800, // in KB
+    };
+  });
+
+  const saveAppCaches = (newCaches: any) => {
+    setAppCaches(newCaches);
+    localStorage.setItem("sehr_app_caches", JSON.stringify(newCaches));
+  };
+
+  const [clearingCacheType, setClearingCacheType] = useState<string | null>(null);
+  const [freedStorageSize, setFreedStorageSize] = useState<number>(0); // in KB
+
+  const [permissionStates, setPermissionStates] = useState(() => {
+    const saved = localStorage.getItem("sehr_runtime_permissions");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {
+      notifications: "prompt",
+      camera: "prompt",
+      microphone: "prompt",
+      photos: "prompt",
+      location: "prompt",
+      storage: "prompt",
+      bluetooth: "prompt",
+      nearby: "prompt",
+    };
+  });
+
+  const savePermissionStates = (newPerms: any) => {
+    setPermissionStates(newPerms);
+    localStorage.setItem("sehr_runtime_permissions", JSON.stringify(newPerms));
+  };
+
+  const [activePermissionRequest, setActivePermissionRequest] = useState<{
+    type: string;
+    label: string;
+    icon: string;
+    reason: string;
+    onGranted: () => void;
+    onDenied?: () => void;
+  } | null>(null);
+
+  const [showSettingsRedirectModal, setShowSettingsRedirectModal] = useState<string | null>(null);
+
+  const requestAppPermission = (
+    type: "notifications" | "camera" | "microphone" | "photos" | "location" | "storage" | "bluetooth" | "nearby",
+    reason: string,
+    onGranted: () => void,
+    onDenied?: () => void
+  ) => {
+    const currentStatus = permissionStates[type];
+    
+    if (currentStatus === "granted") {
+      onGranted();
+      return;
+    }
+    
+    if (currentStatus === "denied") {
+      setShowSettingsRedirectModal(type);
+      if (onDenied) onDenied();
+      return;
+    }
+    
+    const labels: Record<string, string> = {
+      notifications: "Show Push Notifications",
+      camera: "Access Camera Video feed",
+      microphone: "Access Microphone Audio feed",
+      photos: "Read Photos & Media Files",
+      location: "Access Device Location",
+      storage: "Access Shared Storage",
+      bluetooth: "Connect Bluetooth Audio Devices",
+      nearby: "Discover Nearby Active Devices"
+    };
+
+    const icons: Record<string, string> = {
+      notifications: "🔔",
+      camera: "📷",
+      microphone: "🎙️",
+      photos: "🖼️",
+      location: "📍",
+      storage: "📂",
+      bluetooth: "📶",
+      nearby: "📱"
+    };
+
+    setActivePermissionRequest({
+      type,
+      label: labels[type] || type,
+      icon: icons[type] || "⚙️",
+      reason,
+      onGranted,
+      onDenied
+    });
+  };
+
+  const groupNotifications = (list: any[]) => {
+    const now = new Date();
+    const todayStr = now.toDateString();
+    
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toDateString();
+    
+    const groups: { today: any[]; yesterday: any[]; earlier: any[] } = {
+      today: [],
+      yesterday: [],
+      earlier: []
+    };
+    
+    list.forEach(n => {
+      const d = n.timestamp ? new Date(n.timestamp) : new Date();
+      const dStr = d.toDateString();
+      
+      if (dStr === todayStr) {
+        groups.today.push(n);
+      } else if (dStr === yesterdayStr) {
+        groups.yesterday.push(n);
+      } else {
+        groups.earlier.push(n);
+      }
+    });
+    
+    return groups;
+  };
 
   // KYC Verification States
   const [showKycModal, setShowKycModal] = useState<boolean>(false);
@@ -1318,13 +1399,8 @@ export default function App() {
   });
 
   // Host Agency states
-  const [hostAgencies, setHostAgencies] = useState<Array<Agency>>(() => {
-    const saved = localStorage.getItem("sehr_host_agencies");
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
-    }
-    return MOCK_AGENCIES;
-  });
+  const [familiesList, setFamiliesList] = useState<Family[]>([]);
+  const [hostAgencies, setHostAgencies] = useState<Array<Agency>>([]);
 
   const [hostAgencyApplications, setHostAgencyApplications] = useState<Array<{
     id: string;
@@ -1516,10 +1592,7 @@ export default function App() {
     imageUrl?: string;
     deletedForSelf?: boolean;
     deletedForEveryone?: boolean;
-  }>>([
-    { id: "dm-1", sender: "Sahar Live 🎵", text: "Hey Prince! Thank you for the VIP support yesterday. Let me know if you want any specific song in tonight's live session!", timestamp: "02:10 AM" },
-    { id: "dm-2", sender: "You", text: "Bilkul Sahar! Space Rocket set hai aaj! 🚀", timestamp: "02:12 AM" }
-  ]);
+  }>>([]);
 
   // Chat interactive features state
   const [isRecordingVoice, setIsRecordingVoice] = useState<boolean>(false);
@@ -1553,11 +1626,7 @@ export default function App() {
   const comboTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Wallet and Earnings Transaction Ledger
-  const [transactions, setTransactions] = useState<Transaction[]>([
-    { id: "TX-101", type: "recharge", amount: 10000, currency: "coins", timestamp: "2026-07-10 18:30", status: "Completed", details: "Recharged via Google Pay" },
-    { id: "TX-102", type: "gift_sent", amount: 999, currency: "coins", timestamp: "2026-07-10 21:15", status: "Completed", details: "Sent VIP Crown to Sahar Live" },
-    { id: "TX-103", type: "withdraw", amount: 150, currency: "USD", timestamp: "2026-07-09 11:00", status: "Completed", details: "Withdrawn via Bank Transfer" }
-  ]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   // Daily Missions Progression
   const [missions, setMissions] = useState(DAILY_MISSIONS);
@@ -1670,52 +1739,34 @@ export default function App() {
     { id: "api-5", name: "Urdu Audio Streaming CDN", type: "Media Server", endpoint: "rtmp://audio-cdn-lahore.sehrlive.com/live", status: "Active", ping: "24ms", cost: "$0.02 / GB", isCore: true }
   ]);
 
-  // Dynamic Live Streams State (initialized with MOCK_HOSTS, saved to localStorage)
-  const [liveStreamsList, setLiveStreamsList] = useState<HostProfile[]>(() => {
-    const saved = localStorage.getItem("sehr_live_streams_list");
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
-    }
-    return MOCK_HOSTS;
-  });
+  // Dynamic Live Streams State
+  const [liveStreamsList, setLiveStreamsList] = useState<HostProfile[]>([]);
 
   // Dynamic Notifications Inbox State
-  const [appNotifications, setAppNotifications] = useState<Array<{ id: number; title: string; text: string; time: string; isNew: boolean }>>(() => {
-    const saved = localStorage.getItem("sehr_app_notifications");
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
-    }
-    return [
-      {
-        id: 1,
-        title: "🎙️ Sahar Live is Broadcasting!",
-        text: "Urdu ghazal stream is currently trending with 12k+ listeners. Tune in now!",
-        time: "Just Now",
-        isNew: true
-      },
-      {
-        id: 2,
-        title: "⚡ PK Match Alert: Zain_Killer",
-        text: "The grand Crown Tournament PK battle has started! Support your family.",
-        time: "10 mins ago",
-        isNew: true
-      },
-      {
-        id: 3,
-        title: "💎 Diamond Reward Approved",
-        text: "Your recent host payout of 3,500 Diamonds has been verified by Sahr Kings agency.",
-        time: "1 hour ago",
-        isNew: false
-      },
-      {
-        id: 4,
-        title: "🇵🇰 Welcome to Sehr Live!",
-        text: "Your account is officially registered under Karachi Node 1. Enjoy streaming!",
-        time: "Yesterday",
-        isNew: false
+  const [appNotifications, setAppNotifications] = useState<Array<{ id: number; title: string; text: string; time: string; isNew: boolean; userAvatar?: string; type?: string; timestamp?: string }>>([]);
+
+  // Helper to trigger and save a real notification to Firestore via Express API
+  const createNotification = async (title: string, text: string, type: string, userAvatar?: string) => {
+    try {
+      const response = await fetch("/api/v1/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          text,
+          type,
+          userAvatar: userAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+          timestamp: new Date().toISOString()
+        })
+      });
+      if (response.ok) {
+        const newNotif = await response.json();
+        setAppNotifications(prev => [newNotif, ...prev]);
       }
-    ];
-  });
+    } catch (err) {
+      console.error("Error creating notification:", err);
+    }
+  };
 
   // System Configuration States
   const [isSystemMaintenance, setIsSystemMaintenance] = useState<boolean>(() => {
@@ -2254,6 +2305,19 @@ export default function App() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
+  // Request notifications permission on app launch
+  useEffect(() => {
+    if (permissionStates.notifications === "prompt") {
+      setTimeout(() => {
+        requestAppPermission(
+          "notifications",
+          "Notifications allow Sahr Live to alert you instantly when PK battles start, when hosts you follow go live, or when you receive coins & gifts from fans.",
+          () => {}
+        );
+      }, 2000);
+    }
+  }, []);
+
   // Initial mount: Fetch user profile, live streams, and gifts list from the Express backend APIs
   useEffect(() => {
     const fetchInitial = () => {
@@ -2310,6 +2374,62 @@ export default function App() {
           }
         })
         .catch(err => console.error("Error loading gifts from backend:", err));
+
+      // 4. Fetch reels list
+      fetch("/api/v1/reels")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setReels(data);
+        })
+        .catch(err => console.error("Error loading reels:", err));
+
+      // 5. Fetch stories list
+      fetch("/api/v1/stories")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setStories(data);
+        })
+        .catch(err => console.error("Error loading stories:", err));
+
+      // 6. Fetch direct chats
+      fetch("/api/v1/chats")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setDirectMessages(data);
+        })
+        .catch(err => console.error("Error loading chats:", err));
+
+      // 7. Fetch transactions
+      fetch("/api/v1/transactions")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setTransactions(data);
+        })
+        .catch(err => console.error("Error loading transactions:", err));
+
+      // 8. Fetch notifications
+      fetch("/api/v1/notifications")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setAppNotifications(data);
+        })
+        .catch(err => console.error("Error loading notifications:", err));
+
+      // 9. Fetch families
+      fetch("/api/v1/families")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setFamiliesList(data);
+        })
+        .catch(err => console.error("Error loading families:", err));
+
+      // 10. Fetch agencies
+      fetch("/api/v1/agencies")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setHostAgencies(data);
+        })
+        .catch(err => console.error("Error loading agencies:", err));
     };
 
     fetchInitial();
@@ -2346,6 +2466,55 @@ export default function App() {
           }
         })
         .catch(err => console.error("Error polling user:", err));
+
+      fetch("/api/v1/reels")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setReels(data);
+        })
+        .catch(err => console.error("Error polling reels:", err));
+
+      fetch("/api/v1/stories")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setStories(data);
+        })
+        .catch(err => console.error("Error polling stories:", err));
+
+      fetch("/api/v1/chats")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setDirectMessages(data);
+        })
+        .catch(err => console.error("Error polling chats:", err));
+
+      fetch("/api/v1/transactions")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setTransactions(data);
+        })
+        .catch(err => console.error("Error polling transactions:", err));
+
+      fetch("/api/v1/notifications")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setAppNotifications(data);
+        })
+        .catch(err => console.error("Error polling notifications:", err));
+
+      fetch("/api/v1/families")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setFamiliesList(data);
+        })
+        .catch(err => console.error("Error polling families:", err));
+
+      fetch("/api/v1/agencies")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setHostAgencies(data);
+        })
+        .catch(err => console.error("Error polling agencies:", err));
     }, 3000);
 
     return () => {
@@ -3324,7 +3493,19 @@ export default function App() {
 
   // User Solo Live Broadcaster Handlers
   const startUserSoloLive = () => {
-    setClientView("camera-prep");
+    requestAppPermission(
+      "camera",
+      "Camera access is needed to broadcast video, use high-quality beauty filters, and perform PK battle matches.",
+      () => {
+        requestAppPermission(
+          "microphone",
+          "Microphone access is required so your viewers can hear your voice and you can join voice chat rooms.",
+          () => {
+            setClientView("camera-prep");
+          }
+        );
+      }
+    );
   };
 
   const actuallyGoLive = () => {
@@ -3560,6 +3741,53 @@ export default function App() {
       });
   };
 
+  const handleGoogleSignIn = async () => {
+    if (!termsAccepted) {
+      setLoginError("Please check and accept the Terms of Service below to authenticate.");
+      return;
+    }
+    setLoginError("");
+    try {
+      const result = await signInWithPopup(clientAuth, googleProvider);
+      const googleUser = result.user;
+      
+      const response = await window.fetch("/api/v1/auth/google-login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          email: googleUser.email,
+          displayName: googleUser.displayName,
+          photoURL: googleUser.photoURL,
+          uid: googleUser.uid
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Failed to log in with Google on backend");
+      }
+
+      const data = await response.json();
+      if (data && data.success && data.user) {
+        localStorage.setItem("sehr_auth_token", data.token);
+        setUser(data.user);
+        if (is2FAEnabled) {
+          setShowTwoFactorModal(true);
+        } else {
+          setIsLoggedIn(true);
+        }
+        console.log("[SEHR-LIVE] Google login success:", data.user);
+      } else {
+        throw new Error("Invalid response payload from server");
+      }
+    } catch (err: any) {
+      console.error("Google Sign-In Error:", err);
+      setLoginError(err.message || "Google Authentication failed. Please try again.");
+    }
+  };
+
   const handleVerify2FA = (e: React.FormEvent) => {
     e.preventDefault();
     setShowTwoFactorModal(false);
@@ -3652,7 +3880,7 @@ export default function App() {
       return;
     }
 
-    const matchedHost = MOCK_HOSTS.find(h => h.id === targetUserId);
+    const matchedHost = liveStreamsList.find(h => h.id === targetUserId);
     const recipientName = matchedHost ? matchedHost.name : targetUserId;
 
     setUser(prev => ({
@@ -4118,14 +4346,7 @@ export default function App() {
                         <div className="space-y-2">
                           <button
                             type="button"
-                            onClick={() => {
-                              if (!termsAccepted) {
-                                setLoginError("Please check and accept the Terms of Service below to authenticate.");
-                                return;
-                              }
-                              setLoginError("");
-                              setIsLoggedIn(true);
-                            }}
+                            onClick={handleGoogleSignIn}
                             className="w-full bg-white text-gray-900 font-semibold py-2 rounded-xl text-xs flex items-center justify-center space-x-2 hover:bg-gray-100 transition-all shadow-md"
                           >
                             <span className="font-bold text-red-500 text-sm">G</span>
@@ -4590,6 +4811,27 @@ export default function App() {
                             title="Open Sehr Vault Wallet"
                           >
                             <Wallet className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* 🔔 Real-Time Notifications Bell with Badge count */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setClientView("notifications");
+                            }}
+                            className={`p-1.5 rounded-lg bg-[#12121a] border transition-all relative shrink-0 ${
+                              clientView === "notifications"
+                                ? "border-pink-500 text-pink-500 bg-pink-500/10"
+                                : "hover:bg-white/5 border-[#303040] hover:border-pink-500 text-gray-300 hover:text-pink-500"
+                            }`}
+                            title="Notifications Inbox"
+                          >
+                            <Bell className="w-3.5 h-3.5" />
+                            {appNotifications.filter(n => n.isNew).length > 0 && (
+                              <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[7px] font-extrabold rounded-full w-3.5 h-3.5 flex items-center justify-center animate-pulse border border-[#12121a]">
+                                {appNotifications.filter(n => n.isNew).length}
+                              </span>
+                            )}
                           </button>
 
                           {/* 💬 WhatsApp Support Dropdown */}
@@ -11648,7 +11890,7 @@ export default function App() {
                                 </div>
                                 
                                 <div className="grid grid-cols-4 gap-2 overflow-y-auto max-h-[160px] py-1 bg-transparent">
-                                  {MOCK_GIFTS.map(gift => (
+                                  {giftsList.map(gift => (
                                     <button
                                       key={gift.id}
                                       onClick={() => {
@@ -13467,7 +13709,7 @@ export default function App() {
                                     className="w-full bg-[#12121a] border border-[#303040] text-xs text-white rounded p-2 focus:outline-none focus:border-pink-500"
                                   >
                                     <optgroup label="Active Streaming Hosts">
-                                      {MOCK_HOSTS.map(h => (
+                                      {liveStreamsList.map(h => (
                                         <option key={h.id} value={h.id}>🎙️ {h.name} (ID: {h.id})</option>
                                       ))}
                                     </optgroup>
@@ -13579,16 +13821,24 @@ export default function App() {
                             <span className="text-[8px] bg-[#ff007f]/20 text-[#ff007f] px-1.5 py-0.5 rounded font-black font-mono">Rank #1 Global</span>
                           </div>
 
-                          <div className="flex items-center space-x-2.5">
-                            <div className="w-10 h-10 rounded-lg overflow-hidden border border-yellow-500">
-                              <img src={MOCK_FAMILIES[0].avatar} className="w-full h-full object-cover" alt="fam" />
+                          {familiesList.length > 0 ? (
+                            <>
+                              <div className="flex items-center space-x-2.5">
+                                <div className="w-10 h-10 rounded-lg overflow-hidden border border-yellow-500">
+                                  <img src={familiesList[0].avatar} className="w-full h-full object-cover" alt="fam" />
+                                </div>
+                                <div>
+                                  <p className="text-xs font-black text-white">{familiesList[0].name}</p>
+                                  <p className="text-[9px] text-gray-400">Leader: {familiesList[0].leader} | Members: {familiesList[0].members}/500</p>
+                                </div>
+                              </div>
+                              <p className="text-[10px] text-gray-300 italic">"{familiesList[0].description}"</p>
+                            </>
+                          ) : (
+                            <div className="text-center py-4 bg-white/5 rounded-lg border border-dashed border-[#303040]">
+                              <p className="text-xs text-gray-400">No Active Family. Join a family to participate in PK wars!</p>
                             </div>
-                            <div>
-                              <p className="text-xs font-black text-white">{MOCK_FAMILIES[0].name}</p>
-                              <p className="text-[9px] text-gray-400">Leader: {MOCK_FAMILIES[0].leader} | Members: {MOCK_FAMILIES[0].members}/500</p>
-                            </div>
-                          </div>
-                          <p className="text-[10px] text-gray-300 italic">"{MOCK_FAMILIES[0].description}"</p>
+                          )}
                         </div>
 
                         {/* Agency Section */}
@@ -13598,11 +13848,17 @@ export default function App() {
                             <span className="text-[8px] bg-purple-400/20 text-purple-300 px-1.5 py-0.5 rounded font-black font-mono">Verified Partner</span>
                           </div>
 
-                          <div>
-                            <p className="text-xs font-black text-white">{MOCK_AGENCIES[0].name}</p>
-                            <p className="text-[9px] text-gray-400">Registered Hosts: {MOCK_AGENCIES[0].registeredHosts} | Commission: {MOCK_AGENCIES[0].salaryRate}</p>
-                          </div>
-                          <p className="text-[9px] text-[#66fcf1] font-mono">Monthly Agency Bonus: Earn +$100 extra by maintaining 20 streaming hours/week.</p>
+                          {hostAgencies.length > 0 ? (
+                            <div>
+                              <p className="text-xs font-black text-white">{hostAgencies[0].name}</p>
+                              <p className="text-[9px] text-gray-400">Registered Hosts: {hostAgencies[0].registeredHosts} | Commission: {hostAgencies[0].salaryRate || hostAgencies[0].monthlyCommission || '20%'}</p>
+                            </div>
+                          ) : (
+                            <div className="text-center py-4 bg-white/5 rounded-lg border border-dashed border-[#303040]">
+                              <p className="text-xs text-gray-400">No Talent Agency Registered. Apply to start earning streaming salary!</p>
+                            </div>
+                          )}
+                          <p className="text-[9px] text-[#66fcf1] font-mono">Monthly Agency Bonus: Earn extra rewards by maintaining 20 streaming hours/week.</p>
                         </div>
                       </div>
                     )}
@@ -14320,6 +14576,273 @@ export default function App() {
                       </div>
                     )}
 
+                    {/* ===================================================================== */}
+                    {/* VIEW: 🔔 TIKTOK-STYLE NOTIFICATIONS SCREEN */}
+                    {/* ===================================================================== */}
+                    {clientView === "notifications" && (() => {
+                      const now = Date.now();
+                      const nonExpiredNotifs = appNotifications.filter(n => {
+                        const ts = n.timestamp ? new Date(n.timestamp).getTime() : now;
+                        return (now - ts) <= 24 * 3600 * 1000;
+                      });
+
+                      const groups = groupNotifications(nonExpiredNotifs);
+                      const hasAnyNotifications = nonExpiredNotifs.length > 0;
+
+                      const getIconForType = (type?: string) => {
+                        switch (type) {
+                          case "New Followers": return "👤";
+                          case "Likes": return "💖";
+                          case "Comments": return "💬";
+                          case "Gifts": return "🎁";
+                          case "Coin Transactions": return "🪙";
+                          case "Agency Events": return "🏢";
+                          case "Admin Announcements": return "📢";
+                          case "Live Events": return "🎙️";
+                          case "Wallet Updates": return "💳";
+                          default: return "🔔";
+                        }
+                      };
+
+                      const getBgColorForType = (type?: string) => {
+                        switch (type) {
+                          case "New Followers": return "bg-blue-500/10 text-blue-400 border-blue-500/20";
+                          case "Likes": return "bg-pink-500/10 text-pink-400 border-pink-500/20";
+                          case "Comments": return "bg-purple-500/10 text-purple-400 border-purple-500/20";
+                          case "Gifts": return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
+                          case "Coin Transactions": return "bg-green-500/10 text-green-400 border-green-500/20";
+                          default: return "bg-indigo-500/10 text-indigo-400 border-indigo-500/20";
+                        }
+                      };
+
+                      const renderNotificationItem = (notif: any) => {
+                        const icon = getIconForType(notif.type);
+                        const badgeStyle = getBgColorForType(notif.type);
+                        const isUnread = notif.isNew;
+                        const avatar = notif.userAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80";
+                        
+                        const handleItemClick = async () => {
+                          if (isUnread) {
+                            setAppNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, isNew: false } : n));
+                            try {
+                              await fetch(`/api/v1/notifications`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ ...notif, isNew: false })
+                              });
+                            } catch (e) {
+                              console.error("Error marking as read", e);
+                            }
+                          }
+                        };
+
+                        const formatTime = (isoString?: string) => {
+                          if (!isoString) return notif.time || "Just Now";
+                          try {
+                            const d = new Date(isoString);
+                            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                          } catch (e) {
+                            return notif.time || "Just Now";
+                          }
+                        };
+
+                        return (
+                          <div
+                            key={notif.id}
+                            onClick={handleItemClick}
+                            className={`flex items-start space-x-3 p-3 rounded-xl border transition-all cursor-pointer select-none ${
+                              isUnread 
+                                ? "bg-[#ff007f]/5 border-[#ff007f]/30 hover:bg-[#ff007f]/10 shadow-sm" 
+                                : "bg-[#12121a] border-[#1e1e2d] hover:bg-white/5"
+                            }`}
+                          >
+                            <div className="relative shrink-0">
+                              <div className="w-9 h-9 rounded-full overflow-hidden border border-[#2a2a3a]">
+                                <img src={avatar} className="w-full h-full object-cover" alt="avatar" referrerPolicy="no-referrer" />
+                              </div>
+                              <span className={`absolute -bottom-1 -right-1 text-[10px] w-4 h-4 rounded-full flex items-center justify-center border border-[#0e0e15] ${badgeStyle} p-0.5`}>
+                                {icon}
+                              </span>
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center space-x-1.5 bg-transparent">
+                                <p className={`text-[10px] font-extrabold truncate ${isUnread ? "text-[#ff007f]" : "text-white"}`}>{notif.title}</p>
+                                {isUnread && (
+                                  <span className="w-1.5 h-1.5 bg-[#ff007f] rounded-full shrink-0 animate-pulse" />
+                                )}
+                              </div>
+                              <p className="text-[9px] text-gray-300 leading-relaxed mt-0.5">{notif.text}</p>
+                            </div>
+
+                            <div className="text-right shrink-0">
+                              <span className="text-[7.5px] font-mono text-gray-500 font-bold">{formatTime(notif.timestamp)}</span>
+                            </div>
+                          </div>
+                        );
+                      };
+
+                      return (
+                        <div className="flex-1 flex flex-col bg-[#0e0e15] relative text-left h-full overflow-hidden">
+                          {/* Top Header */}
+                          <div className="bg-[#161622] p-3 border-b border-[#2a2a3a] flex items-center justify-between z-10 shrink-0">
+                            <div className="flex items-center space-x-2">
+                              <button
+                                type="button"
+                                onClick={goBack}
+                                className="p-1.5 rounded-lg bg-[#0e0e15] border border-[#2a2a3a] text-gray-300 hover:text-white transition-all mr-1 cursor-pointer"
+                                title="Back"
+                              >
+                                <ArrowLeft className="w-4 h-4" />
+                              </button>
+                              <div>
+                                <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono flex items-center space-x-1.5">
+                                  <Bell className="w-3.5 h-3.5 text-pink-500" />
+                                  <span>Sehr Inbox</span>
+                                </h4>
+                                <p className="text-[8px] text-gray-400 font-mono">Real-Time Firebase Notifications center</p>
+                              </div>
+                            </div>
+
+                            {/* 3-Dot Options Dropdown */}
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() => setShowNotifMenu(!showNotifMenu)}
+                                className={`p-1.5 rounded-lg border transition-all ${
+                                  showNotifMenu
+                                    ? "bg-[#ff007f]/10 border-[#ff007f] text-[#ff007f]"
+                                    : "bg-[#0e0e15] border-[#2a2a3a] text-gray-300 hover:text-[#ff007f]"
+                                }`}
+                                title="More Options"
+                              >
+                                <MoreVertical className="w-3.5 h-3.5" />
+                              </button>
+
+                              {showNotifMenu && (
+                                <>
+                                  <div className="fixed inset-0 z-30" onClick={() => setShowNotifMenu(false)} />
+                                  <div className="absolute right-0 mt-1.5 w-48 bg-[#161622]/95 backdrop-blur-md border border-[#2a2a3a] rounded-xl shadow-2xl p-1 z-40">
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        setShowNotifMenu(false);
+                                        try {
+                                          const res = await fetch("/api/v1/notifications/read-all", { method: "POST" });
+                                          if (res.ok) {
+                                            setAppNotifications(prev => prev.map(n => ({ ...n, isNew: false })));
+                                            setHasUnreadNotifications(false);
+                                            alert("Mubarak! All notifications marked as read!");
+                                          }
+                                        } catch (e) {
+                                          console.error("Failed to read all", e);
+                                        }
+                                      }}
+                                      className="w-full flex items-center space-x-2 p-2 rounded-lg hover:bg-white/5 text-left text-gray-300 hover:text-white transition-all text-[9px] font-black uppercase font-mono cursor-pointer"
+                                    >
+                                      <Check className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                                      <span>Mark All As Read</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        setShowNotifMenu(false);
+                                        if (confirm("Are you sure you want to delete all notifications from Firestore?")) {
+                                          try {
+                                            const res = await fetch("/api/v1/notifications/clear", { method: "POST" });
+                                            if (res.ok) {
+                                              setAppNotifications([]);
+                                              setHasUnreadNotifications(false);
+                                              alert("Safely deleted all notifications from Firestore!");
+                                            }
+                                          } catch (e) {
+                                            console.error("Failed to clear", e);
+                                          }
+                                        }
+                                      }}
+                                      className="w-full flex items-center space-x-2 p-2 rounded-lg hover:bg-red-500/10 text-left text-gray-300 hover:text-red-400 transition-all text-[9px] font-black uppercase font-mono mt-0.5 cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                                      <span>Clear All Inbox</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setShowNotifMenu(false);
+                                        setShowNotifSettingsDrawer(true);
+                                      }}
+                                      className="w-full flex items-center space-x-2 p-2 rounded-lg hover:bg-white/5 text-left text-gray-300 hover:text-white transition-all text-[9px] font-black uppercase font-mono mt-0.5 border-t border-white/5 pt-2 cursor-pointer"
+                                    >
+                                      <Settings className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                                      <span>Inbox Settings</span>
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Main Scroll Area */}
+                          <div className="flex-1 scroll-view-y p-3.5 pb-24 space-y-4">
+                            {!hasAnyNotifications ? (
+                              <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
+                                <div className="w-14 h-14 rounded-full bg-[#161622] flex items-center justify-center border border-[#2a2a3a]">
+                                  <Bell className="w-6 h-6 text-gray-600 animate-pulse" />
+                                </div>
+                                <div className="space-y-1 bg-transparent">
+                                  <p className="text-[10px] font-black uppercase text-gray-400 font-mono tracking-wider">No notifications yet</p>
+                                  <p className="text-[8px] text-gray-500 font-sans max-w-xs px-4">Your real-time Firebase activity ledger is empty. Interactive alerts expire automatically in 24 hours.</p>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-4">
+                                {/* Group: Today */}
+                                {groups.today.length > 0 && (
+                                  <div className="space-y-2 bg-transparent">
+                                    <div className="flex items-center space-x-2 px-1 bg-transparent">
+                                      <span className="text-[8.5px] font-black uppercase text-[#ff007f] font-mono tracking-widest bg-[#ff007f]/5 px-2 py-0.5 rounded border border-[#ff007f]/10">Today</span>
+                                      <div className="flex-1 h-[1px] bg-gradient-to-r from-pink-500/10 to-transparent" />
+                                    </div>
+                                    <div className="space-y-2 bg-transparent">
+                                      {groups.today.map(notif => renderNotificationItem(notif))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Group: Yesterday */}
+                                {groups.yesterday.length > 0 && (
+                                  <div className="space-y-2 bg-transparent">
+                                    <div className="flex items-center space-x-2 px-1 bg-transparent">
+                                      <span className="text-[8.5px] font-black uppercase text-purple-400 font-mono tracking-widest bg-purple-500/5 px-2 py-0.5 rounded border border-purple-500/10">Yesterday</span>
+                                      <div className="flex-1 h-[1px] bg-gradient-to-r from-purple-500/10 to-transparent" />
+                                    </div>
+                                    <div className="space-y-2 bg-transparent">
+                                      {groups.yesterday.map(notif => renderNotificationItem(notif))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Group: Earlier */}
+                                {groups.earlier.length > 0 && (
+                                  <div className="space-y-2 bg-transparent">
+                                    <div className="flex items-center space-x-2 px-1 bg-transparent">
+                                      <span className="text-[8.5px] font-black uppercase text-gray-400 font-mono tracking-widest bg-white/5 px-2 py-0.5 rounded border border-white/5">Earlier</span>
+                                      <div className="flex-1 h-[1px] bg-gradient-to-r from-white/5 to-transparent" />
+                                    </div>
+                                    <div className="space-y-2 bg-transparent">
+                                      {groups.earlier.map(notif => renderNotificationItem(notif))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {/* CLIENT FOOTER NAVIGATION BAR */}
                     <footer className="bg-[#1e1e2d] border-t border-[#303040] py-2 px-3 pb-3 safe-padding-bottom flex items-center justify-between text-xs text-gray-400">
                       <button
@@ -14370,6 +14893,20 @@ export default function App() {
                       >
                         <MessageSquare className="w-4 h-4 mb-0.5" />
                         <span className="text-[8px] font-bold">Chat DM</span>
+                      </button>
+
+                      {/* 🔔 TikTok-style Inbox (Notifications) button in bottom navigation */}
+                      <button
+                        onClick={() => setClientView("notifications")}
+                        className={`flex flex-col items-center flex-1 py-1 relative ${clientView === "notifications" ? "text-pink-500" : "hover:text-white"}`}
+                      >
+                        <Bell className="w-4 h-4 mb-0.5" />
+                        <span className="text-[8px] font-bold">Inbox</span>
+                        {appNotifications.filter(n => n.isNew).length > 0 && (
+                          <span className="absolute top-1 right-3.5 bg-pink-500 text-white text-[7.5px] font-extrabold rounded-full w-3.5 h-3.5 flex items-center justify-center border border-[#1e1e2d] animate-pulse">
+                            {appNotifications.filter(n => n.isNew).length}
+                          </span>
+                        )}
                       </button>
 
                       <button
@@ -15568,7 +16105,7 @@ export default function App() {
 
                               {/* Search results */}
                               {blockSearchQuery.trim() && (() => {
-                                const matchedHosts = MOCK_HOSTS.filter(h => 
+                                const matchedHosts = liveStreamsList.filter(h => 
                                   h.name.toLowerCase().includes(blockSearchQuery.toLowerCase())
                                 );
                                 if (matchedHosts.length === 0) {
@@ -15829,6 +16366,254 @@ export default function App() {
                                   ))}
                                 </div>
                               )}
+                            </div>
+                          </div>
+
+                          {/* 💾 APP STORAGE MANAGEMENT SECTION */}
+                          {(() => {
+                            const totalCacheKb = (Object.values(appCaches) as number[]).reduce((a, b) => a + b, 0);
+                            const totalCacheMb = (totalCacheKb / 1024).toFixed(1);
+                            const totalFreedMb = (freedStorageSize / 1024).toFixed(1);
+
+                            const handleClearCache = (key: string) => {
+                              const size = appCaches[key as keyof typeof appCaches] || 0;
+                              const newCaches = { ...appCaches, [key]: 0 };
+                              saveAppCaches(newCaches);
+                              setFreedStorageSize(prev => prev + size);
+                              setClearingCacheType(null);
+                              
+                              if (key === "search") {
+                                localStorage.removeItem("sehr_search_history");
+                              }
+                              if (key === "notifications") {
+                                localStorage.removeItem("sehr_local_notifications");
+                              }
+                            };
+
+                            return (
+                              <div className="bg-[#12121a] p-3 rounded-xl border border-[#303040] space-y-3 relative overflow-hidden">
+                                <div className="flex justify-between items-center text-[10px] bg-transparent">
+                                  <span className="font-bold text-white flex items-center space-x-1.5 bg-transparent">
+                                    <Database className="w-3.5 h-3.5 text-pink-500 shrink-0" />
+                                    <span>App Storage & Cache</span>
+                                  </span>
+                                  <span className="text-pink-500 font-mono text-[8.5px] uppercase font-black px-1.5 py-0.5 rounded bg-pink-500/10 border border-pink-500/20">
+                                    {totalCacheMb} MB Used
+                                  </span>
+                                </div>
+                                
+                                <p className="text-[8px] text-gray-400 leading-normal text-left bg-transparent">
+                                  Clean unnecessary temporary files, video clips, and caches to optimize your stream quality and speed.
+                                </p>
+
+                                {/* Storage Status Bar */}
+                                <div className="bg-[#0e0e15] p-2 rounded-lg border border-[#2a2a3a] space-y-1.5">
+                                  <div className="flex justify-between text-[7.5px] font-mono font-bold text-gray-400 bg-transparent">
+                                    <span>Used: {totalCacheMb} MB</span>
+                                    <span className="text-green-400">Freed: {totalFreedMb} MB</span>
+                                  </div>
+                                  <div className="w-full bg-[#1e1e2d] h-1.5 rounded-full overflow-hidden flex">
+                                    <div 
+                                      className="bg-pink-500 h-full transition-all duration-500" 
+                                      style={{ width: `${Math.min(100, (totalCacheKb / 150000) * 100)}%` }} 
+                                    />
+                                    <div 
+                                      className="bg-green-500 h-full transition-all duration-500" 
+                                      style={{ width: `${Math.min(100, (freedStorageSize / 150000) * 100)}%` }} 
+                                    />
+                                  </div>
+                                  <p className="text-[7px] text-gray-500 text-left font-sans bg-transparent">
+                                    Estimated Device Free Space: <span className="text-white font-bold">24.8 GB</span>
+                                  </p>
+                                </div>
+
+                                {/* Categories Grid list */}
+                                <div className="space-y-1.5 max-h-[190px] overflow-y-auto pr-0.5 text-left bg-transparent scrollbar-none">
+                                  {[
+                                    { key: "images", label: "Clear Image Cache", desc: "Cached profile avatars and stream banners", icon: "🖼️" },
+                                    { key: "videos", label: "Clear Video Cache", desc: "Buffered video fragments & short PK replays", icon: "📹" },
+                                    { key: "temp", label: "Clear Temporary Files", desc: "Temporary system logs & stream configuration files", icon: "📂" },
+                                    { key: "downloads", label: "Clear Download Cache", desc: "Downloaded overlay filters and virtual sticker assets", icon: "📥" },
+                                    { key: "search", label: "Clear Search History", desc: "Erase cached keyword searches and search terms", icon: "🔍" },
+                                    { key: "activity", label: "Clear Recent Activity", desc: "Erase recently visited streams, rooms & interaction logs", icon: "⏱️" },
+                                    { key: "notifications", label: "Clear Notification Cache", desc: "Clear local notification listings and read alert indexes", icon: "🔔" }
+                                  ].map((item) => {
+                                    const sizeKb = appCaches[item.key as keyof typeof appCaches] || 0;
+                                    const sizeMb = (sizeKb / 1024).toFixed(1);
+                                    return (
+                                      <div key={item.key} className="flex items-center justify-between p-2 rounded-lg bg-[#0e0e15] border border-white/5 hover:border-pink-500/10 transition-all">
+                                        <div className="space-y-0.5 flex-1 min-w-0 pr-2 bg-transparent">
+                                          <p className="text-[8.5px] font-bold text-white flex items-center bg-transparent">
+                                            <span className="mr-1">{item.icon}</span>
+                                            <span>{item.label}</span>
+                                          </p>
+                                          <p className="text-[7px] text-gray-500 leading-tight truncate bg-transparent">{item.desc}</p>
+                                        </div>
+                                        <div className="flex items-center space-x-1.5 shrink-0 bg-transparent">
+                                          <span className="text-[7.5px] font-mono text-gray-400 font-bold">{sizeMb} MB</span>
+                                          <button
+                                            type="button"
+                                            disabled={sizeKb === 0}
+                                            onClick={() => setClearingCacheType(item.key)}
+                                            className={`px-2 py-1 rounded text-[8px] font-black uppercase tracking-wider transition-all ${
+                                              sizeKb === 0 
+                                                ? "bg-gray-800 text-gray-500 cursor-not-allowed" 
+                                                : "bg-pink-500/10 border border-pink-500/20 text-pink-400 hover:bg-pink-500 hover:text-white cursor-pointer"
+                                            }`}
+                                          >
+                                            Clear
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                {/* Clear All Button */}
+                                {totalCacheKb > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setClearingCacheType("all")}
+                                    className="w-full bg-gradient-to-r from-pink-500 to-[#7b2cbf] hover:opacity-95 text-white py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider font-mono transition-all flex items-center justify-center space-x-1 cursor-pointer"
+                                  >
+                                    <span>🗑️</span>
+                                    <span>Clear All App Caches ({totalCacheMb} MB)</span>
+                                  </button>
+                                )}
+
+                                {/* Inline State-Based Confirmation Overlay */}
+                                {clearingCacheType && (
+                                  <div className="absolute inset-0 bg-[#0e0e15]/95 backdrop-blur-md z-30 flex flex-col items-center justify-center p-3 animate-fade-in text-center">
+                                    <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20 mb-2">
+                                      <Database className="w-5 h-5 text-red-400 animate-pulse" />
+                                    </div>
+                                    <h5 className="text-[10px] font-black uppercase tracking-widest text-white font-mono">Confirm Storage Clean</h5>
+                                    <p className="text-[8px] text-gray-400 max-w-xs leading-normal mt-1 px-2 font-sans bg-transparent">
+                                      {clearingCacheType === "all" 
+                                        ? "Are you absolutely sure you want to clean all local cached application resources? This will free up storage but will not affect your user logs, messages, or wallet coins."
+                                        : `Are you sure you want to clean the temporary cached assets of ${clearingCacheType}?`}
+                                    </p>
+                                    <div className="flex space-x-2 w-full max-w-xs mt-3 bg-transparent">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (clearingCacheType === "all") {
+                                            const originalTotal = (Object.values(appCaches) as number[]).reduce((a, b) => a + b, 0);
+                                            setFreedStorageSize(prev => prev + originalTotal);
+                                            saveAppCaches({
+                                              images: 0,
+                                              videos: 0,
+                                              temp: 0,
+                                              downloads: 0,
+                                              search: 0,
+                                              activity: 0,
+                                              notifications: 0
+                                            });
+                                            localStorage.removeItem("sehr_search_history");
+                                            localStorage.removeItem("sehr_local_notifications");
+                                            setClearingCacheType(null);
+                                            alert("Assalam-o-Alaikum! Mubarak! All Sahr Live local caches have been wiped safely and device speed optimized! Your account wallet and logins are fully safe. Shukriya!");
+                                          } else {
+                                            handleClearCache(clearingCacheType);
+                                          }
+                                        }}
+                                        className="flex-1 bg-red-500 hover:bg-red-600 text-white py-1.5 rounded text-[8px] font-black uppercase font-mono transition-all cursor-pointer"
+                                      >
+                                        Yes, Clear
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setClearingCacheType(null)}
+                                        className="flex-1 bg-[#1e1e2d] hover:bg-[#2a2a3a] text-gray-400 py-1.5 rounded text-[8px] font-bold transition-all border border-white/5 cursor-pointer"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+
+                          {/* 🛡️ RUNTIME PERMISSIONS MANAGER PANEL */}
+                          <div className="bg-[#12121a] p-3 rounded-xl border border-[#303040] space-y-3">
+                            <div className="flex justify-between items-center text-[10px] bg-transparent">
+                              <span className="font-bold text-white flex items-center space-x-1.5 bg-transparent">
+                                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                <span>Android Release Permissions</span>
+                              </span>
+                              <span className="text-cyan-400 font-mono text-[8px] uppercase font-black px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20">
+                                Play Protect Verified
+                              </span>
+                            </div>
+
+                            <p className="text-[8px] text-gray-400 leading-normal text-left bg-transparent">
+                              Sehr Live operates securely complying with Android 10–16 permissions. Control runtime features safely.
+                            </p>
+
+                            {/* Permissions List */}
+                            <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-0.5 text-left bg-transparent scrollbar-none">
+                              {[
+                                { key: "notifications", label: "Push Notifications", desc: "For live battles & host stream status alerts", icon: "🔔", reason: "Notifications allow Sahr Live to alert you instantly when PK battles start, when hosts you follow go live, or when you receive coins & gifts from fans." },
+                                { key: "camera", label: "Camera Access", desc: "For video streaming & interactive filters", icon: "📷", reason: "Camera access is needed to broadcast video, use high-quality beauty filters, and perform PK battle matches." },
+                                { key: "microphone", label: "Microphone Audio", desc: "For voice rooms, stream chat & PK matches", icon: "🎙️", reason: "Microphone access is required so your viewers can hear your voice and you can join voice chat rooms." },
+                                { key: "photos", label: "Photos & Media", desc: "For reels upload & customizing avatars", icon: "🖼️", reason: "Media permissions are required to let you upload custom avatar pictures, background screens, and short video reels." },
+                                { key: "location", label: "Device Location", desc: "To match you with nearby livestream hosts", icon: "📍", reason: "Device Location is used to match you with nearby livestream hosts and show streams in your Pakistan region." },
+                                { key: "storage", label: "Device Storage", desc: "For local cache buffering & system logs", icon: "📂", reason: "Storage permission lets the app download 3D filters, face overlays, and offline gift assets for a smoother experience." },
+                                { key: "bluetooth", label: "Bluetooth Devices", desc: "For high-fidelity wireless microphones & headsets", icon: "📶", reason: "Bluetooth access is required to connect high-fidelity wireless headsets, microphones, and audio equipment." },
+                                { key: "nearby", label: "Nearby active devices", desc: "For local battles & regional group networking", icon: "📱", reason: "Nearby Devices discovery is needed for physical room battles and local family group networking." }
+                              ].map((item) => {
+                                const status = permissionStates[item.key as keyof typeof permissionStates] || "prompt";
+                                return (
+                                  <div key={item.key} className="flex items-center justify-between p-2 rounded-lg bg-[#0e0e15] border border-white/5 hover:border-cyan-500/10 transition-all">
+                                    <div className="space-y-0.5 flex-1 min-w-0 pr-2 bg-transparent">
+                                      <p className="text-[8.5px] font-bold text-white flex items-center bg-transparent">
+                                        <span className="mr-1">{item.icon}</span>
+                                        <span>{item.label}</span>
+                                      </p>
+                                      <p className="text-[7px] text-gray-500 leading-tight truncate bg-transparent">{item.desc}</p>
+                                    </div>
+
+                                    {/* Action Toggle Switch */}
+                                    <div className="flex items-center space-x-1.5 shrink-0 bg-transparent">
+                                      <span className={`text-[6.5px] font-mono uppercase font-black px-1.5 py-0.2 rounded ${
+                                        status === "granted" 
+                                          ? "bg-green-500/10 text-green-400 border border-green-500/20" 
+                                          : status === "denied" 
+                                          ? "bg-red-500/10 text-red-400 border border-red-500/20" 
+                                          : "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+                                      }`}>
+                                        {status === "granted" ? "GRANTED" : status === "denied" ? "BLOCKED" : "PROMPT"}
+                                      </span>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (status === "granted") {
+                                            const newPerms = { ...permissionStates, [item.key]: "denied" };
+                                            savePermissionStates(newPerms);
+                                            setReportSuccessToast(`${item.label} permission revoked. Set to Blocked.`);
+                                            setTimeout(() => setReportSuccessToast(null), 3000);
+                                          } else if (status === "denied") {
+                                            setShowSettingsRedirectModal(item.key);
+                                          } else {
+                                            requestAppPermission(
+                                              item.key as any,
+                                              item.reason,
+                                              () => {}
+                                            );
+                                          }
+                                        }}
+                                        className={`w-7 h-4 rounded-full p-0.5 transition-all duration-300 relative cursor-pointer flex items-center ${
+                                          status === "granted" ? "bg-cyan-500 justify-end" : "bg-gray-700 justify-start"
+                                        }`}
+                                      >
+                                        <span className="w-3 h-3 rounded-full bg-white shadow-md block transition-transform animate-none" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
 
@@ -16850,6 +17635,163 @@ export default function App() {
                     )}
 
                     {/* ===================================================================== */}
+                    {/* 🛡️ ANDROID SYSTEM RUNTIME PERMISSION DIALOG SIMULATOR */}
+                    {/* ===================================================================== */}
+                    {activePermissionRequest && (
+                      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-fade-in text-center">
+                        <div className="bg-[#1c1c28] border border-[#303040] rounded-2xl p-5 w-full max-w-xs space-y-4 shadow-2xl">
+                          <div className="mx-auto w-12 h-12 rounded-2xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-center text-2xl">
+                            {activePermissionRequest.icon}
+                          </div>
+                          <div className="space-y-1 bg-transparent">
+                            <h3 className="text-xs font-black text-white uppercase tracking-wider font-mono">
+                              Permission Request
+                            </h3>
+                            <h4 className="text-[11px] text-pink-400 font-bold font-sans">
+                              {activePermissionRequest.label}
+                            </h4>
+                          </div>
+                          
+                          <p className="text-[9px] text-gray-400 leading-relaxed font-sans px-2 bg-transparent">
+                            {activePermissionRequest.reason}
+                          </p>
+
+                          <div className="space-y-1.5 pt-2 bg-transparent">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newPerms = { ...permissionStates, [activePermissionRequest.type]: "granted" };
+                                savePermissionStates(newPerms);
+                                activePermissionRequest.onGranted();
+                                setActivePermissionRequest(null);
+                                setReportSuccessToast(`Mubarak! ${activePermissionRequest.label} permission granted.`);
+                                setTimeout(() => setReportSuccessToast(null), 3000);
+                              }}
+                              className="w-full bg-pink-500 hover:bg-pink-600 text-white py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-md"
+                            >
+                              Allow While Using App
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newPerms = { ...permissionStates, [activePermissionRequest.type]: "granted" };
+                                savePermissionStates(newPerms);
+                                activePermissionRequest.onGranted();
+                                setActivePermissionRequest(null);
+                              }}
+                              className="w-full bg-[#303040] hover:bg-[#404050] text-gray-300 py-1.5 rounded-xl text-[9px] font-bold transition-all cursor-pointer"
+                            >
+                              Only This Time
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newPerms = { ...permissionStates, [activePermissionRequest.type]: "denied" };
+                                savePermissionStates(newPerms);
+                                if (activePermissionRequest.onDenied) activePermissionRequest.onDenied();
+                                setActivePermissionRequest(null);
+                                setReportSuccessToast(`Permission denied. You can enable it anytime in Settings.`);
+                                setTimeout(() => setReportSuccessToast(null), 3500);
+                              }}
+                              className="w-full bg-transparent hover:bg-white/5 text-gray-500 hover:text-gray-400 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer"
+                            >
+                              Don't Allow
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ===================================================================== */}
+                    {/* ⚙️ FRIENDLY EXPLANATION & OPEN SETTINGS REDIRECT MODAL */}
+                    {/* ===================================================================== */}
+                    {showSettingsRedirectModal && (() => {
+                      const type = showSettingsRedirectModal;
+                      const labels: Record<string, string> = {
+                        notifications: "Notifications",
+                        camera: "Camera video",
+                        microphone: "Microphone audio",
+                        photos: "Photos & Media",
+                        location: "Device Location",
+                        storage: "Device Storage",
+                        bluetooth: "Bluetooth connection",
+                        nearby: "Nearby Devices"
+                      };
+                      const icons: Record<string, string> = {
+                        notifications: "🔔",
+                        camera: "📷",
+                        microphone: "🎙️",
+                        photos: "🖼️",
+                        location: "📍",
+                        storage: "📂",
+                        bluetooth: "📶",
+                        nearby: "📱"
+                      };
+                      const reasons: Record<string, string> = {
+                        notifications: "Notifications are essential to alert you when PK battles begin, virtual gifts are received, and host campaigns are announced.",
+                        camera: "Camera access is needed to broadcast video, use high-quality beauty filters, and perform PK battle matches.",
+                        microphone: "Microphone access is required so your viewers can hear your voice and you can join voice chat rooms.",
+                        photos: "Media permissions are required to let you upload custom avatar pictures, background screens, and short video reels.",
+                        location: "Device Location is used to match you with nearby livestream hosts and show streams in your Pakistan region.",
+                        storage: "Storage permission lets the app download 3D filters, face overlays, and offline gift assets for a smoother experience.",
+                        bluetooth: "Bluetooth access is required to connect high-fidelity wireless headsets, microphones, and audio equipment.",
+                        nearby: "Nearby Devices discovery is needed for physical room battles and local family group networking."
+                      };
+                      const label = labels[type] || type;
+                      const icon = icons[type] || "⚙️";
+                      const reason = reasons[type] || "This feature requires app permission to continue.";
+
+                      return (
+                        <div className="absolute inset-0 bg-black/85 backdrop-blur-md z-[999] flex items-center justify-center p-4 animate-fade-in text-center">
+                          <div className="bg-[#15151e] border border-red-500/20 rounded-2xl p-5 w-full max-w-xs space-y-4 shadow-2xl">
+                            <div className="mx-auto w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-2xl">
+                              {icon}
+                            </div>
+                            <div className="space-y-1 bg-transparent">
+                              <h3 className="text-xs font-black text-white uppercase tracking-wider font-mono">
+                                Permission Blocked
+                              </h3>
+                              <h4 className="text-[11px] text-red-400 font-bold font-sans">
+                                {label} Permission is Blocked
+                              </h4>
+                            </div>
+                            
+                            <p className="text-[9px] text-gray-300 leading-relaxed font-sans px-2 bg-transparent">
+                              {reason} Please open App Settings and grant this permission manually.
+                            </p>
+
+                            <div className="space-y-1.5 pt-2 bg-transparent">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setReportSuccessToast("Opening Android App Settings... ⚙️");
+                                  setTimeout(() => {
+                                    const newPerms = { ...permissionStates, [type]: "granted" };
+                                    savePermissionStates(newPerms);
+                                    setShowSettingsRedirectModal(null);
+                                    setReportSuccessToast(`Mubarak! ${label} permission has been enabled in Settings!`);
+                                    setTimeout(() => setReportSuccessToast(null), 3500);
+                                  }, 1500);
+                                }}
+                                className="w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center space-x-1"
+                              >
+                                <span>⚙️</span>
+                                <span>Open App Settings</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setShowSettingsRedirectModal(null)}
+                                className="w-full bg-[#303040] hover:bg-[#404050] text-gray-300 py-1.5 rounded-xl text-[9px] font-bold transition-all cursor-pointer"
+                              >
+                                Not Now
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* ===================================================================== */}
                     {/* 📄 SEHR LIVE TERMS & CONDITIONS OVERLAY MODAL */}
                     {/* ===================================================================== */}
                     {showTermsModal && (
@@ -16953,70 +17895,71 @@ export default function App() {
                     )}
 
                     {/* ===================================================================== */}
-                    {/* 🔔 PLATFORM NOTIFICATIONS INBOX MODAL */}
+                    {/* ⚙️ INBOX NOTIFICATION SETTINGS DRAWER MODAL */}
                     {/* ===================================================================== */}
-                    {showNotifications && (
-                      <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-45 flex items-center justify-center p-4 animate-fade-in">
-                        <div className="bg-[#1a1a24] border-2 border-[#ff007f]/30 rounded-2xl p-4 w-full max-w-sm space-y-4 shadow-2xl relative max-h-[90%] overflow-y-auto">
+                    {showNotifSettingsDrawer && (
+                      <div className="absolute inset-0 bg-black/95 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in text-left">
+                        <div className="bg-[#161622] border-2 border-pink-500/30 rounded-2xl p-4.5 w-full max-w-sm space-y-4 shadow-2xl relative max-h-[90%] overflow-y-auto">
                           <button
                             type="button"
-                            onClick={() => setShowNotifications(false)}
-                            className="absolute top-3 right-3 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 w-6 h-6 rounded-full flex items-center justify-center text-xs font-black transition-all"
+                            onClick={() => setShowNotifSettingsDrawer(false)}
+                            className="absolute top-3.5 right-3.5 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 w-6 h-6 rounded-full flex items-center justify-center text-xs font-black transition-all cursor-pointer"
                           >
                             ✕
                           </button>
 
-                          <div className="border-b border-[#303040] pb-2">
-                            <h4 className="text-xs font-black text-pink-500 uppercase tracking-widest font-mono flex items-center">
-                              <Bell className="w-4 h-4 text-pink-500 mr-1.5 animate-bounce" />
-                              <span>Notifications Inbox</span>
+                          <div className="border-b border-white/5 pb-2 text-left bg-transparent">
+                            <h4 className="text-xs font-black text-white uppercase tracking-widest font-mono flex items-center bg-transparent">
+                              <Settings className="w-4 h-4 text-pink-500 mr-1.5 animate-spin-slow" />
+                              <span>Inbox Settings</span>
                             </h4>
-                            <p className="text-[8px] text-gray-400">Stay updated on live streams, official PK matches, and rewards</p>
+                            <p className="text-[8px] text-gray-400 bg-transparent">Customise real-time alert categories & push delivery rules</p>
                           </div>
 
-                          {/* Notification List */}
-                          <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-                            {appNotifications.map((item) => (
-                              <div
-                                key={item.id}
-                                className={`p-2.5 rounded-xl border text-[9px] leading-relaxed transition-all ${item.isNew ? "bg-[#ff007f]/5 border-[#ff007f]/20" : "bg-[#12121a] border-[#303040]"}`}
-                              >
-                                <div className="flex justify-between items-start">
-                                  <span className={`font-black ${item.isNew ? "text-[#ff007f]" : "text-white"}`}>{item.title}</span>
-                                  <span className="text-[7.5px] font-mono text-gray-500">{item.time}</span>
+                          {/* Toggle Options */}
+                          <div className="space-y-2 text-left bg-transparent">
+                            {[
+                              { key: "followers", label: "👤 New Followers", desc: "Get notified when someone follows you" },
+                              { key: "likes", label: "💖 Likes & Reactions", desc: "Get notified when people like your reels or profile" },
+                              { key: "comments", label: "💬 Comments", desc: "Get notified on comment replies & posts" },
+                              { key: "gifts", label: "🎁 Gifts", desc: "Get notified on real-time gift receipts" },
+                              { key: "transactions", label: "🪙 Coin Transactions", desc: "Wallet updates and coin balance activity logs" },
+                              { key: "announcements", label: "📢 Admin Announcements", desc: "Platform updates and community guidelines" },
+                            ].map((opt) => (
+                              <div key={opt.key} className="flex items-center justify-between p-2.5 rounded-xl bg-[#0e0e15] border border-white/5">
+                                <div className="space-y-0.5 bg-transparent">
+                                  <p className="text-[9.5px] font-black text-white bg-transparent">{opt.label}</p>
+                                  <p className="text-[7.5px] text-gray-400 font-sans bg-transparent">{opt.desc}</p>
                                 </div>
-                                <p className="text-gray-300 mt-1">{item.text}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    saveNotifSettings({
+                                      ...notifSettings,
+                                      [opt.key]: !notifSettings[opt.key]
+                                    });
+                                  }}
+                                  className={`w-9 h-5 rounded-full p-0.5 transition-all duration-300 relative ${
+                                    notifSettings[opt.key] ? "bg-pink-500" : "bg-gray-700"
+                                  }`}
+                                >
+                                  <div
+                                    className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform duration-300 ${
+                                      notifSettings[opt.key] ? "translate-x-4" : "translate-x-0"
+                                    }`}
+                                  />
+                                </button>
                               </div>
                             ))}
-                            {appNotifications.length === 0 && (
-                              <p className="text-center text-gray-500 font-mono text-[9px] py-4 uppercase">
-                                No new alerts in mailbox
-                              </p>
-                            )}
                           </div>
 
-                          <div className="flex space-x-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated = appNotifications.map(n => ({ ...n, isNew: false }));
-                                setAppNotifications(updated);
-                                localStorage.setItem("sehr_app_notifications", JSON.stringify(updated));
-                                setHasUnreadNotifications(false);
-                                alert("All notifications marked as read!");
-                              }}
-                              className="flex-1 bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] hover:opacity-90 text-white py-2 rounded-xl text-[10px] font-black transition-all"
-                            >
-                              Mark All as Read
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setShowNotifications(false)}
-                              className="px-4 bg-[#303040] hover:bg-[#404050] text-gray-300 py-2 rounded-xl text-[10px] font-bold"
-                            >
-                              Close
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowNotifSettingsDrawer(false)}
+                            className="w-full bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-90 text-white py-2 rounded-xl text-[10px] font-black uppercase tracking-wider font-mono transition-all text-center cursor-pointer"
+                          >
+                            Save Preferences
+                          </button>
                         </div>
                       </div>
                     )}
