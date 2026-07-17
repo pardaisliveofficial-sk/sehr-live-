@@ -1,433 +1,466 @@
 {
   "user": {
+    "userLevel": 290,
+    "isVerified": false,
+    "phoneNumber": "",
+    "fullName": "",
+    "followingCount": 280,
+    "language": "Urdu / Hinglish",
+    "bio": "Sehr Live VIP 👑 Support is everything! Family Creator & Diamond Earner.",
+    "xp": 34960,
+    "dob": "",
+    "wealthLevel": 34,
+    "totalLikesCount": 1438828,
+    "diamonds": 51280,
     "username": "Prince_Sehr",
+    "country": "Pakistan",
+    "hostLevel": 12,
+    "familyId": "fam-kings",
+    "selectedFrameId": "vip-frame-1",
+    "followersCount": 39370,
+    "isBanned": false,
     "uniqueId": "sehr_8899",
+    "vipSuspended": false,
+    "coins": 3025,
+    "agencyId": "agency-alpha",
+    "level": 24,
     "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
     "coverPhoto": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-    "bio": "Sehr Live VIP 👑 Support is everything! Family Creator & Diamond Earner.",
-    "gender": "Male",
-    "country": "Pakistan",
-    "language": "Urdu / Hinglish",
-    "coins": 3025,
-    "diamonds": 51280,
-    "vipLevel": 3,
-    "userLevel": 290,
-    "hostLevel": 12,
-    "wealthLevel": 34,
-    "xp": 34960,
-    "familyId": "fam-kings",
-    "agencyId": "agency-alpha",
-    "isVerified": false,
-    "isBanned": false,
     "twoFactorEnabled": true,
-    "fullName": "",
-    "dob": "",
-    "phoneNumber": "",
     "kycStatus": "none",
-    "followersCount": 39370,
-    "followingCount": 280,
-    "totalLikesCount": 1438828,
-    "selectedFrameId": "vip-frame-1",
-    "vipSuspended": false
+    "gender": "Male",
+    "vipLevel": 3,
+    "test_value": 1784282509030,
+    "name": "Prince_Sehr"
   },
+  "users": [
+    {
+      "userLevel": 290,
+      "isVerified": false,
+      "phoneNumber": "",
+      "fullName": "",
+      "followingCount": 280,
+      "language": "Urdu / Hinglish",
+      "bio": "Sehr Live VIP 👑 Support is everything! Family Creator & Diamond Earner.",
+      "xp": 34960,
+      "dob": "",
+      "wealthLevel": 34,
+      "totalLikesCount": 1438828,
+      "diamonds": 51280,
+      "username": "Prince_Sehr",
+      "country": "Pakistan",
+      "hostLevel": 12,
+      "familyId": "fam-kings",
+      "selectedFrameId": "vip-frame-1",
+      "followersCount": 39370,
+      "isBanned": false,
+      "uniqueId": "sehr_8899",
+      "vipSuspended": false,
+      "coins": 3025,
+      "agencyId": "agency-alpha",
+      "level": 24,
+      "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+      "coverPhoto": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+      "twoFactorEnabled": true,
+      "kycStatus": "none",
+      "gender": "Male",
+      "vipLevel": 3,
+      "test_value": 1784282509030,
+      "name": "Prince_Sehr"
+    }
+  ],
   "gifts": [
     {
-      "id": "g-rose",
-      "name": "Red Rose",
-      "cost": 10,
-      "type": "2d",
-      "icon": "🌹",
-      "color": "from-pink-500 to-rose-600",
       "animationClass": "animate-bounce",
-      "category": "Popular",
-      "status": "active"
+      "category": "Luxury",
+      "color": "from-blue-500 to-indigo-600",
+      "type": "luxury",
+      "cost": 4999,
+      "name": "Sports Car",
+      "status": "active",
+      "icon": "🏎️",
+      "id": "g-car"
     },
     {
-      "id": "g-heart",
-      "name": "Love Heart",
-      "cost": 99,
-      "type": "2d",
-      "icon": "💖",
-      "color": "from-red-500 to-pink-500",
-      "animationClass": "animate-pulse",
-      "category": "Popular",
-      "status": "active"
-    },
-    {
-      "id": "g-crown",
-      "name": "VIP Crown",
       "cost": 999,
-      "type": "3d",
+      "name": "VIP Crown",
+      "status": "active",
       "icon": "👑",
-      "color": "from-yellow-400 to-amber-600",
+      "id": "g-crown",
       "animationClass": "animate-spin",
       "category": "VIP",
-      "status": "active"
+      "color": "from-yellow-400 to-amber-600",
+      "type": "3d"
     },
     {
-      "id": "g-car",
-      "name": "Sports Car",
-      "cost": 4999,
-      "type": "luxury",
-      "icon": "🏎️",
-      "color": "from-blue-500 to-indigo-600",
-      "animationClass": "animate-bounce",
-      "category": "Luxury",
-      "status": "active"
-    },
-    {
-      "id": "g-rocket",
-      "name": "Space Rocket",
-      "cost": 9999,
-      "type": "luxury",
-      "icon": "🚀",
-      "color": "from-purple-600 to-pink-600",
-      "animationClass": "animate-pulse",
-      "category": "Luxury",
-      "status": "active"
-    },
-    {
+      "cost": 29999,
+      "status": "active",
+      "icon": "🐉",
       "id": "g-dragon",
       "name": "Golden Dragon",
-      "cost": 29999,
-      "type": "luxury",
-      "icon": "🐉",
       "color": "from-amber-500 to-red-600",
       "animationClass": "animate-bounce",
       "category": "Luxury",
-      "status": "active"
+      "type": "luxury"
+    },
+    {
+      "cost": 99,
+      "name": "Love Heart",
+      "id": "g-heart",
+      "status": "active",
+      "icon": "💖",
+      "category": "Popular",
+      "animationClass": "animate-pulse",
+      "color": "from-red-500 to-pink-500",
+      "type": "2d"
+    },
+    {
+      "cost": 9999,
+      "name": "Space Rocket",
+      "id": "g-rocket",
+      "status": "active",
+      "icon": "🚀",
+      "category": "Luxury",
+      "animationClass": "animate-pulse",
+      "color": "from-purple-600 to-pink-600",
+      "type": "luxury"
+    },
+    {
+      "type": "2d",
+      "category": "Popular",
+      "animationClass": "animate-bounce",
+      "color": "from-pink-500 to-rose-600",
+      "name": "Red Rose",
+      "id": "g-rose",
+      "icon": "🌹",
+      "status": "active",
+      "cost": 10
     }
   ],
-  "categories": [
-    "Popular",
-    "New",
-    "Lucky",
-    "VIP",
-    "Festival",
-    "Premium",
-    "Luxury"
-  ],
+  "categories": [],
   "hosts": [
     {
-      "id": "h-sahar",
-      "name": "Sahar Live 🎵",
-      "role": "Music & Acoustic Session",
-      "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150&q=80",
-      "viewers": 1450,
-      "likes": 85200,
-      "category": "video",
-      "isLive": true,
-      "statusText": "Playing beautiful Urdu ghazals and pop songs!",
-      "bio": "Sahar from Islamabad. Join my daily acoustic stream! Official Host of Alpha Agency.",
-      "agencyId": "agency-alpha"
-    },
-    {
-      "id": "h-zain",
-      "name": "Zain_Killer 🔥",
-      "role": "Official PK Battle King",
-      "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&h=150&q=80",
-      "viewers": 3200,
-      "likes": 215400,
-      "category": "pk",
-      "isLive": true,
-      "statusText": "PK Match vs Alpha_Queen! Let's win together guys!",
-      "bio": "PK champion, daily battles! Keep tapping and make me win!",
-      "agencyId": "agency-delta"
-    },
-    {
-      "id": "h-mehak",
-      "name": "Mehak_Lounge ☕",
-      "role": "Late Night Audio Room Host",
-      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80",
       "viewers": 450,
       "likes": 12400,
-      "category": "audio",
+      "role": "Late Night Audio Room Host",
+      "agencyId": "agency-alpha",
       "isLive": true,
-      "statusText": "Cozy 10-seat general chat. Request mic and share your story!",
       "bio": "ASMR, poetry, light jokes. Cozy corner for late-night dreamers.",
-      "agencyId": "agency-alpha"
+      "category": "audio",
+      "name": "Mehak_Lounge ☕",
+      "statusText": "Cozy 10-seat general chat. Request mic and share your story!",
+      "id": "h-mehak",
+      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"
+    },
+    {
+      "category": "video",
+      "bio": "Sahar from Islamabad. Join my daily acoustic stream! Official Host of Alpha Agency.",
+      "isLive": true,
+      "agencyId": "agency-alpha",
+      "viewers": 1450,
+      "role": "Music & Acoustic Session",
+      "likes": 85200,
+      "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150&q=80",
+      "statusText": "Playing beautiful Urdu ghazals and pop songs!",
+      "id": "h-sahar",
+      "name": "Sahar Live 🎵"
+    },
+    {
+      "viewers": 3200,
+      "likes": 215400,
+      "role": "Official PK Battle King",
+      "agencyId": "agency-delta",
+      "isLive": true,
+      "category": "pk",
+      "bio": "PK champion, daily battles! Keep tapping and make me win!",
+      "name": "Zain_Killer 🔥",
+      "statusText": "PK Match vs Alpha_Queen! Let's win together guys!",
+      "id": "h-zain",
+      "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&h=150&q=80"
     }
   ],
   "families": [
     {
-      "id": "fam-kings",
-      "name": "👑 SAHR KINGS",
-      "leader": "Prince_Sehr",
-      "members": 245,
-      "rank": 1,
       "avatar": "https://images.unsplash.com/photo-1513829096999-4978602294fc?auto=format&fit=crop&w=100&h=100&q=80",
-      "description": "The elite guild of premium supporters. Loyalty and respect always."
+      "description": "The elite guild of premium supporters. Loyalty and respect always.",
+      "id": "fam-kings",
+      "rank": 1,
+      "name": "👑 SAHR KINGS",
+      "members": 245,
+      "leader": "Prince_Sehr"
     },
     {
-      "id": "fam-warriors",
-      "name": "⚡ PK WARRIORS",
+      "avatar": "https://images.unsplash.com/photo-1531256379416-9f000e90aacc?auto=format&fit=crop&w=100&h=100&q=80",
       "leader": "Zain_Killer",
       "members": 180,
+      "name": "⚡ PK WARRIORS",
       "rank": 2,
-      "avatar": "https://images.unsplash.com/photo-1531256379416-9f000e90aacc?auto=format&fit=crop&w=100&h=100&q=80",
+      "id": "fam-warriors",
       "description": "Winning battles one diamond at a time! Join if you are active."
     }
   ],
   "agencies": [
     {
+      "salaryRate": "35% Commission + $200 Base Bonus",
+      "ownerEmail": "owner@alphatalent.live",
+      "registeredHosts": 45,
       "id": "agency-alpha",
       "name": "Alpha Talent Agency",
-      "registeredHosts": 45,
-      "monthlyCommission": 1250,
-      "salaryRate": "35% Commission + $200 Base Bonus",
-      "ownerEmail": "owner@alphatalent.live"
+      "monthlyCommission": 1250
     },
     {
       "id": "agency-delta",
       "name": "Delta Elite Entertainment",
-      "registeredHosts": 32,
       "monthlyCommission": 2400,
       "salaryRate": "40% Commission + $350 PK Victory Bonus",
-      "ownerEmail": "delta@elite.live"
+      "ownerEmail": "delta@elite.live",
+      "registeredHosts": 32
     }
   ],
   "transactions": [
     {
-      "id": "TXN-101",
-      "type": "recharge",
-      "amount": 15000,
-      "currency": "coins",
       "timestamp": "2026-07-15T07:40:30.305Z",
+      "type": "recharge",
       "status": "Completed",
-      "details": "Purchased 15k Coins via EasyPaisa"
+      "id": "TXN-101",
+      "details": "Purchased 15k Coins via EasyPaisa",
+      "amount": 15000,
+      "currency": "coins"
     },
     {
+      "timestamp": "2026-07-15T04:40:30.305Z",
+      "details": "Purchased 20k Coins via JazzCash",
       "id": "TXN-102",
       "type": "recharge",
-      "amount": 20000,
-      "currency": "coins",
-      "timestamp": "2026-07-15T04:40:30.305Z",
       "status": "Completed",
-      "details": "Purchased 20k Coins via JazzCash"
+      "amount": 20000,
+      "currency": "coins"
     },
     {
-      "id": "TXN-103",
-      "type": "withdraw",
       "amount": 500,
       "currency": "USD",
       "timestamp": "2026-07-14T09:40:30.305Z",
-      "status": "Completed",
-      "details": "Withdrawn $500 to Bank Alfalah"
+      "id": "TXN-103",
+      "details": "Withdrawn $500 to Bank Alfalah",
+      "type": "withdraw",
+      "status": "Completed"
     }
   ],
   "notifications": [
     {
+      "time": "2 hours ago",
       "id": 1001,
       "title": "🎙️ SAHAR LIVE ACUSTIC SESSION",
       "text": "Sahar is live with amazing classics! Tune in now to request Ghazals.",
-      "time": "2 hours ago",
       "isNew": false
     },
     {
-      "id": 1002,
-      "title": "🏆 WEEKLY BANNER UPDATE",
       "text": "The weekly PK leader board awards are out! Check results in ranking tab.",
-      "time": "5 hours ago",
-      "isNew": false
+      "title": "🏆 WEEKLY BANNER UPDATE",
+      "isNew": false,
+      "id": 1002,
+      "time": "5 hours ago"
     }
   ],
   "reports": [
     {
-      "id": "REP-401",
-      "username": "toxic_viewer_9",
-      "reporter": "Malik_Sheraz_40",
       "reason": "Abusive language in live chat chatroom",
+      "reporter": "Malik_Sheraz_40",
+      "timestamp": "2026-07-15T09:40:30.305Z",
       "status": "pending",
-      "timestamp": "2026-07-15T09:40:30.305Z"
+      "id": "REP-401",
+      "username": "toxic_viewer_9"
     },
     {
-      "id": "REP-402",
-      "username": "spammer_pak",
       "reporter": "Sardar_Sb_VIP",
       "reason": "Spamming referral scam link in mic seat",
+      "id": "REP-402",
+      "username": "spammer_pak",
       "status": "resolved",
       "timestamp": "2026-07-15T09:40:30.306Z"
     }
   ],
   "kycRequests": [
     {
-      "id": "KYC-8801",
-      "username": "Prince_Sehr",
-      "fullName": "Syed Prince Shah",
+      "timestamp": "2026-07-15T09:40:30.306Z",
       "dob": "1998-05-15",
+      "idFront": "https://images.unsplash.com/photo-1554774853-aae0a22c8aa4?auto=format&fit=crop&w=300&q=80",
+      "status": "pending",
+      "username": "Prince_Sehr",
+      "id": "KYC-8801",
       "phoneNumber": "+923001234567",
       "documentType": "id_card",
-      "idFront": "https://images.unsplash.com/photo-1554774853-aae0a22c8aa4?auto=format&fit=crop&w=300&q=80",
-      "idBack": "https://images.unsplash.com/photo-1554774853-aae0a22c8aa4?auto=format&fit=crop&w=300&q=80",
       "faceVerified": true,
-      "status": "pending",
-      "timestamp": "2026-07-15T09:40:30.306Z"
+      "fullName": "Syed Prince Shah",
+      "idBack": "https://images.unsplash.com/photo-1554774853-aae0a22c8aa4?auto=format&fit=crop&w=300&q=80"
     }
   ],
   "events": [
     {
-      "id": "evt-1",
-      "title": "🇵🇰 Pakistan Day Mega Stream Event",
       "duration": "12 Hours",
-      "reward": "2x Diamonds Multiplier",
-      "active": true
+      "active": true,
+      "title": "🇵🇰 Pakistan Day Mega Stream Event",
+      "id": "evt-1",
+      "reward": "2x Diamonds Multiplier"
     },
     {
-      "id": "evt-2",
+      "active": true,
       "title": "🔥 PK Battle Royale Tournament",
-      "duration": "July 18 - 20",
+      "id": "evt-2",
       "reward": "Exclusive Gold Profile Frame",
-      "active": true
+      "duration": "July 18 - 20"
     }
   ],
   "configurations": {
-    "maintenanceMode": false,
     "maintenanceDuration": "2 hours",
-    "forceUpdate": false,
-    "appVersion": "v1.4.2",
-    "coinExchangeRate": 150,
-    "pkrToUsd": 280,
+    "maintenanceMode": false,
     "banners": [
       {
+        "active": true,
         "id": "b-1",
         "title": "🇵🇰 PAKISTAN DAY MEGA STREAM FESTIVAL",
         "image": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-        "link": "event-pak-day",
-        "active": true
+        "link": "event-pak-day"
       },
       {
-        "id": "b-2",
-        "title": "👑 SAHR TALENT RECRUITMENT PROGRAM",
         "image": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=80",
         "link": "agency-info",
-        "active": true
+        "active": true,
+        "id": "b-2",
+        "title": "👑 SAHR TALENT RECRUITMENT PROGRAM"
       },
       {
-        "id": "b-3",
-        "title": "⚡ OFFICIAL PK BATTLE TOURNAMENT LIVE NOW",
-        "image": "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80",
         "link": "pk-tourney",
-        "active": true
+        "image": "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80",
+        "active": true,
+        "title": "⚡ OFFICIAL PK BATTLE TOURNAMENT LIVE NOW",
+        "id": "b-3"
       }
     ],
+    "appVersion": "v1.4.2",
+    "forceUpdate": false,
     "vipFrames": [
       {
         "id": "vip-frame-1",
-        "name": "Royal Bronze VIP 1",
         "minLevel": 15,
-        "glowColor": "#b27a50",
-        "gradientFrom": "from-amber-700",
         "gradientTo": "to-amber-500",
+        "glowColor": "#b27a50",
+        "name": "Royal Bronze VIP 1",
+        "gradientFrom": "from-amber-700",
         "badgeEmoji": "🥉",
         "isActive": true
       },
       {
-        "id": "vip-frame-2",
         "name": "Sky Silver Wings VIP 2",
-        "minLevel": 30,
-        "glowColor": "#94a3b8",
-        "gradientFrom": "from-slate-400",
+        "id": "vip-frame-2",
         "gradientTo": "to-blue-300",
-        "badgeEmoji": "🥈",
-        "isActive": true
+        "glowColor": "#94a3b8",
+        "minLevel": 30,
+        "isActive": true,
+        "gradientFrom": "from-slate-400",
+        "badgeEmoji": "🥈"
       },
       {
-        "id": "vip-frame-3",
         "name": "Golden Dragon VIP 3",
         "minLevel": 45,
-        "glowColor": "#fbbf24",
-        "gradientFrom": "from-yellow-600",
         "gradientTo": "to-yellow-300",
+        "glowColor": "#fbbf24",
+        "id": "vip-frame-3",
+        "isActive": true,
         "badgeEmoji": "👑",
-        "isActive": true
+        "gradientFrom": "from-yellow-600"
       },
       {
-        "id": "vip-frame-4",
-        "name": "Ruby Fire VIP 4",
-        "minLevel": 60,
-        "glowColor": "#ef4444",
-        "gradientFrom": "from-red-600",
-        "gradientTo": "to-pink-500",
         "badgeEmoji": "🔥",
-        "isActive": true
+        "gradientFrom": "from-red-600",
+        "isActive": true,
+        "glowColor": "#ef4444",
+        "gradientTo": "to-pink-500",
+        "minLevel": 60,
+        "id": "vip-frame-4",
+        "name": "Ruby Fire VIP 4"
       },
       {
         "id": "vip-frame-5",
-        "name": "Celestial Diamond VIP 5",
         "minLevel": 75,
         "glowColor": "#06b6d4",
-        "gradientFrom": "from-cyan-500",
         "gradientTo": "to-blue-400",
+        "name": "Celestial Diamond VIP 5",
         "badgeEmoji": "💎",
+        "gradientFrom": "from-cyan-500",
         "isActive": true
       },
       {
-        "id": "vip-frame-6",
-        "name": "Sovereign Neon Pulsar VIP 6",
-        "minLevel": 90,
-        "glowColor": "#d946ef",
         "gradientFrom": "from-fuchsia-600",
-        "gradientTo": "to-pink-600",
         "badgeEmoji": "🌀",
-        "isActive": true
+        "isActive": true,
+        "gradientTo": "to-pink-600",
+        "glowColor": "#d946ef",
+        "minLevel": 90,
+        "id": "vip-frame-6",
+        "name": "Sovereign Neon Pulsar VIP 6"
       }
     ],
     "pkSettings": {
       "defaultDuration": 180,
       "pkTappingMultiplier": 1.5,
       "allowSpectatorInterference": true
-    }
+    },
+    "pkrToUsd": 280,
+    "coinExchangeRate": 150
   },
   "adminUsersList": [
     {
-      "username": "Prince_Sehr",
-      "fullName": "",
-      "isVerified": false,
+      "userLevel": 12,
+      "vipLevel": 0,
+      "coins": 520,
       "kycStatus": "none",
       "isBanned": false,
+      "username": "Alina_Malik",
+      "isVerified": false,
+      "fullName": "Alina Malik"
+    },
+    {
+      "isBanned": false,
+      "username": "Malik_Sheraz_40",
+      "userLevel": 35,
+      "vipLevel": 1,
+      "coins": 34000,
+      "kycStatus": "approved",
+      "fullName": "Sheraz Malik",
+      "isVerified": true
+    },
+    {
+      "isVerified": false,
+      "fullName": "",
+      "vipLevel": 3,
+      "kycStatus": "none",
       "coins": 3025,
       "userLevel": 24,
-      "vipLevel": 3
-    },
-    {
-      "username": "Malik_Sheraz_40",
-      "fullName": "Sheraz Malik",
-      "isVerified": true,
-      "kycStatus": "approved",
       "isBanned": false,
-      "coins": 34000,
-      "userLevel": 35,
-      "vipLevel": 1
+      "username": "Prince_Sehr"
     },
     {
-      "username": "Sardar_Sb_VIP",
+      "isVerified": true,
       "fullName": "Sardar Yar Khan",
-      "isVerified": true,
-      "kycStatus": "approved",
-      "isBanned": false,
-      "coins": 120000,
       "userLevel": 50,
-      "vipLevel": 3
-    },
-    {
-      "username": "Alina_Malik",
-      "fullName": "Alina Malik",
-      "isVerified": false,
-      "kycStatus": "none",
+      "kycStatus": "approved",
+      "coins": 120000,
+      "vipLevel": 3,
       "isBanned": false,
-      "coins": 520,
-      "userLevel": 12,
-      "vipLevel": 0
+      "username": "Sardar_Sb_VIP"
     },
     {
-      "username": "toxic_viewer_9",
-      "fullName": "Kashif Butt",
-      "isVerified": false,
-      "kycStatus": "rejected",
       "isBanned": true,
-      "coins": 0,
+      "username": "toxic_viewer_9",
       "userLevel": 4,
-      "vipLevel": 0
+      "kycStatus": "rejected",
+      "coins": 0,
+      "vipLevel": 0,
+      "fullName": "Kashif Butt",
+      "isVerified": false
     }
-  ]
+  ],
+  "sessions": {},
+  "otps": {}
 }

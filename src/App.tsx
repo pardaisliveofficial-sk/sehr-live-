@@ -99,6 +99,30 @@ import {
 import { MOCK_TRACKS, MusicTrack } from "./musicData";
 import { LevelBadgeSvg, getLevelTier, LEVEL_TIERS, getProgressionFromCoins, getCoinsForLevel, getHostLevelFromName } from "./levelUtils";
 
+// Custom local fetch wrapper to securely append the active session token to all backend API calls
+const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const token = localStorage.getItem("sehr_auth_token");
+  let headers: HeadersInit = init?.headers || {};
+  if (token) {
+    if (headers instanceof Headers) {
+      headers.set("Authorization", `Bearer ${token}`);
+    } else if (Array.isArray(headers)) {
+      const authIdx = headers.findIndex(h => h[0].toLowerCase() === "authorization");
+      if (authIdx !== -1) {
+        headers[authIdx] = ["Authorization", `Bearer ${token}`];
+      } else {
+        headers.push(["Authorization", `Bearer ${token}`]);
+      }
+    } else {
+      headers = {
+        ...headers,
+        "Authorization": `Bearer ${token}`
+      };
+    }
+  }
+  return window.fetch(input, { ...init, headers });
+};
+
 interface PattiConfig {
   bgClass: string;
   borderClass: string;
@@ -191,7 +215,7 @@ const USER_LIVE_BG_IMAGES = [
 export default function App() {
   // Authentication State
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    return localStorage.getItem("sehr_is_logged_in") === "true";
+    return localStorage.getItem("sehr_is_logged_in") === "true" && !!localStorage.getItem("sehr_auth_token");
   });
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [splashProgress, setSplashProgress] = useState<number>(0);
@@ -3292,6 +3316,7 @@ export default function App() {
 
     // If the banned user is the active logged in user, logout them!
     if (targetUsername === user.username) {
+      localStorage.removeItem("sehr_auth_token");
       setIsLoggedIn(false);
       alert("Your account has been banned by AI Content Moderation for platform rule violation!");
     }
@@ -3483,20 +3508,56 @@ export default function App() {
   const handleSendOtp = (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginPhone) return;
-    setIsOtpSent(true);
-    // Auto populate a fake OTP
-    setLoginOtp("4589");
+    setLoginError("");
+    fetch("/api/v1/auth/send-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phoneNumber: loginPhone })
+    })
+      .then(res => {
+        if (!res.ok) return res.json().then(data => { throw new Error(data.error || "Failed to send OTP code."); });
+        return res.json();
+      })
+      .then(data => {
+        setIsOtpSent(true);
+        if (data.otp) {
+          setLoginOtp(data.otp);
+        }
+      })
+      .catch(err => {
+        console.error("OTP send error:", err);
+        setLoginError(err.message || "Network error. Please try again.");
+      });
   };
 
   const handleVerifyOtp = (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginOtp) return;
-
-    if (is2FAEnabled) {
-      setShowTwoFactorModal(true);
-    } else {
-      setIsLoggedIn(true);
-    }
+    setLoginError("");
+    fetch("/api/v1/auth/verify-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phoneNumber: loginPhone, otp: loginOtp })
+    })
+      .then(res => {
+        if (!res.ok) return res.json().then(data => { throw new Error(data.error || "Incorrect OTP code."); });
+        return res.json();
+      })
+      .then(data => {
+        if (data.token && data.user) {
+          localStorage.setItem("sehr_auth_token", data.token);
+          setUser(data.user);
+          if (is2FAEnabled) {
+            setShowTwoFactorModal(true);
+          } else {
+            setIsLoggedIn(true);
+          }
+        }
+      })
+      .catch(err => {
+        console.error("OTP verify error:", err);
+        setLoginError(err.message || "Invalid OTP verification attempt.");
+      });
   };
 
   const handleVerify2FA = (e: React.FormEvent) => {
@@ -4473,6 +4534,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => {
+                        localStorage.removeItem("sehr_auth_token");
                         setIsLoggedIn(false);
                         localStorage.setItem("sehr_is_logged_in", "false");
                         // Reset banned for local testing when logging out so they are not permanently bricked forever if they want to try again
@@ -15775,6 +15837,7 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => {
+                                localStorage.removeItem("sehr_auth_token");
                                 setIsLoggedIn(false);
                                 setShowSettingsDrawer(false);
                                 alert("Successfully logged out from Pakistan server stream.");
