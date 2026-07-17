@@ -215,6 +215,74 @@ app.post("/api/v1/auth/google-login", (req, res) => {
   });
 });
 
+// 0.5. Authenticate or register with Guest Authentication details
+app.post("/api/v1/auth/guest-login", (req, res) => {
+  const suffix = Math.floor(10000 + Math.random() * 90000);
+  const username = `guest_${suffix}`;
+  const uniqueId = `sehr_guest_${suffix}`;
+
+  const user = {
+    username,
+    uniqueId,
+    email: "",
+    avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+    coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+    bio: "Guest Explorer in Sehr Live! 🇵🇰",
+    gender: "Male",
+    country: "Pakistan",
+    language: "Urdu / Hinglish",
+    coins: 5000, // starting gift coins for guest verified sign-ups
+    diamonds: 0,
+    vipLevel: 0,
+    userLevel: 1,
+    hostLevel: 1,
+    wealthLevel: 1,
+    xp: 0,
+    familyId: "",
+    agencyId: "",
+    isVerified: false,
+    isBanned: false,
+    twoFactorEnabled: false,
+    fullName: `Guest_${suffix}`,
+    dob: "",
+    phoneNumber: "",
+    kycStatus: "none",
+    followersCount: 0,
+    followingCount: 0,
+    totalLikesCount: 0,
+    selectedFrameId: "",
+    vipSuspended: false
+  };
+
+  dbData.users.push(user);
+
+  // Sync to Firestore
+  syncDocument("users", user.username, user);
+
+  // Generate session Token
+  const token = `sehr_session_guest_${suffix}`;
+  const sessionData = {
+    username: user.username,
+    loginTime: new Date().toISOString()
+  };
+  dbData.sessions[token] = sessionData;
+
+  // Sync active legacy user reference
+  dbData.user = user;
+
+  saveDatabase();
+
+  syncDocument("sessions", token, sessionData);
+  writeMetadata("user_profile", user);
+
+  res.json({
+    success: true,
+    message: "Authenticated as Guest successfully.",
+    token,
+    user
+  });
+});
+
 // 1. Send OTP (or auto-register if phone is new)
 app.post("/api/v1/auth/send-otp", (req, res) => {
   const { phoneNumber } = req.body;

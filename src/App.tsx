@@ -90,12 +90,34 @@ import { getRankingData } from "./rankingData";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import firebaseConfig from "../firebase-applet-config.json";
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  getDocs, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  doc, 
+  updateDoc, 
+  setDoc, 
+  deleteDoc, 
+  getDocFromServer 
+} from "firebase/firestore";
+import { 
+  getStorage, 
+  ref, 
+  uploadBytesResumable, 
+  getDownloadURL 
+} from "firebase/storage";
 
 // Initialize Firebase client-side for authenticating via Google Sign-In popup
 const clientApps = getApps();
 const clientApp = clientApps.length === 0 ? initializeApp(firebaseConfig) : getApp();
 const clientAuth = getAuth(clientApp);
 const googleProvider = new GoogleAuthProvider();
+export const db = getFirestore(clientApp, firebaseConfig.firestoreDatabaseId);
+export const storage = getStorage(clientApp);
 import { 
   ViewerGiftBox, 
   GiftAnimationEngine, 
@@ -235,7 +257,7 @@ export default function App() {
   const [loginPhone, setLoginPhone] = useState<string>("");
   const [loginOtp, setLoginOtp] = useState<string>("");
   const [isOtpSent, setIsOtpSent] = useState<boolean>(false);
-  const [selectedAuthMethod, setSelectedAuthMethod] = useState<string>("phone");
+  const [selectedAuthMethod, setSelectedAuthMethod] = useState<string>("social");
   const [is2FAEnabled, setIs2FAEnabled] = useState<boolean>(true);
   const [showTwoFactorModal, setShowTwoFactorModal] = useState<boolean>(false);
   const [twoFactorCode, setTwoFactorCode] = useState<string>("");
@@ -474,6 +496,23 @@ export default function App() {
   const [showMusicLibrary, setShowMusicLibrary] = useState<boolean>(false);
   const [searchSoundQuery, setSearchSoundQuery] = useState<string>("");
 
+  // Real Camera and Real Firebase Upload states
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraFacingMode, setCameraFacingMode] = useState<"user" | "environment">("user");
+  const [cameraZoom, setCameraZoom] = useState<number>(1);
+  const [cameraFocus, setCameraFocus] = useState<number>(100);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [uploadedVideoFile, setUploadedVideoFile] = useState<File | null>(null);
+  const [recordedVideoUrl, setRecordedVideoUrl] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+  const prepVideoRef = useRef<HTMLVideoElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+
   // Enhanced Reels Interaction States
   const [reelsTab, setReelsTab] = useState<"foryou" | "following" | "explore">("foryou");
   const [showCommentDrawer, setShowCommentDrawer] = useState<boolean>(false);
@@ -517,6 +556,47 @@ export default function App() {
       }).catch(err => console.error("Error syncing stories to backend:", err));
     }
   }, [stories]);
+
+  // Real-time Reels sync with Firestore database
+  useEffect(() => {
+    const q = query(collection(db, "reels"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const firestoreReels = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          creator: data.creator || "Anonymous Creator",
+          avatar: data.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+          caption: data.caption || "",
+          song: data.song || "Original Sound",
+          videoBg: data.videoBg || "bg-gradient-to-tr from-[#ff007f] via-[#12121a] to-[#7b2cbf]",
+          videoUrl: data.videoUrl || "",
+          likes: data.likes || 0,
+          commentsCount: data.commentsCount || 0,
+          liked: data.liked || false,
+          privacy: data.privacy || "public",
+          location: data.location || "Lahore, Pakistan",
+          saves: data.saves || 0,
+          saved: data.saved || false,
+          shares: data.shares || 0,
+          downloads: data.downloads || 0,
+          isFollowed: data.isFollowed || false,
+          comments: data.comments || []
+        };
+      });
+      
+      if (firestoreReels.length > 0) {
+        setReels(prev => {
+          // Filter out duplicates and keep static reels at the bottom
+          const staticReels = prev.filter(r => !firestoreReels.some(fr => fr.id === r.id));
+          return [...firestoreReels, ...staticReels];
+        });
+      }
+    }, (error) => {
+      console.error("Firestore reels subscription error:", error);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Top header interactive states
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
@@ -2152,6 +2232,277 @@ export default function App() {
     };
   }, [isRecordingReel]);
 
+  // Start/Stop camera stream for Reel Recording
+  useEffect(() => {
+    let activeStream: MediaStream | null = null;
+    
+    const startReelCamera = async () => {
+      if (uploadReelStep !== "record") return;
+      try {
+        setCameraError(null);
+        const constraints: MediaStreamConstraints = {
+          video: {
+            facingMode: cameraFacingMode,
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: true
+        };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        activeStream = stream;
+        setCameraStream(stream);
+        
+        if (cameraVideoRef.current) {
+          cameraVideoRef.current.srcObject = stream;
+          cameraVideoRef.current.play().catch(e => console.log("Video play error:", e));
+        }
+      } catch (err: any) {
+        console.error("Error accessing camera:", err);
+        setCameraError("Camera or Microphone permission was denied. Please make sure to allow camera permissions so Sehr Live can record your video reel.");
+      }
+    };
+
+    if (uploadReelStep === "record") {
+      startReelCamera();
+    } else {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        setCameraStream(null);
+      }
+    }
+
+    return () => {
+      if (activeStream) {
+        activeStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [uploadReelStep, cameraFacingMode]);
+
+  // Start/Stop camera stream for Go Live Prep
+  useEffect(() => {
+    let activeStream: MediaStream | null = null;
+    
+    const startPrepCamera = async () => {
+      if (clientView !== "camera-prep") return;
+      try {
+        const constraints: MediaStreamConstraints = {
+          video: {
+            facingMode: prepCameraFlip ? "environment" : "user",
+            width: { ideal: prepHd ? 1280 : 640 },
+            height: { ideal: prepHd ? 720 : 480 }
+          },
+          audio: prepHasMic
+        };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        activeStream = stream;
+        setCameraStream(stream);
+        
+        if (prepVideoRef.current) {
+          prepVideoRef.current.srcObject = stream;
+          prepVideoRef.current.play().catch(e => console.log("Prep video play error:", e));
+        }
+      } catch (err) {
+        console.warn("Go Live Prep camera access denied:", err);
+      }
+    };
+
+    if (clientView === "camera-prep") {
+      startPrepCamera();
+    } else {
+      // Only stop if we are not recording a reel in parallel
+      if (uploadReelStep !== "record" && cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        setCameraStream(null);
+      }
+    }
+
+    return () => {
+      if (activeStream) {
+        activeStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [clientView, prepCameraFlip, prepHd, prepHasMic]);
+
+  const startRecording = () => {
+    if (!cameraStream) {
+      alert("Camera stream is not active. Please ensure camera access is allowed.");
+      return;
+    }
+    recordedChunksRef.current = [];
+    
+    let options = {};
+    const types = [
+      "video/webm;codecs=vp9",
+      "video/webm;codecs=vp8",
+      "video/webm",
+      "video/mp4"
+    ];
+    for (const t of types) {
+      if (MediaRecorder.isTypeSupported(t)) {
+        options = { mimeType: t };
+        break;
+      }
+    }
+    
+    try {
+      const recorder = new MediaRecorder(cameraStream, options);
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+      
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: "video/mp4" });
+        const url = URL.createObjectURL(blob);
+        setRecordedVideoUrl(url);
+        setUploadedVideoFile(new File([blob], `Sehr_Reel_${Date.now()}.mp4`, { type: "video/mp4" }));
+        setUploadedVideoName(`Sehr_Reel_${Date.now().toString().slice(-4)}.mp4`);
+        setUploadedVideoSize(`${(blob.size / (1024 * 1024)).toFixed(1)} MB`);
+        setRecordedVideoPreset(null);
+        setUploadReelStep("details");
+      };
+      
+      mediaRecorderRef.current = recorder;
+      recorder.start(1000); // chunk every second
+      setIsRecordingReel(true);
+    } catch (e: any) {
+      console.error("Failed to start MediaRecorder:", e);
+      alert("Could not start video recording. MediaRecorder might not be supported or initialized correctly: " + e.message);
+    }
+  };
+
+  const stopRecording = () => {
+    if (reelRecordingSeconds < 2) {
+      alert("Video too short! Please record for at least 2 seconds.");
+      return;
+    }
+    if (mediaRecorderRef.current && isRecordingReel) {
+      mediaRecorderRef.current.stop();
+      setIsRecordingReel(false);
+    }
+  };
+
+  const handlePublishReel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    setIsUploading(true);
+    setUploadProgress(0);
+    setUploadError(null);
+    
+    try {
+      let finalVideoUrl = "";
+      
+      if (uploadedVideoFile) {
+        // Upload the actual file to Firebase Storage!
+        const fileRef = ref(storage, `reels/${Date.now()}_${uploadedVideoFile.name}`);
+        const uploadTask = uploadBytesResumable(fileRef, uploadedVideoFile);
+        
+        await new Promise<void>((resolve, reject) => {
+          uploadTask.on(
+            "state_changed",
+            (snapshot) => {
+              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              setUploadProgress(progress);
+            },
+            (error) => {
+              console.error("Storage upload error:", error);
+              setUploadError("Firebase Storage upload failed: " + error.message);
+              reject(error);
+            },
+            async () => {
+              try {
+                finalVideoUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                resolve();
+              } catch (err) {
+                reject(err);
+              }
+            }
+          );
+        });
+      } else if (uploadedVideoFileUrl) {
+        finalVideoUrl = uploadedVideoFileUrl;
+      } else {
+        // Fallback or presets
+        const presets = {
+          singing: "https://assets.mixkit.co/videos/preview/mixkit-girl-taking-selfies-with-her-smart-phone-41584-large.mp4",
+          battle: "https://assets.mixkit.co/videos/preview/mixkit-young-man-dancing-to-hip-hop-music-41908-large.mp4",
+          gallery_preset: "https://assets.mixkit.co/videos/preview/mixkit-excited-girl-vlogging-with-phone-41582-large.mp4",
+        };
+        finalVideoUrl = presets[recordedVideoPreset as keyof typeof presets] || "https://assets.mixkit.co/videos/preview/mixkit-girl-taking-selfies-with-her-smart-phone-41584-large.mp4";
+      }
+      
+      // Save metadata in Firestore "reels" collection!
+      const reelData = {
+        creator: user.fullName || "Syed Prince Shah",
+        avatar: user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+        caption: newReelCaption.trim() || "New dynamic stream highlight! 🔥 #viral #sehrlive",
+        song: newReelSong.trim() || "Original Audio - " + (user.fullName || "Syed Prince Shah"),
+        videoBg: newReelVideoBg,
+        videoUrl: finalVideoUrl,
+        likes: 0,
+        commentsCount: 0,
+        liked: false,
+        privacy: reelPrivacy,
+        location: reelLocation || "Lahore, Pakistan",
+        saves: 0,
+        saved: false,
+        shares: 0,
+        downloads: 0,
+        isFollowed: false,
+        comments: [],
+        createdAt: new Date().toISOString()
+      };
+      
+      const docRef = await addDoc(collection(db, "reels"), reelData);
+      
+      // Save locally to profile reels
+      const newProfileReel = {
+        id: docRef.id,
+        title: newReelCaption.trim() ? (newReelCaption.trim().split(" ").slice(0, 4).join(" ") + "...") : "My New Clip 🎬",
+        views: reelPrivacy === "private" ? "Host Private" : "1.2K",
+        likes: 0,
+        liked: false,
+        videoBg: newReelVideoBg,
+        videoUrl: finalVideoUrl,
+        caption: reelData.caption,
+        song: reelData.song,
+        comments: [],
+        duration: "0:30",
+        location: reelLocation
+      };
+      
+      setProfileReels(prev => {
+        const targetTab = reelPrivacy === "private" ? "private" : "uploaded";
+        return {
+          ...prev,
+          [targetTab]: [newProfileReel, ...prev[targetTab]]
+        };
+      });
+      
+      // Navigate to reels view and clear indices
+      setClientView("reels");
+      setCurrentReelIndex(0);
+      alert("Mubarak! Your video reel has been successfully uploaded to Firebase and published to the Reels Feed!");
+      
+      // Reset input states & close overlay
+      setNewReelCaption("");
+      setNewReelSong("");
+      setReelLocation("");
+      setReelPrivacy("public");
+      setUploadReelStep("select");
+      setShowUploadReelOverlay(false);
+      setUploadedVideoFile(null);
+      setRecordedVideoUrl(null);
+    } catch (err: any) {
+      console.error("Failed to upload/publish reel:", err);
+      setUploadError(err.message || "Failed to publish reel.");
+      alert("Could not upload/publish reel: " + (err.message || "Unknown error"));
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   // 🎵 Live Stream Music Controller Effects
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -3751,40 +4102,79 @@ export default function App() {
       const result = await signInWithPopup(clientAuth, googleProvider);
       const googleUser = result.user;
       
-      const response = await window.fetch("/api/v1/auth/google-login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          email: googleUser.email,
-          displayName: googleUser.displayName,
-          photoURL: googleUser.photoURL,
-          uid: googleUser.uid
-        })
-      });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || "Failed to log in with Google on backend");
-      }
-
-      const data = await response.json();
-      if (data && data.success && data.user) {
-        localStorage.setItem("sehr_auth_token", data.token);
-        setUser(data.user);
-        if (is2FAEnabled) {
-          setShowTwoFactorModal(true);
-        } else {
-          setIsLoggedIn(true);
-        }
-        console.log("[SEHR-LIVE] Google login success:", data.user);
-      } else {
-        throw new Error("Invalid response payload from server");
-      }
+      // Create or update Firestore profile document!
+      const userDocRef = doc(db, "users", googleUser.uid);
+      const userData = {
+        uid: googleUser.uid,
+        email: googleUser.email,
+        fullName: googleUser.displayName || "Sehr Live Streamer",
+        username: googleUser.email ? googleUser.email.split("@")[0] : "user_" + googleUser.uid.slice(0, 5),
+        avatar: googleUser.photoURL || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+        bio: "Senior Live Stream Creator on Sehr Live! 🌟",
+        level: 1,
+        experience: 0,
+        diamonds: 150,
+        coins: 1000,
+        fans: 0,
+        following: 0,
+        isHost: true,
+        isVip: false,
+        country: "Pakistan",
+        verified: true,
+        createdAt: new Date().toISOString()
+      };
+      
+      await setDoc(userDocRef, userData, { merge: true });
+      
+      // Update app state
+      setUser(userData);
+      setIsLoggedIn(true);
+      console.log("[SEHR-LIVE] Google Firebase authentication success:", userData);
     } catch (err: any) {
       console.error("Google Sign-In Error:", err);
       setLoginError(err.message || "Google Authentication failed. Please try again.");
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    if (!termsAccepted) {
+      setLoginError("Please check and accept the Terms of Service below to authenticate.");
+      return;
+    }
+    setLoginError("");
+    try {
+      // Create a unique guest ID
+      const guestId = "guest_" + Math.floor(100000 + Math.random() * 900000);
+      const guestDocRef = doc(db, "users", guestId);
+      const guestData = {
+        uid: guestId,
+        email: `${guestId}@sehrlive.com`,
+        fullName: `Sehr Guest ${guestId.split("_")[1]}`,
+        username: guestId,
+        avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${guestId}`,
+        bio: "Cozy explorer observing the Sehr Live galaxy! 🌌",
+        level: 1,
+        experience: 0,
+        diamonds: 0,
+        coins: 100,
+        fans: 0,
+        following: 0,
+        isHost: false,
+        isVip: false,
+        country: "Pakistan",
+        verified: false,
+        createdAt: new Date().toISOString()
+      };
+      
+      await setDoc(guestDocRef, guestData);
+      
+      // Update app state
+      setUser(guestData);
+      setIsLoggedIn(true);
+      console.log("[SEHR-LIVE] Guest profile created in Firestore:", guestData);
+    } catch (err: any) {
+      console.error("Guest Login Error:", err);
+      setLoginError(err.message || "Guest Authentication failed. Please try again.");
     }
   };
 
@@ -4264,15 +4654,15 @@ export default function App() {
                       <div className="grid grid-cols-2 gap-2 bg-[#1f2833]/40 p-1 rounded-xl border border-[#1f2833]">
                         <button
                           type="button"
-                          onClick={() => { setSelectedAuthMethod("phone"); setIsOtpSent(false); setLoginError(""); }}
-                          className={`py-2 text-xs font-bold rounded-lg transition-all ${selectedAuthMethod === "phone" ? "bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] text-white shadow-md" : "text-gray-400 hover:text-white"}`}
+                          onClick={() => { setLoginError("Phone Login Coming Soon"); }}
+                          className="py-2 text-xs font-bold rounded-lg transition-all text-gray-400 hover:text-white"
                         >
                           OTP Login
                         </button>
                         <button
                           type="button"
                           onClick={() => { setSelectedAuthMethod("social"); setLoginError(""); }}
-                          className={`py-2 text-xs font-bold rounded-lg transition-all ${selectedAuthMethod === "social" ? "bg-gradient-to-r from-[#7b2cbf] to-[#00f5ff] text-white shadow-md" : "text-gray-400 hover:text-white"}`}
+                          className="py-2 text-xs font-bold rounded-lg transition-all bg-gradient-to-r from-[#7b2cbf] to-[#00f5ff] text-white shadow-md"
                         >
                           Social login
                         </button>
@@ -4344,59 +4734,65 @@ export default function App() {
                         </form>
                       ) : (
                         <div className="space-y-2">
+                          {/* Google Sign-in button */}
                           <button
                             type="button"
                             onClick={handleGoogleSignIn}
-                            className="w-full bg-white text-gray-900 font-semibold py-2 rounded-xl text-xs flex items-center justify-center space-x-2 hover:bg-gray-100 transition-all shadow-md"
+                            className="w-full h-12 bg-white text-gray-900 font-bold rounded-2xl text-xs flex items-center justify-center space-x-3 hover:bg-gray-100 active:scale-[0.98] transition-all shadow-xl shadow-black/20 border border-gray-200 cursor-pointer"
                           >
-                            <span className="font-bold text-red-500 text-sm">G</span>
-                            <span>Sign in with Google</span>
+                            {/* Google G Brand Logo SVG */}
+                            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+                              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+                            </svg>
+                            <span className="text-sm font-black tracking-wide">Continue with Google</span>
                           </button>
+                          {/* Continue as Guest button */}
                           <button
                             type="button"
-                            onClick={() => {
-                              if (!termsAccepted) {
-                                setLoginError("Please check and accept the Terms of Service below to authenticate.");
-                                return;
-                              }
-                              setLoginError("");
-                              setIsLoggedIn(true);
-                            }}
-                            className="w-full bg-black text-white font-semibold py-2 rounded-xl text-xs border border-gray-700 flex items-center justify-center space-x-2 hover:bg-neutral-900 transition-all shadow-md"
+                            onClick={handleGuestLogin}
+                            className="w-full h-12 bg-gradient-to-r from-[#2c2c3e] to-[#1e1e2c] text-white font-bold rounded-2xl text-xs flex items-center justify-center space-x-3 hover:from-[#35354a] hover:to-[#242435] active:scale-[0.98] transition-all shadow-xl shadow-black/20 border border-white/5 cursor-pointer"
                           >
-                            <span className="text-sm"></span>
-                            <span>Sign in with Apple</span>
+                            <div className="w-5 h-5 rounded-full bg-cyan-500/20 flex items-center justify-center">
+                              <span className="text-[10px]">👤</span>
+                            </div>
+                            <span className="text-sm font-black tracking-wide text-cyan-300">Continue as Guest</span>
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!termsAccepted) {
-                                setLoginError("Please check and accept the Terms of Service below to authenticate.");
-                                return;
-                              }
-                              setLoginError("");
-                              setIsLoggedIn(true);
-                            }}
-                            className="w-full bg-[#1877F2] text-white font-semibold py-2 rounded-xl text-xs flex items-center justify-center space-x-2 hover:bg-[#1565C0] transition-all shadow-md"
-                          >
-                            <span className="font-bold text-sm">f</span>
-                            <span>Sign in with Facebook</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!termsAccepted) {
-                                setLoginError("Please check and accept the Terms of Service below to authenticate.");
-                                return;
-                              }
-                              setLoginError("");
-                              setUser(prev => ({ ...prev, username: "Guest_User_" + Math.floor(100 + Math.random() * 900) }));
-                              setIsLoggedIn(true);
-                            }}
-                            className="w-full bg-[#303040] text-gray-200 font-bold py-2.5 rounded-xl text-xs hover:bg-[#3d3d52] transition-all shadow-md"
-                          >
-                            Quick Entry (Guest Viewer)
-                          </button>
+
+                          {/* Disabled / Coming Soon Methods Divider */}
+                          <div className="pt-2">
+                            <div className="relative flex py-2 items-center">
+                              <div className="flex-grow border-t border-white/5"></div>
+                              <span className="flex-shrink mx-3 text-[8.5px] text-gray-500 font-bold uppercase tracking-widest font-mono">Coming Soon Options</span>
+                              <div className="flex-grow border-t border-white/5"></div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 mt-1">
+                              
+                              {/* Apple Sign-in Coming Soon */}
+                              <button
+                                type="button"
+                                onClick={() => setLoginError("Apple Sign In Coming Soon")}
+                                className="flex items-center justify-center space-x-2 p-2.5 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all relative group cursor-pointer"
+                              >
+                                <span className="text-sm saturate-50 group-hover:scale-110 transition-transform"></span>
+                                <span className="text-[9px] text-gray-400 font-bold">Apple ID</span>
+                              </button>
+
+                              {/* Facebook Sign-in Coming Soon */}
+                              <button
+                                type="button"
+                                onClick={() => setLoginError("Facebook Login Coming Soon")}
+                                className="flex items-center justify-center space-x-2 p-2.5 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all relative group cursor-pointer"
+                              >
+                                <span className="text-sm saturate-50 group-hover:scale-110 transition-transform">👤</span>
+                                <span className="text-[9px] text-gray-400 font-bold">Facebook</span>
+                              </button>
+
+                            </div>
+                          </div>
                         </div>
                       )}
 
@@ -9416,23 +9812,41 @@ export default function App() {
                     {clientView === "camera-prep" && (
                       <div className="flex-1 flex flex-col bg-[#08070d] relative scroll-view-y select-none text-white h-full w-full pb-24">
                         {/* 1. Camera Live Preview Frame (100% full screen background) */}
-                        <div className="absolute inset-0 z-0">
-                          <img 
-                            src={prepCameraFlip 
-                              ? "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80" // Rear camera gaming setup
-                              : "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80" // Front camera portrait streamer
-                            } 
-                            className={`w-full h-full object-cover transition-all duration-500 ${
-                              prepMirror ? "scale-x-[-1]" : ""
-                            } ${
-                              prepFilter === "Sunset Glow" ? "brightness-110 saturate-125 sepia-[0.15] hue-rotate-[15deg]" :
-                              prepFilter === "Karachi Neon" ? "brightness-105 saturate-150 hue-rotate-[320deg]" :
-                              prepFilter === "Vintage Chrome" ? "contrast-115 grayscale-[0.25] sepia-[0.2]" :
-                              prepFilter === "Sufi Mystic" ? "brightness-95 contrast-105 saturate-75 sepia-[0.3]" :
-                              "brightness-100 saturate-100"
-                            }`}
-                            alt="Live Camera Preview"
-                          />
+                        <div className="absolute inset-0 z-0 bg-black">
+                          {cameraStream ? (
+                            <video
+                              ref={prepVideoRef}
+                              className={`w-full h-full object-cover transition-all duration-500 ${
+                                prepMirror ? "scale-x-[-1]" : ""
+                              } ${
+                                prepFilter === "Sunset Glow" ? "brightness-110 saturate-125 sepia-[0.15] hue-rotate-[15deg]" :
+                                prepFilter === "Karachi Neon" ? "brightness-105 saturate-150 hue-rotate-[320deg]" :
+                                prepFilter === "Vintage Chrome" ? "contrast-115 grayscale-[0.25] sepia-[0.2]" :
+                                prepFilter === "Sufi Mystic" ? "brightness-95 contrast-105 saturate-75 sepia-[0.3]" :
+                                "brightness-100 saturate-100"
+                              }`}
+                              playsInline
+                              muted
+                              autoPlay
+                            />
+                          ) : (
+                            <img 
+                              src={prepCameraFlip 
+                                ? "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80" // Rear camera gaming setup
+                                : "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80" // Front camera portrait streamer
+                              } 
+                              className={`w-full h-full object-cover transition-all duration-500 ${
+                                prepMirror ? "scale-x-[-1]" : ""
+                              } ${
+                                prepFilter === "Sunset Glow" ? "brightness-110 saturate-125 sepia-[0.15] hue-rotate-[15deg]" :
+                                prepFilter === "Karachi Neon" ? "brightness-105 saturate-150 hue-rotate-[320deg]" :
+                                prepFilter === "Vintage Chrome" ? "contrast-115 grayscale-[0.25] sepia-[0.2]" :
+                                prepFilter === "Sufi Mystic" ? "brightness-95 contrast-105 saturate-75 sepia-[0.3]" :
+                                "brightness-100 saturate-100"
+                              }`}
+                              alt="Live Camera Preview Fallback"
+                            />
+                          )}
                           {/* Dynamic Effects Overlay */}
                           {prepEffect === "Neon Hearts" && (
                             <div className="absolute inset-0 bg-pink-500/10 pointer-events-none flex items-center justify-center">
@@ -15126,8 +15540,8 @@ export default function App() {
                                   <ArrowLeft className="w-3.5 h-3.5" />
                                 </button>
                                 <div>
-                                  <h4 className="text-xs font-black text-pink-500 uppercase tracking-widest font-mono">Simulated Video Recorder</h4>
-                                  <p className="text-[8px] text-gray-400">Live camera view simulation</p>
+                                  <h4 className="text-xs font-black text-pink-500 uppercase tracking-widest font-mono">Production Video Recorder</h4>
+                                  <p className="text-[8px] text-gray-400">Capture direct camera feeds in HD 60FPS</p>
                                 </div>
                               </div>
 
@@ -15142,24 +15556,111 @@ export default function App() {
                                   <span className="bg-black/40 px-1.5 py-0.5 rounded">60 FPS • HD</span>
                                 </div>
 
-                                {/* Simulated Video Feed Display with beautiful aesthetic gradient overlay */}
-                                <div className="absolute inset-0 bg-gradient-to-tr from-[#1f1a30] via-[#051622] to-[#2a1124] flex flex-col items-center justify-center pointer-events-none">
-                                  {isRecordingReel ? (
-                                    <div className="text-center space-y-1.5">
-                                      <Activity className="w-8 h-8 text-[#ff007f] animate-bounce mx-auto" />
-                                      <p className="text-[10px] text-white/95 uppercase font-mono font-black tracking-widest">Recording Video Feed...</p>
-                                      <p className="text-[8px] text-gray-400">Sound wave input active</p>
+                                {/* Live Video Stream or Error message */}
+                                <div className="absolute inset-0 bg-black flex items-center justify-center">
+                                  {cameraError ? (
+                                    <div className="text-center p-4 space-y-2 z-10">
+                                      <span className="text-2xl">⚠️</span>
+                                      <p className="text-[9.5px] text-red-400 font-bold leading-normal">{cameraError}</p>
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          try {
+                                            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                                            setCameraStream(stream);
+                                            setCameraError(null);
+                                            if (cameraVideoRef.current) {
+                                              cameraVideoRef.current.srcObject = stream;
+                                              cameraVideoRef.current.play();
+                                            }
+                                          } catch (e) {
+                                            alert("Open settings to allow camera permissions manually.");
+                                          }
+                                        }}
+                                        className="mt-2 text-[8px] bg-[#ff007f]/20 hover:bg-[#ff007f]/30 text-pink-400 border border-[#ff007f]/40 px-2.5 py-1 rounded-full uppercase tracking-wider font-mono font-bold"
+                                      >
+                                        Retry Access
+                                      </button>
                                     </div>
                                   ) : (
-                                    <div className="text-center space-y-1">
-                                      <Camera className="w-8 h-8 text-gray-500 mx-auto" />
-                                      <p className="text-[9px] text-gray-400">Camera preview active</p>
-                                    </div>
+                                    <video
+                                      ref={cameraVideoRef}
+                                      className={`absolute inset-0 w-full h-full object-cover transition-all duration-300 ${
+                                        cameraFacingMode === "user" ? "scale-x-[-1]" : ""
+                                      }`}
+                                      style={{
+                                        transform: `scale(${cameraZoom})`,
+                                        filter: `blur(${(100 - cameraFocus) / 10}px)`
+                                      }}
+                                      playsInline
+                                      muted
+                                      autoPlay
+                                    />
                                   )}
                                 </div>
 
+                                {/* Flash simulation background card */}
+                                {prepFlash && (
+                                  <div className="absolute inset-0 bg-white/20 z-5 pointer-events-none transition-opacity duration-300"></div>
+                                )}
+
+                                {/* Overlay Camera Controls (Flip, Flash, Zoom, Focus) */}
+                                <div className="absolute right-3 top-10 flex flex-col space-y-2.5 z-10">
+                                  {/* Flip Button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setCameraFacingMode(prev => prev === "user" ? "environment" : "user")}
+                                    className="w-7 h-7 rounded-full bg-black/60 hover:bg-black/80 border border-white/20 flex items-center justify-center text-white text-xs transition-all"
+                                    title="Flip Camera"
+                                  >
+                                    🔄
+                                  </button>
+                                  {/* Flash Button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setPrepFlash(!prepFlash)}
+                                    className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs transition-all ${
+                                      prepFlash ? "bg-yellow-500/80 border-yellow-400 text-black" : "bg-black/60 border-white/20 text-white"
+                                    }`}
+                                    title="Toggle Flash"
+                                  >
+                                    ⚡
+                                  </button>
+                                </div>
+
+                                {/* Interactive sliders for Zoom & Focus */}
+                                <div className="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col space-y-4 z-10 bg-black/50 p-2 rounded-xl border border-white/10 backdrop-blur-xs">
+                                  <div className="flex flex-col items-center space-y-1">
+                                    <span className="text-[7px] font-mono font-bold text-gray-300">ZOOM</span>
+                                    <input
+                                      type="range"
+                                      min="1"
+                                      max="3"
+                                      step="0.1"
+                                      value={cameraZoom}
+                                      onChange={(e) => setCameraZoom(parseFloat(e.target.value))}
+                                      className="h-16 accent-pink-500"
+                                      style={{ writingMode: "vertical-lr" }}
+                                    />
+                                    <span className="text-[6.5px] font-mono text-pink-400 font-bold">{cameraZoom}x</span>
+                                  </div>
+                                  <div className="flex flex-col items-center space-y-1">
+                                    <span className="text-[7px] font-mono font-bold text-gray-300">FOCUS</span>
+                                    <input
+                                      type="range"
+                                      min="20"
+                                      max="100"
+                                      value={cameraFocus}
+                                      onChange={(e) => setCameraFocus(parseInt(e.target.value))}
+                                      className="h-16 accent-cyan-400"
+                                      style={{ writingMode: "vertical-lr" }}
+                                    />
+                                    <span className="text-[6.5px] font-mono text-cyan-400 font-bold">{cameraFocus}%</span>
+                                  </div>
+                                </div>
+
                                 {/* Viewfinder Reticle Overlay */}
-                                <div className="absolute inset-6 border border-white/5 pointer-events-none flex items-center justify-center">
+                                <div className="absolute inset-6 border border-white/5 pointer-events-none flex items-center justify-center z-5">
                                   <div className="w-6 h-6 border-t border-l border-white/20 absolute top-0 left-0"></div>
                                   <div className="w-6 h-6 border-t border-r border-white/20 absolute top-0 right-0"></div>
                                   <div className="w-6 h-6 border-b border-l border-white/20 absolute bottom-0 left-0"></div>
@@ -15176,20 +15677,9 @@ export default function App() {
                                     type="button"
                                     onClick={() => {
                                       if (isRecordingReel) {
-                                        setIsRecordingReel(false);
-                                        // Auto go to details stage
-                                        if (reelRecordingSeconds < 2) {
-                                          alert("Video too short! Please record for at least 2 seconds.");
-                                          setReelRecordingSeconds(0);
-                                          return;
-                                        }
-                                        setUploadedVideoName(`Sehr_Recorded_Reel_${Date.now().toString().slice(-4)}.mp4`);
-                                        setUploadedVideoSize(`${(reelRecordingSeconds * 0.8).toFixed(1)} MB`);
-                                        setRecordedVideoPreset("recorded");
-                                        setUploadReelStep("details");
+                                        stopRecording();
                                       } else {
-                                        setIsRecordingReel(true);
-                                        setReelRecordingSeconds(0);
+                                        startRecording();
                                       }
                                     }}
                                     className="w-12 h-12 rounded-full border-4 border-white bg-red-600 hover:bg-red-700 flex items-center justify-center shadow-lg active:scale-90 transition-all cursor-pointer relative"
@@ -15321,68 +15811,44 @@ export default function App() {
                           {/* ==================================== */}
                           {uploadReelStep === "details" && (
                             <form
-                              onSubmit={(e) => {
-                                e.preventDefault();
-                                
-                                // Create the new reel object
-                                const newReel = {
-                                  id: "r-" + Date.now(),
-                                  creator: user.fullName || "Syed Prince Shah",
-                                  avatar: user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
-                                  caption: newReelCaption.trim() || "New dynamic stream highlight! 🔥 #viral #sehrlive",
-                                  song: newReelSong.trim() || "Original Audio - " + (user.fullName || "Syed Prince Shah"),
-                                  videoBg: newReelVideoBg,
-                                  likes: 0,
-                                  commentsCount: 0,
-                                  liked: false,
-                                  privacy: reelPrivacy,
-                                  location: reelLocation
-                                };
-
-                                // Append to state
-                                setReels(prev => [newReel, ...prev]);
-
-                                // Also update profileReels collections for the profile page
-                                const newProfileReel = {
-                                  id: newReel.id,
-                                  title: newReelCaption.trim() ? (newReelCaption.trim().split(" ").slice(0, 4).join(" ") + "...") : "My New Clip 🎬",
-                                  views: reelPrivacy === "private" ? "Host Private" : "1.2K",
-                                  likes: 0,
-                                  liked: false,
-                                  videoBg: newReelVideoBg,
-                                  caption: newReel.caption,
-                                  song: newReel.song,
-                                  comments: reelPrivacy === "private" ? ["Locked Comment Feed"] : [],
-                                  duration: "0:30",
-                                  isPrivate: reelPrivacy === "private" ? true : undefined,
-                                  location: reelLocation
-                                };
-
-                                setProfileReels(prev => {
-                                  const targetTab = reelPrivacy === "private" ? "private" : "uploaded";
-                                  return {
-                                    ...prev,
-                                    [targetTab]: [newProfileReel, ...prev[targetTab]]
-                                  };
-                                });
-
-                                // Navigate to newly created reel
-                                setClientView("reels");
-                                setCurrentReelIndex(0);
-
-                                // Success alert
-                                alert("Mubarak! Your video reel has been successfully uploaded to the Pakistan server stream!");
-
-                                // Reset input states & close
-                                setNewReelCaption("");
-                                setNewReelSong("");
-                                setReelLocation("");
-                                setReelPrivacy("public");
-                                setUploadReelStep("select");
-                                setShowUploadReelOverlay(false);
-                              }}
-                              className="space-y-3.5 text-left"
+                              onSubmit={handlePublishReel}
+                              className="space-y-3.5 text-left relative"
                             >
+                              {/* Upload / Publish Progress Overlay */}
+                              {isUploading && (
+                                <div className="absolute inset-0 bg-[#12121a]/95 backdrop-blur-md z-50 flex flex-col items-center justify-center space-y-4 p-6 rounded-2xl animate-fade-in">
+                                  <div className="relative flex items-center justify-center">
+                                    <div className="w-14 h-14 rounded-full border-4 border-gray-800 border-t-[#ff007f] animate-spin"></div>
+                                    <span className="absolute text-[10px] font-mono font-black text-white">{uploadProgress}%</span>
+                                  </div>
+                                  <div className="text-center space-y-1">
+                                    <h5 className="text-[10px] font-black text-pink-500 uppercase tracking-widest font-mono animate-pulse">Uploading Reel...</h5>
+                                    <p className="text-[8px] text-gray-400">Uploading your high-definition video directly to Firebase Storage securely.</p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {uploadError && (
+                                <div className="p-2.5 bg-red-950/40 border border-red-500/50 rounded-xl text-[8.5px] text-red-400 leading-normal">
+                                  ⚠️ {uploadError}
+                                </div>
+                              )}
+
+                              {/* Real Local Video Preview */}
+                              {recordedVideoUrl && (
+                                <div className="space-y-1 bg-black/40 p-2 rounded-xl border border-white/5">
+                                  <label className="text-[7.5px] uppercase tracking-wider text-gray-400 block font-bold font-mono">🎬 Video Clip Preview</label>
+                                  <div className="relative aspect-[9/13] max-w-[120px] mx-auto rounded-lg overflow-hidden border border-[#ff007f]/40 shadow-lg">
+                                    <video
+                                      src={recordedVideoUrl}
+                                      className="w-full h-full object-cover"
+                                      controls
+                                      playsInline
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
                               <div className="border-b border-[#303040] pb-2">
                                 <h4 className="text-xs font-black text-pink-500 uppercase tracking-widest font-mono">Publish Your Video Reel</h4>
                                 <p className="text-[8px] text-gray-400">Fill in the video metadata and submit to the feed</p>

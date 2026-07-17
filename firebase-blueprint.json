@@ -1,0 +1,68 @@
+{
+  "entities": {
+    "Reel": {
+      "title": "Reel",
+      "description": "A video reel uploaded by a user",
+      "type": "object",
+      "properties": {
+        "creator": {
+          "type": "string",
+          "description": "The display name of the reel creator"
+        },
+        "avatar": {
+          "type": "string",
+          "description": "The URL of the creator's avatar image"
+        },
+        "caption": {
+          "type": "string",
+          "description": "The text caption or description of the reel"
+        },
+        "song": {
+          "type": "string",
+          "description": "The name of the song or audio track associated with the reel"
+        },
+        "videoBg": {
+          "type": "string",
+          "description": "The CSS background class or representation of background when video is loading"
+        },
+        "videoUrl": {
+          "type": "string",
+          "description": "The direct public URL of the uploaded video in Firebase Storage"
+        },
+        "likes": {
+          "type": "integer",
+          "description": "The number of likes the reel has received"
+        },
+        "commentsCount": {
+          "type": "integer",
+          "description": "The number of comments on the reel"
+        },
+        "liked": {
+          "type": "boolean",
+          "description": "Whether the current user liked the reel"
+        },
+        "privacy": {
+          "type": "string",
+          "enum": ["public", "friends", "private"],
+          "description": "The privacy setting of the reel"
+        },
+        "location": {
+          "type": "string",
+          "description": "The location tag of the reel"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp of when the reel was created"
+        }
+      },
+      "required": ["creator", "videoUrl", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/reels/{reelId}": {
+      "schema": "Reel",
+      "description": "Collection of all uploaded video reels"
+    }
+  }
+}
