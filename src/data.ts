@@ -1,33 +1,33 @@
 import { Gift, GiftType, HostProfile, UserProfile, Family, Agency } from "./types";
 
 export const DEFAULT_USER: UserProfile = {
-  username: "Prince_Sehr",
-  uniqueId: "sehr_8899",
+  username: "Sehr_User",
+  uniqueId: "sehr_1001",
   avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
   coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-  bio: "Sehr Live VIP 👑 Support is everything! Family Creator & Diamond Earner.",
+  bio: "Senior Live Stream Creator on Sehr Live! 🌟",
   gender: "Male",
   country: "Pakistan",
   language: "Urdu / Hinglish",
-  coins: 50000, // starting coins for user to play with gifts
-  diamonds: 1200,
-  vipLevel: 3, // VIP levels
-  userLevel: 24,
-  hostLevel: 12,
-  wealthLevel: 32,
-  xp: 750,
-  familyId: "fam-kings",
-  agencyId: "agency-alpha",
+  coins: 0,
+  diamonds: 0,
+  vipLevel: 0,
+  userLevel: 1,
+  hostLevel: 1,
+  wealthLevel: 1,
+  xp: 0,
+  familyId: "",
+  agencyId: "",
   isVerified: false,
   isBanned: false,
-  twoFactorEnabled: true,
+  twoFactorEnabled: false,
   fullName: "",
   dob: "",
   phoneNumber: "",
   kycStatus: "none",
-  followersCount: 14200,
-  followingCount: 280,
-  totalLikesCount: 125400
+  followersCount: 0,
+  followingCount: 0,
+  totalLikesCount: 0
 };
 
 export const MOCK_GIFTS: Gift[] = [
@@ -39,87 +39,11 @@ export const MOCK_GIFTS: Gift[] = [
   { id: "g-dragon", name: "Golden Dragon", cost: 29999, type: GiftType.LUXURY, icon: "🐉", color: "from-amber-500 to-red-600", animationClass: "animate-bounce" }
 ];
 
-export const MOCK_HOSTS: HostProfile[] = [
-  {
-    id: "h-sahar",
-    name: "Sahar Live 🎵",
-    role: "Music & Acoustic Session",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150&q=80",
-    viewers: 1450,
-    likes: 85200,
-    category: "video",
-    isLive: true,
-    statusText: "Playing beautiful Urdu ghazals and pop songs!",
-    bio: "Sahar from Islamabad. Join my daily acoustic stream! Official Host of Alpha Agency.",
-    agencyId: "agency-alpha"
-  },
-  {
-    id: "h-zain",
-    name: "Zain_Killer 🔥",
-    role: "Official PK Battle King",
-    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&h=150&q=80",
-    viewers: 3200,
-    likes: 215400,
-    category: "pk",
-    isLive: true,
-    statusText: "PK Match vs Alpha_Queen! Let's win together guys!",
-    bio: "PK champion, daily battles! Keep tapping and make me win!",
-    agencyId: "agency-delta"
-  },
-  {
-    id: "h-mehak",
-    name: "Mehak_Lounge ☕",
-    role: "Late Night Audio Room Host",
-    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80",
-    viewers: 450,
-    likes: 12400,
-    category: "audio",
-    isLive: true,
-    statusText: "Cozy 10-seat general chat. Request mic and share your story!",
-    bio: "ASMR, poetry, light jokes. Cozy corner for late-night dreamers.",
-    agencyId: "agency-alpha"
-  }
-];
+export const MOCK_HOSTS: HostProfile[] = [];
 
-export const MOCK_FAMILIES: Family[] = [
-  {
-    id: "fam-kings",
-    name: "👑 SAHR KINGS",
-    leader: "Prince_Sehr",
-    members: 245,
-    rank: 1,
-    avatar: "https://images.unsplash.com/photo-1513829096999-4978602294fc?auto=format&fit=crop&w=100&h=100&q=80",
-    description: "The elite guild of premium supporters. Loyalty and respect always."
-  },
-  {
-    id: "fam-warriors",
-    name: "⚡ PK WARRIORS",
-    leader: "Zain_Killer",
-    members: 180,
-    rank: 2,
-    avatar: "https://images.unsplash.com/photo-1531256379416-9f000e90aacc?auto=format&fit=crop&w=100&h=100&q=80",
-    description: "Winning battles one diamond at a time! Join if you are active."
-  }
-];
+export const MOCK_FAMILIES: Family[] = [];
 
-export const MOCK_AGENCIES: Agency[] = [
-  {
-    id: "agency-alpha",
-    name: "Alpha Talent Agency",
-    registeredHosts: 45,
-    monthlyCommission: 1250,
-    salaryRate: "35% Commission + $200 Base Bonus",
-    ownerEmail: "owner@alphatalent.live"
-  },
-  {
-    id: "agency-delta",
-    name: "Delta Elite Entertainment",
-    registeredHosts: 32,
-    monthlyCommission: 2400,
-    salaryRate: "40% Commission + $350 PK Victory Bonus",
-    ownerEmail: "delta@elite.live"
-  }
-];
+export const MOCK_AGENCIES: Agency[] = [];
 
 export const DAILY_MISSIONS = [
   { id: "m-1", title: "Double tap to send 100 Likes", xpReward: 50, coinsReward: 10, status: "Pending", current: 0, target: 100 },

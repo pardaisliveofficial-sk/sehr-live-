@@ -479,6 +479,10 @@ app.post("/api/v1/user", authenticateUser, (req: any, res) => {
     if (isNaN(coins) || coins < 0) {
       return res.status(400).json({ error: "Invalid coin balance value." });
     }
+    // SECURE CHECK: Block direct coin increase by user
+    if (coins > (user.coins || 0)) {
+      return res.status(403).json({ error: "Security Exception: Users are unauthorized to increase their coin balance directly." });
+    }
   }
   
   if (req.body.diamonds !== undefined) {
@@ -486,6 +490,14 @@ app.post("/api/v1/user", authenticateUser, (req: any, res) => {
     if (isNaN(diamonds) || diamonds < 0) {
       return res.status(400).json({ error: "Invalid diamond balance value." });
     }
+    // SECURE CHECK: Users can never add diamonds directly
+    if (diamonds > (user.diamonds || 0)) {
+      return res.status(403).json({ error: "Security Exception: Direct diamond balance increase is forbidden." });
+    }
+  }
+
+  if (req.body.agencyId !== undefined && req.body.agencyId !== user.agencyId) {
+    return res.status(403).json({ error: "Security Exception: Direct agency status modification is forbidden." });
   }
 
   const updatedUser = { ...user, ...req.body };
@@ -687,6 +699,238 @@ app.delete("/api/v1/agencies/:id", (req, res) => {
   saveDatabase();
   deleteDocument("agencies", id);
   res.json({ message: "Agency deleted successfully" });
+});
+
+// Coin Sellers list (Approved Resellers)
+app.get("/api/v1/coin-sellers", (req, res) => {
+  res.json(dbData.coinSellers || []);
+});
+
+app.post("/api/v1/coin-sellers", (req, res) => {
+  const newSeller = {
+    id: `seller-${Date.now()}`,
+    status: "Verified Seller",
+    ...req.body
+  };
+  if (!dbData.coinSellers) dbData.coinSellers = [];
+  dbData.coinSellers.push(newSeller);
+  saveDatabase();
+  syncDocument("coinSellers", newSeller.id, newSeller);
+  res.status(201).json(newSeller);
+});
+
+app.delete("/api/v1/coin-sellers/:id", (req, res) => {
+  const { id } = req.params;
+  if (!dbData.coinSellers) dbData.coinSellers = [];
+  dbData.coinSellers = dbData.coinSellers.filter((s: any) => s.id !== id);
+  saveDatabase();
+  deleteDocument("coinSellers", id);
+  res.json({ message: "Reseller deleted successfully" });
+});
+
+// Agency Requests Endpoints
+app.get("/api/v1/agency-requests", (req, res) => {
+  res.json(dbData.agencyRequests || []);
+});
+
+app.post("/api/v1/agency-requests", (req, res) => {
+  const newReq = {
+    id: `ARQ-${Date.now()}`,
+    status: "Pending",
+    timestamp: new Date().toISOString(),
+    ...req.body
+  };
+  if (!dbData.agencyRequests) dbData.agencyRequests = [];
+  dbData.agencyRequests.unshift(newReq);
+  
+  // Create system notification for Admin
+  const adminNotification = {
+    id: Date.now(),
+    title: "New Agency Request Submitted",
+    message: `${newReq.applicantName} requested to register ${newReq.type === "official_agency" ? "Official Reseller" : "Host Agency"}.`,
+    timestamp: new Date().toISOString(),
+    unread: true,
+    category: "system"
+  };
+  if (!dbData.notifications) dbData.notifications = [];
+  dbData.notifications.unshift(adminNotification);
+  
+  saveDatabase();
+  syncDocument("agencyRequests", newReq.id, newReq);
+  syncDocument("notifications", String(adminNotification.id), adminNotification);
+  
+  res.status(201).json(newReq);
+});
+
+app.put("/api/v1/agency-requests/:id", (req, res) => {
+  const { id } = req.params;
+  const { status, remarks } = req.body;
+  if (!dbData.agencyRequests) dbData.agencyRequests = [];
+  const index = dbData.agencyRequests.findIndex((r: any) => r.id === id);
+  if (index !== -1) {
+    const r = dbData.agencyRequests[index];
+    r.status = status;
+    if (remarks) r.remarks = remarks;
+    
+    // If approved, create official agency or add to offline resellers as required!
+    if (status === "Approved") {
+      const agencyId = `agency-${Math.floor(1000 + Math.random() * 9000)}`;
+      
+      if (r.type === "host_agency") {
+        const newAgency = {
+          id: agencyId,
+          name: r.agencyName || r.applicantName,
+          ownerEmail: r.ownerEmail || `${r.applicantUsername || "applicant"}@sehr.live`,
+          salaryRate: r.rate || "40% Commission + $200 Base Bonus",
+          registeredHosts: 0,
+          monthlyCommission: 0,
+          status: "Active"
+        };
+        dbData.agencies.push(newAgency);
+        syncDocument("agencies", agencyId, newAgency);
+        
+        // Also update applicant's user profile agency ID
+        if (r.applicantUsername) {
+          const userIndex = dbData.users.findIndex((u: any) => u.username === r.applicantUsername);
+          if (userIndex !== -1) {
+            dbData.users[userIndex].agencyId = agencyId;
+            syncDocument("users", r.applicantUsername, dbData.users[userIndex]);
+          }
+          if (r.applicantUsername === dbData.user.username) {
+            dbData.user.agencyId = agencyId;
+            writeMetadata("user_profile", dbData.user);
+          }
+        }
+      } else if (r.type === "official_agency") {
+        const reseller = {
+          id: agencyId,
+          name: r.applicantName,
+          whatsapp: r.contact,
+          city: r.city || "Pakistan",
+          rate: r.rate || "1000 Coins = 1500 PKR",
+          status: "Verified Seller",
+          description: r.description || "Official Coin Reseller licensed by Sahr Live Admin."
+        };
+        if (!dbData.coinSellers) dbData.coinSellers = [];
+        dbData.coinSellers.push(reseller);
+        syncDocument("coinSellers", agencyId, reseller);
+      }
+    }
+    
+    saveDatabase();
+    syncDocument("agencyRequests", id, r);
+    res.json(r);
+  } else {
+    res.status(404).json({ error: "Agency request not found" });
+  }
+});
+
+app.delete("/api/v1/agency-requests/:id", (req, res) => {
+  const { id } = req.params;
+  if (!dbData.agencyRequests) dbData.agencyRequests = [];
+  dbData.agencyRequests = dbData.agencyRequests.filter((r: any) => r.id !== id);
+  saveDatabase();
+  deleteDocument("agencyRequests", id);
+  res.json({ message: "Agency request deleted" });
+});
+
+// Coin Purchase Requests (Offline) Endpoints
+app.get("/api/v1/purchase-requests", (req, res) => {
+  res.json(dbData.purchaseRequests || []);
+});
+
+app.post("/api/v1/purchase-requests", (req, res) => {
+  const newReq = {
+    id: `PRQ-${Date.now()}`,
+    status: "Pending",
+    timestamp: new Date().toISOString(),
+    ...req.body
+  };
+  if (!dbData.purchaseRequests) dbData.purchaseRequests = [];
+  dbData.purchaseRequests.unshift(newReq);
+  
+  // Create system notification for Admin
+  const adminNotification = {
+    id: Date.now(),
+    title: "New Coin Purchase Request",
+    message: `${newReq.username} requested to purchase ${newReq.coins} Coins offline.`,
+    timestamp: new Date().toISOString(),
+    unread: true,
+    category: "system"
+  };
+  if (!dbData.notifications) dbData.notifications = [];
+  dbData.notifications.unshift(adminNotification);
+  
+  saveDatabase();
+  syncDocument("purchaseRequests", newReq.id, newReq);
+  syncDocument("notifications", String(adminNotification.id), adminNotification);
+  
+  res.status(201).json(newReq);
+});
+
+app.put("/api/v1/purchase-requests/:id", (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body; // Approved or Rejected
+  if (!dbData.purchaseRequests) dbData.purchaseRequests = [];
+  const index = dbData.purchaseRequests.findIndex((r: any) => r.id === id);
+  if (index !== -1) {
+    const r = dbData.purchaseRequests[index];
+    r.status = status;
+    
+    if (status === "Approved") {
+      // Credit coins to user's wallet automatically
+      const username = r.username;
+      const coinsAmount = Number(r.coins || 0);
+      
+      const userIndex = dbData.users.findIndex((u: any) => u.username === username);
+      if (userIndex !== -1) {
+        dbData.users[userIndex].coins = (dbData.users[userIndex].coins || 0) + coinsAmount;
+        syncDocument("users", username, dbData.users[userIndex]);
+      }
+      
+      if (username === dbData.user.username) {
+        dbData.user.coins = (dbData.user.coins || 0) + coinsAmount;
+        writeMetadata("user_profile", dbData.user);
+      }
+      
+      // Update in admin-users list
+      const adminUserIndex = dbData.adminUsersList.findIndex((u: any) => u.username === username);
+      if (adminUserIndex !== -1) {
+        dbData.adminUsersList[adminUserIndex].coins = (dbData.adminUsersList[adminUserIndex].coins || 0) + coinsAmount;
+        syncDocument("adminUsersList", username, dbData.adminUsersList[adminUserIndex]);
+      }
+      
+      // Add transaction to ledger/history
+      const newTxn = {
+        id: `TXN-${Math.floor(100 + Math.random() * 900)}`,
+        timestamp: new Date().toISOString(),
+        status: "Completed",
+        type: "recharge",
+        details: `Purchased ${coinsAmount} Coins offline (Approved by Admin)`,
+        amount: coinsAmount,
+        currency: "coins",
+        username: username
+      };
+      if (!dbData.transactions) dbData.transactions = [];
+      dbData.transactions.unshift(newTxn);
+      syncDocument("transactions", newTxn.id, newTxn);
+    }
+    
+    saveDatabase();
+    syncDocument("purchaseRequests", id, r);
+    res.json(r);
+  } else {
+    res.status(404).json({ error: "Purchase request not found" });
+  }
+});
+
+app.delete("/api/v1/purchase-requests/:id", (req, res) => {
+  const { id } = req.params;
+  if (!dbData.purchaseRequests) dbData.purchaseRequests = [];
+  dbData.purchaseRequests = dbData.purchaseRequests.filter((r: any) => r.id !== id);
+  saveDatabase();
+  deleteDocument("purchaseRequests", id);
+  res.json({ message: "Purchase request deleted" });
 });
 
 // Transactions ledger

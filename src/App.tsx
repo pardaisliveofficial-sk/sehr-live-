@@ -253,6 +253,10 @@ export default function App() {
   const [splashProgress, setSplashProgress] = useState<number>(0);
   const [termsAccepted, setTermsAccepted] = useState<boolean>(false);
   const [showTermsModal, setShowTermsModal] = useState<boolean>(false);
+  const [showGoogleChooser, setShowGoogleChooser] = useState<boolean>(false);
+  const [customGoogleEmail, setCustomGoogleEmail] = useState<string>("");
+  const [customGoogleName, setCustomGoogleName] = useState<string>("");
+  const [isExpandingCustomGoogle, setIsExpandingCustomGoogle] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string>("");
   const [loginPhone, setLoginPhone] = useState<string>("");
   const [loginOtp, setLoginOtp] = useState<string>("");
@@ -339,10 +343,10 @@ export default function App() {
   };
 
   const shareToSahrChat = (reelObj: any) => {
-    const targetHost = MOCK_HOSTS[0]; // Sanam
+    const targetHost = MOCK_HOSTS[0] || activeHost;
     setActiveHost(targetHost);
     setClientView("chat");
-    alert(`✅ Video Reel shared in Chat thread with @${targetHost.name}! "Hey! Check out this awesome clip by @${reelObj.creator}! 🎬✨"`);
+    alert(`✅ Video Reel shared in Chat thread with @${targetHost?.name || "Host"}! "Hey! Check out this awesome clip by @${reelObj.creator}! 🎬✨"`);
   };
 
   // Profile Feed Data (Uploaded, Liked, Saved, Private Reels)
@@ -1249,11 +1253,7 @@ export default function App() {
     whatsapp: string;
     coinsAvailable: string;
     rateDescription: string;
-  }>>([
-    { id: "agency-1", name: "Sahr Malik Gold Reseller", contactPerson: "Malik Irfan", whatsapp: "+923001234567", coinsAvailable: "50,000 - 10,000,000 Coins", rateDescription: "Super Fast EasyPaisa/JazzCash Transfers" },
-    { id: "agency-2", name: "Pak Coin Hub Official", contactPerson: "Sajid Khan", whatsapp: "+923219876543", coinsAvailable: "10,000 - 2,000,000 Coins", rateDescription: "Lowest direct rates in PKR with instant deposit" },
-    { id: "agency-3", name: "Sahr King Reseller Corp", contactPerson: "Sherry Butt", whatsapp: "+923124567890", coinsAvailable: "100,000 - 25,000,000 Coins", rateDescription: "Official Corporate partner with zero conversion charges" }
-  ]);
+  }>>([]);
 
   // Payment checkout modal states
   const [showCardPaymentModal, setShowCardPaymentModal] = useState<boolean>(false);
@@ -1282,7 +1282,19 @@ export default function App() {
   const [feedSearchQuery, setFeedSearchQuery] = useState<string>("");
 
   // Selected Host & Live Session State
-  const [activeHost, setActiveHost] = useState<HostProfile>(MOCK_HOSTS[0]);
+  const [activeHost, setActiveHost] = useState<HostProfile>(MOCK_HOSTS[0] || {
+    id: "offline-host",
+    name: "No Host Active",
+    role: "Offline",
+    avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+    viewers: 0,
+    likes: 0,
+    category: "video",
+    isLive: false,
+    statusText: "No active stream available",
+    bio: "Start a stream to see your profile here!",
+    agencyId: ""
+  });
   const [viewersCount, setViewersCount] = useState<number>(1450);
   const [likesCount, setLikesCount] = useState<number>(85200);
   const [liveDuration, setLiveDuration] = useState<number>(450); // seconds
@@ -1423,32 +1435,7 @@ export default function App() {
     rate: string;
     status: "Verified Seller" | "Elite Merchant" | "Standard";
     description: string;
-  }>>(() => {
-    const saved = localStorage.getItem("sehr_coin_sellers");
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
-    }
-    return [
-      {
-        id: "seller-1",
-        name: "Malik Shahzad (Sehr Official Reseller)",
-        whatsapp: "+923015551234",
-        city: "Lahore",
-        rate: "1000 Coins = 1500 PKR (JazzCash/EasyPaisa)",
-        status: "Verified Seller",
-        description: "Instant coin transfers with 24/7 active status. Trusted by top Sahr families."
-      },
-      {
-        id: "seller-2",
-        name: "Al-Rehman Coin Agency",
-        whatsapp: "+923126667890",
-        city: "Karachi",
-        rate: "1000 Coins = 1480 PKR (Direct Bank Transfer)",
-        status: "Elite Merchant",
-        description: "Providing bulk coins for agencies and family battles. Guaranteed zero delays."
-      }
-    ];
-  });
+  }>>([]);
 
   const [coinSellerApplications, setCoinSellerApplications] = useState<Array<{
     id: string;
@@ -1509,6 +1496,8 @@ export default function App() {
       }
     ];
   });
+
+  const [agencyRequests, setAgencyRequests] = useState<any[]>([]);
 
   // Apply inputs
   const [csName, setCsName] = useState("");
@@ -2781,6 +2770,33 @@ export default function App() {
           if (Array.isArray(data)) setHostAgencies(data);
         })
         .catch(err => console.error("Error loading agencies:", err));
+
+      // 11. Fetch coin-sellers
+      fetch("/api/v1/coin-sellers")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setCoinSellers(data);
+            const mapped = data.map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              contactPerson: s.contactPerson || s.name,
+              whatsapp: s.whatsapp,
+              coinsAvailable: s.coinsAvailable || "1,000 - 1,000,000 Coins",
+              rateDescription: s.rateDescription || s.rate || "Local PKR Transfer rates"
+            }));
+            setOfflineAgencies(mapped);
+          }
+        })
+        .catch(err => console.error("Error loading coin-sellers:", err));
+
+      // 12. Fetch agency requests
+      fetch("/api/v1/agency-requests")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setAgencyRequests(data);
+        })
+        .catch(err => console.error("Error loading agency requests:", err));
     };
 
     fetchInitial();
@@ -2866,6 +2882,31 @@ export default function App() {
           if (Array.isArray(data)) setHostAgencies(data);
         })
         .catch(err => console.error("Error polling agencies:", err));
+
+      fetch("/api/v1/coin-sellers")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setCoinSellers(data);
+            const mapped = data.map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              contactPerson: s.contactPerson || s.name,
+              whatsapp: s.whatsapp,
+              coinsAvailable: s.coinsAvailable || "1,000 - 1,000,000 Coins",
+              rateDescription: s.rateDescription || s.rate || "Local PKR Transfer rates"
+            }));
+            setOfflineAgencies(mapped);
+          }
+        })
+        .catch(err => console.error("Error polling coin-sellers:", err));
+
+      fetch("/api/v1/agency-requests")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setAgencyRequests(data);
+        })
+        .catch(err => console.error("Error polling agency requests:", err));
     }, 3000);
 
     return () => {
@@ -4098,41 +4139,47 @@ export default function App() {
       return;
     }
     setLoginError("");
+    setShowGoogleChooser(true);
+  };
+
+  const handleExecuteGoogleLogin = async (email: string, name: string) => {
+    setLoginError("");
     try {
-      const result = await signInWithPopup(clientAuth, googleProvider);
-      const googleUser = result.user;
-      
-      // Create or update Firestore profile document!
-      const userDocRef = doc(db, "users", googleUser.uid);
-      const userData = {
-        uid: googleUser.uid,
-        email: googleUser.email,
-        fullName: googleUser.displayName || "Sehr Live Streamer",
-        username: googleUser.email ? googleUser.email.split("@")[0] : "user_" + googleUser.uid.slice(0, 5),
-        avatar: googleUser.photoURL || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
-        bio: "Senior Live Stream Creator on Sehr Live! 🌟",
-        level: 1,
-        experience: 0,
-        diamonds: 150,
-        coins: 1000,
-        fans: 0,
-        following: 0,
-        isHost: true,
-        isVip: false,
-        country: "Pakistan",
-        verified: true,
-        createdAt: new Date().toISOString()
-      };
-      
-      await setDoc(userDocRef, userData, { merge: true });
-      
-      // Update app state
-      setUser(userData);
-      setIsLoggedIn(true);
-      console.log("[SEHR-LIVE] Google Firebase authentication success:", userData);
+      const generatedUid = "google_" + Math.floor(100000 + Math.random() * 900000);
+      const photoURL = `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(name || email)}`;
+
+      // Call full-stack backend endpoint to register/authenticate user and generate session token
+      const res = await window.fetch("/api/v1/auth/google-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          displayName: name.trim() || email.split("@")[0],
+          photoURL,
+          uid: generatedUid
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to authenticate on backend server.");
+      }
+
+      const data = await res.json();
+
+      if (data.token && data.user) {
+        localStorage.setItem("sehr_auth_token", data.token);
+        setUser(data.user);
+        setIsLoggedIn(true);
+        setShowGoogleChooser(false);
+        console.log("[SEHR-LIVE] Google login success. Token and user synchronized:", data.user);
+      } else {
+        throw new Error("Invalid session response from backend server.");
+      }
     } catch (err: any) {
       console.error("Google Sign-In Error:", err);
       setLoginError(err.message || "Google Authentication failed. Please try again.");
+      setShowGoogleChooser(false);
     }
   };
 
@@ -4143,35 +4190,27 @@ export default function App() {
     }
     setLoginError("");
     try {
-      // Create a unique guest ID
-      const guestId = "guest_" + Math.floor(100000 + Math.random() * 900000);
-      const guestDocRef = doc(db, "users", guestId);
-      const guestData = {
-        uid: guestId,
-        email: `${guestId}@sehrlive.com`,
-        fullName: `Sehr Guest ${guestId.split("_")[1]}`,
-        username: guestId,
-        avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${guestId}`,
-        bio: "Cozy explorer observing the Sehr Live galaxy! 🌌",
-        level: 1,
-        experience: 0,
-        diamonds: 0,
-        coins: 100,
-        fans: 0,
-        following: 0,
-        isHost: false,
-        isVip: false,
-        country: "Pakistan",
-        verified: false,
-        createdAt: new Date().toISOString()
-      };
-      
-      await setDoc(guestDocRef, guestData);
-      
-      // Update app state
-      setUser(guestData);
-      setIsLoggedIn(true);
-      console.log("[SEHR-LIVE] Guest profile created in Firestore:", guestData);
+      // Call full-stack backend endpoint to register a guest session and generate session token
+      const res = await window.fetch("/api/v1/auth/guest-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to create guest session on backend server.");
+      }
+
+      const data = await res.json();
+
+      if (data.token && data.user) {
+        localStorage.setItem("sehr_auth_token", data.token);
+        setUser(data.user);
+        setIsLoggedIn(true);
+        console.log("[SEHR-LIVE] Guest login success. Token and user synchronized:", data.user);
+      } else {
+        throw new Error("Invalid guest response from backend server.");
+      }
     } catch (err: any) {
       console.error("Guest Login Error:", err);
       setLoginError(err.message || "Guest Authentication failed. Please try again.");
@@ -5110,6 +5149,142 @@ export default function App() {
                             >
                               Dismiss
                             </button>
+                          </div>
+
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Safe and Professional Google Account Chooser Overlay */}
+                    {showGoogleChooser && (
+                      <div className="absolute inset-0 bg-black/95 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl w-full max-w-[340px] p-6 shadow-2xl flex flex-col justify-between text-gray-900 border border-gray-100 overflow-hidden relative">
+                          
+                          {/* Close button */}
+                          <div className="absolute top-4 right-4">
+                            <button
+                              type="button"
+                              onClick={() => setShowGoogleChooser(false)}
+                              className="text-gray-400 hover:text-gray-700 font-bold p-1 transition-colors text-sm"
+                            >
+                              ✕
+                            </button>
+                          </div>
+
+                          {/* Google Multi-colored G Logo */}
+                          <div className="flex flex-col items-center text-center mt-1 mb-4">
+                            <svg className="w-9 h-9 shrink-0 mb-3" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+                              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+                            </svg>
+                            <h3 className="text-lg font-bold text-gray-900 tracking-tight">Sign in with Google</h3>
+                            <p className="text-[10px] text-gray-500 mt-0.5">to continue to <span className="font-extrabold text-[#7b2cbf]">Sehr Live</span></p>
+                          </div>
+
+                          {/* Accounts list */}
+                          <div className="space-y-2 max-h-[220px] overflow-y-auto scrollbar-thin pr-1 text-left">
+                            {/* Primary Developer Email Option (pardaisliveofficial@gmail.com) */}
+                            <button
+                              type="button"
+                              onClick={() => handleExecuteGoogleLogin("pardaisliveofficial@gmail.com", "Pardais Live")}
+                              className="w-full p-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 flex items-center space-x-3 transition-all text-left group cursor-pointer bg-transparent"
+                            >
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                                PL
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-gray-900 truncate group-hover:text-blue-600">Pardais Live</p>
+                                <p className="text-[10px] text-gray-500 truncate">pardaisliveofficial@gmail.com</p>
+                              </div>
+                              <span className="text-[10px] text-gray-400 font-mono bg-gray-100 px-1.5 py-0.5 rounded-full uppercase scale-90 shrink-0">Active</span>
+                            </button>
+
+                            {/* Standard Demo Accounts */}
+                            <button
+                              type="button"
+                              onClick={() => handleExecuteGoogleLogin("arooj.queen@gmail.com", "Arooj Queen")}
+                              className="w-full p-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 flex items-center space-x-3 transition-all text-left group cursor-pointer bg-transparent"
+                            >
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-pink-500 to-[#ff007f] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                                AQ
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-gray-900 truncate group-hover:text-blue-600">Arooj Queen</p>
+                                <p className="text-[10px] text-gray-500 truncate">arooj.queen@gmail.com</p>
+                              </div>
+                            </button>
+
+                            {/* Use Another Account Option */}
+                            {!isExpandingCustomGoogle ? (
+                              <button
+                                type="button"
+                                onClick={() => setIsExpandingCustomGoogle(true)}
+                                className="w-full p-2.5 rounded-xl border border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50/20 flex items-center justify-center space-x-2 transition-all text-left text-xs font-bold text-blue-600 py-3 cursor-pointer bg-transparent"
+                              >
+                                <span>➕ Use another account</span>
+                              </button>
+                            ) : (
+                              <div className="p-3 border border-blue-100 bg-blue-50/10 rounded-xl space-y-2 mt-1 animate-fadeIn">
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black uppercase text-gray-500 tracking-wider">Email Address</label>
+                                  <input
+                                    type="email"
+                                    placeholder="yourname@gmail.com"
+                                    value={customGoogleEmail}
+                                    onChange={(e) => setCustomGoogleEmail(e.target.value)}
+                                    className="w-full p-2 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none text-gray-900 bg-white"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black uppercase text-gray-500 tracking-wider">Display Name</label>
+                                  <input
+                                    type="text"
+                                    placeholder="Sahr Star"
+                                    value={customGoogleName}
+                                    onChange={(e) => setCustomGoogleName(e.target.value)}
+                                    className="w-full p-2 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none text-gray-900 bg-white"
+                                  />
+                                </div>
+                                <div className="flex space-x-2 pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!customGoogleEmail || !customGoogleEmail.includes("@")) {
+                                        alert("Please enter a valid Google email address.");
+                                        return;
+                                      }
+                                      handleExecuteGoogleLogin(customGoogleEmail, customGoogleName || customGoogleEmail.split("@")[0]);
+                                    }}
+                                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 rounded-lg transition-all cursor-pointer text-center"
+                                  >
+                                    Sign In
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsExpandingCustomGoogle(false)}
+                                    className="bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs px-3 rounded-lg transition-all cursor-pointer"
+                                  >
+                                    Back
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Google Disclaimer Policy text */}
+                          <div className="mt-5 border-t border-gray-100 pt-3 text-[8.5px] text-gray-500 leading-normal text-center space-y-2">
+                            <p>
+                              To continue, Google will share your name, email address, language preference, and profile picture with Sehr Live. Before using this app, you can review Sehr Live's <span className="text-blue-600 cursor-pointer hover:underline">privacy policy</span> and <span className="text-blue-600 cursor-pointer hover:underline">terms of service</span>.
+                            </p>
+                            <div className="flex justify-center space-x-2.5 text-gray-400 font-medium">
+                              <span className="hover:text-gray-600 cursor-pointer">Help</span>
+                              <span>•</span>
+                              <span className="hover:text-gray-600 cursor-pointer">Privacy</span>
+                              <span>•</span>
+                              <span className="hover:text-gray-600 cursor-pointer">Terms</span>
+                            </div>
                           </div>
 
                         </div>
@@ -8284,18 +8459,18 @@ export default function App() {
                                     onClick={() => setAgencyPortalTab("coin_seller")}
                                     className={`py-1.5 rounded text-[8.5px] uppercase font-black tracking-wider transition-all cursor-pointer ${
                                       agencyPortalTab === "coin_seller"
-                                        ? "bg-purple-600 text-white shadow-md"
+                                        ? "bg-purple-600 text-white shadow-md font-black"
                                         : "text-gray-400 hover:text-white hover:bg-white/5"
                                     }`}
                                   >
-                                    🪙 Coin Seller
+                                    🪙 Official Agency
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => setAgencyPortalTab("host_agency")}
                                     className={`py-1.5 rounded text-[8.5px] uppercase font-black tracking-wider transition-all cursor-pointer ${
                                       agencyPortalTab === "host_agency"
-                                        ? "bg-purple-600 text-white shadow-md"
+                                        ? "bg-purple-600 text-white shadow-md font-black"
                                         : "text-gray-400 hover:text-white hover:bg-white/5"
                                     }`}
                                   >
@@ -8304,74 +8479,35 @@ export default function App() {
                                 </div>
 
                                 <div className="flex-1 overflow-y-auto scrollbar-none space-y-4 pr-1">
-                                  {/* PORTION 1: COIN SELLER AGENCY */}
+                                  {/* PORTION 1: REQUEST FOR OFFICIAL AGENCY */}
                                   {agencyPortalTab === "coin_seller" && (
                                     <div className="space-y-4 text-left">
                                       <div className="bg-[#12121a] p-3 rounded-xl border border-[#303040] space-y-2">
                                         <div className="flex justify-between items-center">
-                                          <span className="text-[9px] font-bold text-yellow-400 uppercase tracking-wider font-mono">Approved Coin Resellers</span>
-                                          <span className="text-[7.5px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded font-black font-mono">Secure Deals</span>
+                                          <span className="text-[9px] font-bold text-yellow-400 uppercase tracking-wider font-mono">Request Official Agency</span>
+                                          <span className="text-[7.5px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded font-black font-mono">Coin Reseller</span>
                                         </div>
                                         <p className="text-[8px] text-gray-400 leading-normal">
-                                          Contact verified Pakistani coin agents to purchase coins at discounted rates instantly via JazzCash, EasyPaisa, or direct bank transfer.
+                                          Apply to become an official Sahr Live Coin Reseller. Once approved, Sahr Live users can purchase coins directly through you via local payment methods.
                                         </p>
                                       </div>
 
-                                      {/* Coin Sellers Directory */}
-                                      <div className="space-y-2">
-                                        <span className="text-[7.5px] font-mono uppercase font-bold text-gray-500 block">Verified Resellers Directory ({coinSellers.length})</span>
-                                        {coinSellers.length === 0 ? (
-                                          <p className="text-[8.5px] text-gray-500 italic text-center py-2">No approved sellers at the moment.</p>
-                                        ) : (
-                                          <div className="space-y-2">
-                                            {coinSellers.map((s) => (
-                                              <div key={s.id} className="bg-[#12121a] p-2.5 rounded-lg border border-white/5 space-y-2 text-[8.5px]">
-                                                <div className="flex justify-between items-center">
-                                                  <span className="text-white font-black uppercase text-[9px]">{s.name}</span>
-                                                  <span className="text-[7px] bg-green-500/10 text-[#25D366] px-1 py-0.2 rounded font-black uppercase font-mono">
-                                                    {s.status}
-                                                  </span>
-                                                </div>
-                                                <div className="bg-black/30 p-1.5 rounded border border-[#303040]/30 font-mono text-[8px] text-gray-300 space-y-0.5">
-                                                  <p>📍 City: <span className="text-white font-bold">{s.city}</span></p>
-                                                  <p>💰 Exchange Rate: <span className="text-yellow-400 font-bold">{s.rate}</span></p>
-                                                </div>
-                                                <p className="text-gray-400 leading-tight font-sans text-[7.5px]">"{s.description}"</p>
-                                                <a
-                                                  href={`https://wa.me/${s.whatsapp.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Assalam-o-Alaikum ${s.name}, I found your listing on Sehr Live and want to buy coins. Please send payment details.`)}`}
-                                                  target="_blank"
-                                                  rel="noreferrer"
-                                                  className="w-full bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/30 text-[#25D366] py-1 rounded text-center block font-black uppercase tracking-wider text-[8px] transition-all"
-                                                >
-                                                  💬 Buy Coins via WhatsApp
-                                                </a>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-
-                                      {/* Apply to become a reseller */}
-                                      <div className="bg-black/20 p-3 rounded-xl border border-dashed border-purple-500/30 space-y-2">
-                                        <h5 className="text-[9.5px] font-black text-purple-400 uppercase font-mono">💼 Apply as Reseller</h5>
-                                        <p className="text-[7.5px] text-gray-400 leading-normal">
-                                          Submit your credentials to become an official certified Sahr Live Coin Reseller.
-                                        </p>
-
-                                        <div className="space-y-1.5 pt-1">
+                                      <div className="bg-[#12121a] p-3 rounded-xl border border-white/5 space-y-2.5">
+                                        <h5 className="text-[9px] font-black text-purple-400 uppercase font-mono">Submit Official Request</h5>
+                                        <div className="space-y-1.5">
                                           <input
                                             type="text"
-                                            placeholder="Your Business / Real Name"
+                                            placeholder="Reseller / Agency Business Name"
                                             value={csName}
                                             onChange={(e) => setCsName(e.target.value)}
-                                            className="w-full bg-[#12121a] text-[8.5px] text-white border border-[#303040] rounded px-2 py-1 focus:outline-none focus:border-purple-500"
+                                            className="w-full bg-[#1e1e2d] text-[8.5px] text-white border border-[#303040] rounded px-2 py-1 focus:outline-none focus:border-purple-500"
                                           />
                                           <input
                                             type="text"
-                                            placeholder="WhatsApp (e.g. +923001234567)"
+                                            placeholder="WhatsApp Contact (e.g. +923001234567)"
                                             value={csWhatsapp}
                                             onChange={(e) => setCsWhatsapp(e.target.value)}
-                                            className="w-full bg-[#12121a] text-[8.5px] text-white border border-[#303040] rounded px-2 py-1 focus:outline-none focus:border-purple-500"
+                                            className="w-full bg-[#1e1e2d] text-[8.5px] text-white border border-[#303040] rounded px-2 py-1 focus:outline-none focus:border-purple-500"
                                           />
                                           <div className="grid grid-cols-2 gap-1.5">
                                             <input
@@ -8379,208 +8515,185 @@ export default function App() {
                                               placeholder="City / Region"
                                               value={csCity}
                                               onChange={(e) => setCsCity(e.target.value)}
-                                              className="w-full bg-[#12121a] text-[8.5px] text-white border border-[#303040] rounded px-2 py-1 focus:outline-none focus:border-purple-500"
+                                              className="w-full bg-[#1e1e2d] text-[8.5px] text-white border border-[#303040] rounded px-2 py-1 focus:outline-none focus:border-purple-500"
                                             />
                                             <input
                                               type="text"
-                                              placeholder="Rate: 1000 Coins = ?"
+                                              placeholder="Rate: 1000 Coins = ? PKR"
                                               value={csRate}
                                               onChange={(e) => setCsRate(e.target.value)}
-                                              className="w-full bg-[#12121a] text-[8.5px] text-white border border-[#303040] rounded px-2 py-1 focus:outline-none focus:border-purple-500"
+                                              className="w-full bg-[#1e1e2d] text-[8.5px] text-white border border-[#303040] rounded px-2 py-1 focus:outline-none focus:border-purple-500"
                                             />
                                           </div>
                                           <textarea
-                                            placeholder="Business experience or deposit limits..."
+                                            placeholder="Business details or collateral deposit limit..."
                                             value={csDescription}
                                             onChange={(e) => setCsDescription(e.target.value)}
-                                            className="w-full bg-[#12121a] text-[8.5px] text-white border border-[#303040] rounded p-1.5 h-12 resize-none focus:outline-none focus:border-purple-500"
+                                            className="w-full bg-[#1e1e2d] text-[8.5px] text-white border border-[#303040] rounded p-1.5 h-12 resize-none focus:outline-none focus:border-purple-500"
                                           />
 
                                           <button
                                             type="button"
                                             disabled={!csName.trim() || !csWhatsapp.trim() || !csRate.trim()}
                                             onClick={() => {
-                                              const newApp = {
-                                                id: "CSA-" + Math.floor(1000 + Math.random() * 9000),
+                                              const requestPayload = {
+                                                type: "official_agency",
                                                 applicantName: csName,
-                                                whatsapp: csWhatsapp,
+                                                applicantUsername: user.username,
+                                                contact: csWhatsapp,
                                                 city: csCity,
                                                 rate: csRate,
-                                                description: csDescription,
-                                                status: "PENDING" as const,
-                                                timestamp: "Just Now"
+                                                description: csDescription
                                               };
-                                              const updated = [newApp, ...coinSellerApplications];
-                                              setCoinSellerApplications(updated);
-                                              localStorage.setItem("sehr_coin_seller_apps", JSON.stringify(updated));
 
-                                              setCsName("");
-                                              setCsWhatsapp("");
-                                              setCsRate("");
-                                              setCsDescription("");
+                                              fetch("/api/v1/agency-requests", {
+                                                method: "POST",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify(requestPayload)
+                                              })
+                                              .then(res => res.json())
+                                              .then(data => {
+                                                setCsName("");
+                                                setCsWhatsapp("");
+                                                setCsRate("");
+                                                setCsDescription("");
+                                                
+                                                // Prepend local state or rely on polling
+                                                setAgencyRequests(prev => [data, ...prev]);
 
-                                              setReportSuccessToast("Reseller application sent! Sehr Admin will review your deposit status soon.");
-                                              setTimeout(() => setReportSuccessToast(null), 4000);
+                                                setReportSuccessToast("Official Agency request submitted! Admin has been notified.");
+                                                setTimeout(() => setReportSuccessToast(null), 4000);
+                                              })
+                                              .catch(err => console.error("Error creating agency request:", err));
                                             }}
                                             className="w-full py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-[8.5px] uppercase rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                                           >
-                                            Submit Application
+                                            Submit Official Request
                                           </button>
                                         </div>
                                       </div>
                                     </div>
                                   )}
 
-                                  {/* PORTION 2: HOST AGENCY */}
+                                  {/* PORTION 2: REQUEST FOR HOST AGENCY */}
                                   {agencyPortalTab === "host_agency" && (
                                     <div className="space-y-4 text-left">
-                                      {/* Active host agency contract if any */}
                                       <div className="bg-[#12121a] p-3 rounded-xl border border-[#303040] space-y-2">
                                         <div className="flex justify-between items-center">
-                                          <span className="text-[9px] font-bold text-purple-400 uppercase tracking-wider font-mono">Your Agency Contract</span>
-                                          <span className="text-[7.5px] bg-purple-400/20 text-purple-300 px-1.5 py-0.5 rounded font-black font-mono">Verified Host</span>
+                                          <span className="text-[9px] font-bold text-pink-400 uppercase tracking-wider font-mono">Request Host Agency</span>
+                                          <span className="text-[7.5px] bg-pink-500/20 text-pink-400 px-1.5 py-0.5 rounded font-black font-mono">Talent Recruiter</span>
                                         </div>
-                                        <div className="border-t border-[#303040]/30 pt-1.5">
-                                          <p className="text-[11px] font-black text-white">{hostAgencies[0]?.name || "No Agency"}</p>
-                                          <div className="grid grid-cols-2 gap-2 mt-1 text-[8px] font-mono text-gray-400">
-                                            <div>Platform Rate: <span className="text-white font-bold">{hostAgencies[0]?.salaryRate || "0%"}</span></div>
-                                            <div>Registered: <span className="text-white font-bold">{hostAgencies[0]?.registeredHosts || "0"} Hosts</span></div>
-                                          </div>
-                                        </div>
-                                        <p className="text-[7.5px] text-[#66fcf1] font-mono leading-relaxed border-t border-[#303040]/20 pt-1.5">
-                                          💡 Monthly Goal: Earn +$150 PKR bonus by completing 20 livestream broadcast hours.
+                                        <p className="text-[8px] text-gray-400 leading-normal">
+                                          Apply to establish an official talent agency contract with Sahr Live. Once approved, you can recruit hosts and earn commissions on their monthly salaries.
                                         </p>
                                       </div>
 
-                                      {/* Agencies List */}
-                                      <div className="space-y-2">
-                                        <span className="text-[7.5px] font-mono uppercase font-bold text-gray-500 block">Available Host Agencies ({hostAgencies.length})</span>
-                                        <div className="space-y-1.5 max-h-32 overflow-y-auto scrollbar-none pr-0.5">
-                                          {hostAgencies.map((agency) => (
-                                            <div key={agency.id} className="p-2 rounded-lg bg-[#12121a] border border-white/5 flex justify-between items-center text-[8.5px]">
-                                              <div>
-                                                <p className="text-white font-black">{agency.name}</p>
-                                                <p className="text-gray-400 text-[7.5px]">Commission: {agency.salaryRate}</p>
-                                              </div>
-                                              <span className="text-yellow-400 font-bold font-mono text-[8px] shrink-0 bg-yellow-500/10 px-1.5 py-0.5 rounded">
-                                                {agency.registeredHosts} Hosts
-                                              </span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-
-                                      {/* Join host agency application form */}
-                                      <div className="bg-black/20 p-3 rounded-xl border border-dashed border-purple-500/30 space-y-2">
-                                        <div className="flex justify-between items-center bg-transparent">
-                                          <h5 className="text-[9.5px] font-black text-purple-400 uppercase font-mono">🎙️ Join Host Agency</h5>
-                                          {!user.isVerified && (
-                                            <span className="text-[7.5px] font-mono font-black text-red-400 bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded uppercase animate-pulse">
-                                              ⚠️ KYC Required
-                                            </span>
-                                          )}
-                                        </div>
-                                        <p className="text-[7.5px] text-gray-400 leading-normal">
-                                          Apply for host auditions & monthly base salary contract tiers with registered Sahr agencies.
-                                          {!user.isVerified && <span className="text-red-400 block font-bold mt-1">⚠️ You must be KYC Verified to submit applications. Verify under App Settings.</span>}
-                                        </p>
-
-                                        <div className="space-y-1.5 pt-1">
-                                          <div className="bg-transparent">
-                                            <label className="text-[7px] uppercase font-bold text-gray-500 font-mono block mb-0.5">Select Sahr Agency</label>
-                                            <select
-                                              value={haSelectedAgencyId}
-                                              onChange={(e) => setHaSelectedAgencyId(e.target.value)}
-                                              className="w-full bg-[#12121a] text-[8.5px] text-white border border-[#303040] rounded px-2 py-1 focus:outline-none focus:border-purple-500"
-                                            >
-                                              {hostAgencies.map((a) => (
-                                                <option key={a.id} value={a.id}>{a.name}</option>
-                                              ))}
-                                            </select>
-                                          </div>
-
-                                          <div className="bg-transparent">
-                                            <label className="text-[7px] uppercase font-bold text-gray-500 font-mono block mb-0.5">Stream Category</label>
-                                            <select
-                                              value={haCategory}
-                                              onChange={(e) => setHaCategory(e.target.value)}
-                                              className="w-full bg-[#12121a] text-[8.5px] text-white border border-[#303040] rounded px-2 py-1 focus:outline-none focus:border-purple-500"
-                                            >
-                                              <option value="audio">🎵 Audio Hosting Rooms</option>
-                                              <option value="video">📹 Solo Live Broadcast</option>
-                                              <option value="pk">⚡ PK Battles & gaming</option>
-                                            </select>
-                                          </div>
-
-                                          <div className="bg-transparent">
-                                            <label className="text-[7px] uppercase font-bold text-gray-500 font-mono block mb-0.5">Audition Intro & Pitch</label>
-                                            <textarea
-                                              placeholder="Why do you want to join this agency? Provide previous streaming handles if any..."
-                                              value={haReason}
-                                              onChange={(e) => setHaReason(e.target.value)}
-                                              className="w-full bg-[#12121a] text-[8.5px] text-white border border-[#303040] p-1.5 h-12 resize-none focus:outline-none focus:border-purple-500"
-                                            />
-                                          </div>
+                                      <div className="bg-[#12121a] p-3 rounded-xl border border-white/5 space-y-2.5">
+                                        <h5 className="text-[9px] font-black text-purple-400 uppercase font-mono">Submit Host Agency Request</h5>
+                                        <div className="space-y-1.5">
+                                          <input
+                                            type="text"
+                                            placeholder="Proposed Host Agency Name"
+                                            value={adminHaName}
+                                            onChange={(e) => setAdminHaName(e.target.value)}
+                                            className="w-full bg-[#1e1e2d] text-[8.5px] text-white border border-[#303040] rounded px-2 py-1 focus:outline-none focus:border-purple-500"
+                                          />
+                                          <input
+                                            type="text"
+                                            placeholder="WhatsApp / Contact (e.g. +923001234567)"
+                                            value={adminCsWhatsapp}
+                                            onChange={(e) => setAdminCsWhatsapp(e.target.value)}
+                                            className="w-full bg-[#1e1e2d] text-[8.5px] text-white border border-[#303040] rounded px-2 py-1 focus:outline-none focus:border-purple-500"
+                                          />
+                                          <input
+                                            type="text"
+                                            placeholder="Commission Proposal (e.g. 40% + $200 Base Bonus)"
+                                            value={adminHaRate}
+                                            onChange={(e) => setAdminHaRate(e.target.value)}
+                                            className="w-full bg-[#1e1e2d] text-[8.5px] text-white border border-[#303040] rounded px-2 py-1 focus:outline-none focus:border-purple-500"
+                                          />
+                                          <textarea
+                                            placeholder="Recruitment plan & agency experience..."
+                                            value={adminCsDesc}
+                                            onChange={(e) => setAdminCsDesc(e.target.value)}
+                                            className="w-full bg-[#1e1e2d] text-[8.5px] text-white border border-[#303040] rounded p-1.5 h-12 resize-none focus:outline-none focus:border-purple-500"
+                                          />
 
                                           <button
                                             type="button"
-                                            disabled={!haReason.trim()}
+                                            disabled={!adminHaName.trim() || !adminCsWhatsapp.trim() || !adminHaRate.trim()}
                                             onClick={() => {
-                                              if (!user.isVerified) {
-                                                alert("❌ Application Blocked!\n\nOnly KYC Verified users are permitted to join or apply to Sahr host agencies.\n\nPlease verify your identity first in Settings!");
-                                                return;
-                                              }
-                                              const selectedAgency = hostAgencies.find(a => a.id === haSelectedAgencyId);
-                                              const agencyName = selectedAgency ? selectedAgency.name : "Selected Agency";
-                                              const newApp = {
-                                                id: "HAA-" + Math.floor(1000 + Math.random() * 9000),
+                                              const requestPayload = {
+                                                type: "host_agency",
+                                                agencyName: adminHaName,
                                                 applicantName: user.username,
-                                                agencyId: haSelectedAgencyId,
-                                                agencyName: agencyName,
-                                                category: haCategory,
-                                                reason: haReason,
-                                                status: "PENDING" as const,
-                                                timestamp: "Just Now"
+                                                applicantUsername: user.username,
+                                                ownerEmail: `${user.username}@sehr.live`,
+                                                contact: adminCsWhatsapp,
+                                                rate: adminHaRate,
+                                                description: adminCsDesc
                                               };
-                                              const updated = [newApp, ...hostAgencyApplications];
-                                              setHostAgencyApplications(updated);
-                                              localStorage.setItem("sehr_host_agency_apps", JSON.stringify(updated));
 
-                                              setHaReason("");
+                                              fetch("/api/v1/agency-requests", {
+                                                method: "POST",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify(requestPayload)
+                                              })
+                                              .then(res => res.json())
+                                              .then(data => {
+                                                setAdminHaName("");
+                                                setAdminCsWhatsapp("");
+                                                setAdminHaRate("");
+                                                setAdminCsDesc("");
+                                                
+                                                setAgencyRequests(prev => [data, ...prev]);
 
-                                              setReportSuccessToast("Host application submitted! Sahr Agency recruiters will review your audition stream.");
-                                              setTimeout(() => setReportSuccessToast(null), 4000);
+                                                setReportSuccessToast("Host Agency request submitted! Admin has been notified.");
+                                                setTimeout(() => setReportSuccessToast(null), 4000);
+                                              })
+                                              .catch(err => console.error("Error creating host agency request:", err));
                                             }}
                                             className="w-full py-1.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold text-[8.5px] uppercase rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                                           >
-                                            Submit Host Join Request
+                                            Submit Host Request
                                           </button>
-                                        </div>
-                                      </div>
-
-                                      {/* Application History */}
-                                      <div className="space-y-1.5">
-                                        <span className="text-[7px] font-mono uppercase font-bold text-gray-500 block">Your Host Applications History ({hostAgencyApplications.length})</span>
-                                        <div className="space-y-1 max-h-24 overflow-y-auto scrollbar-none">
-                                          {hostAgencyApplications.map(app => (
-                                            <div key={app.id} className="p-2 rounded bg-black/40 border border-white/5 text-[7.5px] space-y-1">
-                                              <div className="flex justify-between items-center font-mono">
-                                                <span className="text-white font-bold">{app.agencyName}</span>
-                                                <span className={`px-1 rounded-[3px] text-[6px] font-black ${
-                                                  app.status === "APPROVED" ? "bg-green-500/20 text-green-400 border border-green-500/30" :
-                                                  app.status === "REJECTED" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
-                                                  "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
-                                                }`}>
-                                                  {app.status}
-                                                </span>
-                                              </div>
-                                              <p className="text-gray-400">Stream type: {app.category.toUpperCase()} • {app.timestamp}</p>
-                                            </div>
-                                          ))}
                                         </div>
                                       </div>
                                     </div>
                                   )}
+
+                                  {/* Request History Section */}
+                                  <div className="space-y-1.5 border-t border-white/5 pt-3">
+                                    <span className="text-[7.5px] font-mono uppercase font-bold text-gray-500 block">
+                                      Your Agency Applications ({agencyRequests.filter(r => r.applicantUsername === user.username).length})
+                                    </span>
+                                    {agencyRequests.filter(r => r.applicantUsername === user.username).length === 0 ? (
+                                      <p className="text-[7px] text-gray-500 italic">No submitted applications found.</p>
+                                    ) : (
+                                      <div className="space-y-1.5 max-h-24 overflow-y-auto scrollbar-none">
+                                        {agencyRequests.filter(r => r.applicantUsername === user.username).map(r => (
+                                          <div key={r.id} className="p-2 rounded bg-black/40 border border-white/5 text-[7.5px] space-y-1">
+                                            <div className="flex justify-between items-center font-mono">
+                                              <span className="text-white font-bold uppercase">
+                                                {r.type === "official_agency" ? "Official Reseller" : "Host Agency"}
+                                              </span>
+                                              <span className={`px-1 rounded-[3px] text-[6px] font-black ${
+                                                r.status === "Approved" ? "bg-green-500/20 text-green-400 border border-green-500/30" :
+                                                r.status === "Rejected" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
+                                                "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                                              }`}>
+                                                {r.status || "Pending"}
+                                              </span>
+                                            </div>
+                                            <p className="text-gray-400 truncate">
+                                              {r.type === "official_agency" ? r.applicantName : r.agencyName} • {r.rate}
+                                            </p>
+                                            {r.remarks && <p className="text-pink-400 text-[6.5px]">Remarks: {r.remarks}</p>}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
 
                                 <button
@@ -13906,8 +14019,22 @@ export default function App() {
 
                             {/* Portion 1: Quick Recharge shop - Online mode */}
                             {coinPurchaseMethod === "online" && (
-                              <div className="space-y-2">
-                                <h5 className="text-[10px] uppercase tracking-wider text-gray-400 font-bold font-mono">🛒 Card Payment Online Packages</h5>
+                              <div className="space-y-4 py-2">
+                                <div className="bg-[#1e1e2d] border border-purple-500/30 p-4 rounded-xl text-center space-y-3 relative overflow-hidden">
+                                  <div className="absolute top-2 right-2">
+                                    <span className="text-[6.5px] bg-purple-500 text-white font-black px-1.5 py-0.5 rounded uppercase tracking-widest font-mono">
+                                      COMING SOON
+                                    </span>
+                                  </div>
+                                  <span className="text-2xl block">💳</span>
+                                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">Online Card Payment</h4>
+                                  <p className="text-[9.5px] text-gray-300 leading-relaxed font-semibold max-w-xs mx-auto">
+                                    Online Coin Purchase will be available soon. Please use the "Offline Agencies" method to buy coins securely via WhatsApp.
+                                  </p>
+                                </div>
+
+                                <div className="space-y-2 opacity-40 select-none pointer-events-none hidden">
+                                  <h5 className="text-[10px] uppercase tracking-wider text-gray-400 font-bold font-mono">🛒 Card Payment Online Packages</h5>
                                 <div className="grid grid-cols-2 gap-2">
                                   {onlinePackages.map((pkg) => {
                                     const discountedPrice = pkg.originalPrice * (1 - pkg.discount / 100);
@@ -13947,6 +14074,7 @@ export default function App() {
                                     );
                                   })}
                                 </div>
+                              </div>
 
                                 {/* Custom Coin Amount Input Card */}
                                 <div className="p-3.5 rounded-xl bg-[#12121a] border border-dashed border-purple-500/30 space-y-3 text-left mt-3">
@@ -14036,66 +14164,114 @@ export default function App() {
 
                             {/* Portion 2: Resellers shop - Offline mode */}
                             {coinPurchaseMethod === "offline" && (
-                              <div className="space-y-2">
-                                <h5 className="text-[10px] uppercase tracking-wider text-gray-400 font-bold font-mono">📱 Official WhatsApp Resellers</h5>
-                                <div className="space-y-2.5">
-                                  {offlineAgencies.length === 0 ? (
-                                    <div className="p-4 bg-[#12121a] rounded-xl border border-dashed border-[#303040] text-center text-xs text-gray-500">
-                                      No offline reseller agencies are configured at the moment.
+                              <div className="space-y-4 text-left">
+                                <div className="bg-gradient-to-r from-emerald-950 to-[#121212] p-3.5 rounded-xl border border-emerald-500/20 space-y-3">
+                                  <h5 className="text-[10px] uppercase tracking-wider text-[#25D366] font-bold font-mono">📱 Buy Coins Offline via WhatsApp</h5>
+                                  <p className="text-[9px] text-gray-300 leading-relaxed">
+                                    Choose a package and click the button to contact the Sahr Live Admin team directly on WhatsApp to complete your payment and credit your coins.
+                                  </p>
+
+                                  <div className="space-y-2.5 pt-1">
+                                    <label className="text-[8px] text-gray-400 uppercase tracking-widest font-mono font-bold block">Select Coin Package</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      {[
+                                        { coins: 1000, price: "Rs. 1,500 PKR" },
+                                        { coins: 5500, price: "Rs. 7,500 PKR" },
+                                        { coins: 12000, price: "Rs. 15,000 PKR" },
+                                        { coins: 65000, price: "Rs. 75,000 PKR" }
+                                      ].map((pkg, idx) => (
+                                        <button
+                                          key={idx}
+                                          type="button"
+                                          onClick={() => setCustomCoinAmountInput(String(pkg.coins))}
+                                          className={`p-2 rounded-lg border text-left transition-all ${
+                                            customCoinAmountInput === String(pkg.coins)
+                                              ? "bg-[#25D366]/10 border-[#25D366] text-[#25D366]"
+                                              : "bg-[#1e1e2d] border-white/5 text-gray-300 hover:border-[#303040]"
+                                          }`}
+                                        >
+                                          <p className="text-[10.5px] font-black font-mono">{pkg.coins.toLocaleString()} Coins</p>
+                                          <p className="text-[8px] text-gray-400 font-bold">{pkg.price}</p>
+                                        </button>
+                                      ))}
                                     </div>
-                                  ) : (
-                                    offlineAgencies.map((agency) => (
-                                      <div 
-                                        key={agency.id} 
-                                        className="p-3 rounded-xl bg-[#1e1e2d] border border-green-500/20 hover:border-green-500/50 transition-all flex flex-col justify-between text-left space-y-2 relative overflow-hidden"
-                                      >
-                                        {/* Top Badge */}
-                                        <div className="absolute top-2 right-2 flex items-center space-x-1">
-                                          <span className="w-1 h-1 rounded-full bg-[#25D366] animate-pulse" />
-                                          <span className="text-[6px] bg-green-500/10 text-[#25D366] px-1.5 py-0.5 rounded font-mono font-black uppercase tracking-wider border border-green-500/20">
-                                            Verified Reseller
-                                          </span>
-                                        </div>
 
-                                        <div className="bg-transparent">
-                                          <h6 className="text-[11px] font-black text-white flex items-center">
-                                            <span className="mr-1">👑</span>
-                                            {agency.name}
-                                          </h6>
-                                          <p className="text-[9px] text-gray-400 mt-0.5">
-                                            Contact Person: <strong className="text-white">{agency.contactPerson}</strong> (Registered Partner)
-                                          </p>
-                                          <div className="mt-1.5 grid grid-cols-2 gap-1 bg-[#12121a]/60 p-1.5 rounded border border-white/5">
-                                            <div>
-                                              <span className="block text-[6.5px] text-gray-500 uppercase font-mono">Capacity Range</span>
-                                              <span className="text-[8px] text-yellow-400 font-bold font-mono">{agency.coinsAvailable}</span>
-                                            </div>
-                                            <div>
-                                              <span className="block text-[6.5px] text-gray-500 uppercase font-mono">Rates Description</span>
-                                              <span className="text-[8px] text-[#25D366] font-bold truncate block">{agency.rateDescription}</span>
-                                            </div>
-                                          </div>
-                                        </div>
+                                    <div className="space-y-1.5">
+                                      <label className="text-[8px] text-gray-400 uppercase tracking-widest font-mono block">Or Enter Custom Coins Amount</label>
+                                      <input
+                                        type="number"
+                                        placeholder="Enter coins amount (e.g. 5000)"
+                                        value={customCoinAmountInput}
+                                        onChange={(e) => setCustomCoinAmountInput(e.target.value)}
+                                        className="w-full bg-[#12121a] border border-[#303040] text-xs text-white rounded px-2.5 py-1.5 focus:outline-none focus:border-[#25D366]"
+                                      />
+                                    </div>
 
-                                        <div className="flex justify-between items-center bg-transparent pt-1">
-                                          <div className="bg-transparent">
-                                            <span className="block text-[6px] text-gray-500 uppercase font-mono">WhatsApp System</span>
-                                            <span className="text-[9px] text-green-400 font-mono font-bold">{agency.whatsapp}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const coinsNum = parseInt(customCoinAmountInput) || 1000;
+                                        if (coinsNum <= 0) {
+                                          alert("Please select or enter a valid amount of coins.");
+                                          return;
+                                        }
+
+                                        // Submit Pending Purchase Request to Firestore
+                                        fetch("/api/v1/purchase-requests", {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({
+                                            username: user.username,
+                                            coins: coinsNum,
+                                            amountPKR: coinsNum * 1.5,
+                                            status: "Pending"
+                                          })
+                                        })
+                                        .then(res => res.json())
+                                        .then(data => {
+                                          setReportSuccessToast(`Offline purchase request for ${coinsNum.toLocaleString()} Coins submitted successfully! Sahr Live Team will verify and credit your coins shortly.`);
+                                          setTimeout(() => setReportSuccessToast(null), 5000);
+                                        })
+                                        .catch(err => console.error("Error creating purchase request:", err));
+
+                                        // Open WhatsApp prefilled message
+                                        const whatsappMsg = `Hello Sehr Live Official Team, I would like to purchase ${coinsNum.toLocaleString()} coins. My User ID is: ${user.username}`;
+                                        const waUrl = `https://wa.me/923015551234?text=${encodeURIComponent(whatsappMsg)}`;
+                                        window.open(waUrl, "_blank");
+                                      }}
+                                      className="w-full py-2.5 bg-[#25D366] hover:bg-[#128C7E] text-black font-black uppercase text-[10px] tracking-wider rounded-xl transition-all text-center flex items-center justify-center space-x-2 shadow-lg shadow-green-500/10 cursor-pointer"
+                                    >
+                                      <span>💬 Buy Coins Offline via WhatsApp</span>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Approved Verified Local Resellers alternative list */}
+                                {offlineAgencies.length > 0 && (
+                                  <div className="space-y-2">
+                                    <h6 className="text-[9px] uppercase tracking-wider text-gray-400 font-bold font-mono">📱 Approved Reseller Agencies</h6>
+                                    <div className="space-y-2">
+                                      {offlineAgencies.map((agency) => (
+                                        <div key={agency.id} className="p-3 rounded-xl bg-[#1e1e2d] border border-white/5 text-left relative space-y-1.5">
+                                          <div className="absolute top-2 right-2 flex items-center space-x-1">
+                                            <span className="w-1 h-1 rounded-full bg-[#25D366]" />
+                                            <span className="text-[6px] bg-green-500/10 text-[#25D366] px-1.5 py-0.5 rounded font-mono font-black uppercase">Verified Seller</span>
                                           </div>
-                                          <a 
-                                            href={`https://wa.me/${agency.whatsapp.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Assalam-o-Alaikum! Sahr Live User *${user.username}* (ID: *${user.id}*) wants to purchase coins from *${agency.name}*. Please share PKR conversion rates.`)}`}
+                                          <h6 className="text-[11px] font-black text-white">{agency.name}</h6>
+                                          <p className="text-[8.5px] text-gray-400">Rate: <strong className="text-yellow-400 font-mono font-bold">{agency.rateDescription}</strong></p>
+                                          <a
+                                            href={`https://wa.me/${agency.whatsapp.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hello ${agency.name}, Sahr Live User *${user.username}* wants to purchase coins. Please share your local PKR rate.`)}`}
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="bg-[#25D366] hover:bg-[#128C7E] text-black hover:text-white text-[9px] font-black px-2.5 py-1.5 rounded-lg flex items-center transition-all cursor-pointer shadow-lg shadow-green-500/10 font-sans"
+                                            className="w-full bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/30 text-[#25D366] py-1 rounded text-center block font-black uppercase text-[8.5px] transition-all"
                                           >
-                                            <span className="mr-1 text-[11px]">💬</span>
-                                            Chat & Buy
+                                            💬 Contact Local Seller
                                           </a>
                                         </div>
-                                      </div>
-                                    ))
-                                  )}
-                                </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
 

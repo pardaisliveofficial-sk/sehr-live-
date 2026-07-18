@@ -1,35 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Global Safety Net: default deny
+    // Global Safety Net: allow read and write for server and clients
     match /{document=**} {
-      allow read, write: if false;
-    }
-    
-    // Global Helper Primitives
-    function isSignedIn() {
-      return request.auth != null;
-    }
-    
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-    
-    // Reels Collection Rules
-    match /reels/{reelId} {
-      // Anyone can read/list reels for high-conversion viewing
-      allow read, list: if true;
-      
-      // Only signed-in users can upload reels
-      allow create: if isSignedIn() && 
-                    request.resource.data.creator is string && 
-                    request.resource.data.videoUrl is string &&
-                    request.resource.data.videoUrl.size() < 2048;
-                    
-      // Only the author or system admin can edit or delete a reel
-      allow update, delete: if isSignedIn() && 
-                            (resource.data.creator == request.auth.token.name || 
-                             request.auth.token.email == "pardaisliveofficial@gmail.com");
+      allow read, write: if true;
     }
   }
 }

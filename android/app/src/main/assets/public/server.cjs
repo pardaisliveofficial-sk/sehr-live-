@@ -38,12 +38,26 @@ var firebaseConfig = {
   projectId: "sehr-live-production",
   appId: "1:496371999211:web:3caed46eb0e946c1c9b9ae",
   apiKey: "AIzaSyDUcaaRaU2ZJNUp90CMdl9gER_0oe1Db_E",
-  authDomain: "sehr-live-production.firebaseapp.com"
+  authDomain: "sehrlive.soulverseapps.com"
 };
+var FIRESTORE_DB_ID = "ai-studio-sehrlive-472fb6a7-1901-43d4-8fd3-710376199072";
+try {
+  const configPath = import_path.default.join(process.cwd(), "firebase-applet-config.json");
+  if (import_fs.default.existsSync(configPath)) {
+    const configData = JSON.parse(import_fs.default.readFileSync(configPath, "utf-8"));
+    if (configData.projectId) firebaseConfig.projectId = configData.projectId;
+    if (configData.appId) firebaseConfig.appId = configData.appId;
+    if (configData.apiKey) firebaseConfig.apiKey = configData.apiKey;
+    if (configData.authDomain) firebaseConfig.authDomain = configData.authDomain;
+    if (configData.firestoreDatabaseId) FIRESTORE_DB_ID = configData.firestoreDatabaseId;
+    console.log("[SEHR-LIVE FIREBASE] Dynamically loaded configuration from firebase-applet-config.json.");
+  }
+} catch (err) {
+  console.error("[SEHR-LIVE FIREBASE] Failed to load config dynamically:", err);
+}
 var apps = (0, import_app.getApps)();
 var app = apps.length === 0 ? (0, import_app.initializeApp)(firebaseConfig) : (0, import_app.getApp)();
-console.log("[SEHR-LIVE FIREBASE] Firebase Client SDK initialized successfully for server-side persistence.");
-var FIRESTORE_DB_ID = "ai-studio-sehrlive-472fb6a7-1901-43d4-8fd3-710376199072";
+console.log("[SEHR-LIVE FIREBASE] Firebase Client SDK initialized successfully with projectId:", firebaseConfig.projectId);
 var db = (0, import_firestore.getFirestore)(app, FIRESTORE_DB_ID);
 var COLLECTIONS = [
   "users",
@@ -57,7 +71,17 @@ var COLLECTIONS = [
   "reports",
   "kycRequests",
   "events",
-  "adminUsersList"
+  "adminUsersList",
+  "reels",
+  "stories",
+  "chats",
+  "messages",
+  "agencyRequests",
+  "purchaseRequests",
+  "coinTransactions",
+  "approvalStatus",
+  "adminActions",
+  "coinSellers"
 ];
 var dbDataCache = {
   user: {
@@ -77,7 +101,7 @@ var dbDataCache = {
     wealthLevel: 32,
     xp: 750,
     familyId: "fam-kings",
-    agencyId: "agency-alpha",
+    agencyId: "",
     isVerified: false,
     isBanned: false,
     twoFactorEnabled: true,
@@ -104,8 +128,18 @@ var dbDataCache = {
   events: [],
   configurations: {},
   adminUsersList: [],
+  reels: [],
+  stories: [],
+  chats: [],
+  messages: [],
   sessions: {},
-  otps: {}
+  otps: {},
+  agencyRequests: [],
+  purchaseRequests: [],
+  coinTransactions: [],
+  approvalStatus: [],
+  adminActions: [],
+  coinSellers: []
 };
 async function checkAndSeedDatabase() {
   try {
@@ -137,8 +171,10 @@ async function checkAndSeedDatabase() {
       { name: "gifts", key: "id", data: localDb.gifts },
       { name: "hosts", key: "id", data: localDb.hosts },
       { name: "families", key: "id", data: localDb.families },
-      { name: "agencies", key: "id", data: localDb.agencies },
-      { name: "transactions", key: "id", data: localDb.transactions },
+      { name: "agencies", key: "id", data: [] },
+      // No demo agencies!
+      { name: "transactions", key: "id", data: [] },
+      // No demo transactions!
       { name: "notifications", key: "id", data: localDb.notifications },
       { name: "reports", key: "id", data: localDb.reports },
       { name: "kycRequests", key: "id", data: localDb.kycRequests },
@@ -299,6 +335,144 @@ function authenticateUser(req, res, next) {
   }
   return res.status(401).json({ error: "Session expired or invalid token. Please log in again." });
 }
+app2.post("/api/v1/auth/google-login", (req, res) => {
+  const { email, displayName, photoURL, uid } = req.body;
+  if (!email || typeof email !== "string") {
+    return res.status(400).json({ error: "Email is required for Google Sign-In" });
+  }
+  const username = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_") || `google_user_${uid?.substring(0, 5)}`;
+  let user = dbData.users.find((u) => u.email === email || u.username === username);
+  if (!user) {
+    const suffix = Math.floor(1e3 + Math.random() * 9e3);
+    const uniqueId = `sehr_${suffix}`;
+    user = {
+      username,
+      uniqueId,
+      email,
+      avatar: photoURL || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+      coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+      bio: "New Sehr Live member! Verified via Google. \u{1F1F5}\u{1F1F0}",
+      gender: "Male",
+      country: "Pakistan",
+      language: "Urdu / Hinglish",
+      coins: 25e3,
+      // starting gift coins for Google verified sign-ups
+      diamonds: 0,
+      vipLevel: 0,
+      userLevel: 1,
+      hostLevel: 1,
+      wealthLevel: 1,
+      xp: 0,
+      familyId: "",
+      agencyId: "",
+      isVerified: true,
+      // Google accounts are pre-verified
+      isBanned: false,
+      twoFactorEnabled: false,
+      fullName: displayName || `User_${username}`,
+      dob: "",
+      phoneNumber: "",
+      kycStatus: "approved",
+      // pre-approved KYC
+      followersCount: 0,
+      followingCount: 0,
+      totalLikesCount: 0,
+      selectedFrameId: "",
+      vipSuspended: false
+    };
+    dbData.users.push(user);
+    const adminUser = {
+      username: user.username,
+      fullName: user.fullName,
+      isVerified: user.isVerified,
+      kycStatus: user.kycStatus,
+      isBanned: user.isBanned,
+      coins: user.coins,
+      userLevel: user.userLevel,
+      vipLevel: user.vipLevel
+    };
+    dbData.adminUsersList.push(adminUser);
+    syncDocument("users", user.username, user);
+    syncDocument("adminUsersList", user.username, adminUser);
+  } else {
+    if (photoURL && user.avatar === "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80") {
+      user.avatar = photoURL;
+      syncDocument("users", user.username, user);
+    }
+  }
+  const token = `sehr_session_${user.username}_${Math.random().toString(36).substring(2, 10)}`;
+  const sessionData = {
+    username: user.username,
+    loginTime: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  dbData.sessions[token] = sessionData;
+  dbData.user = user;
+  saveDatabase();
+  syncDocument("sessions", token, sessionData);
+  writeMetadata("user_profile", user);
+  res.json({
+    success: true,
+    message: "Authenticated via Google successfully.",
+    token,
+    user
+  });
+});
+app2.post("/api/v1/auth/guest-login", (req, res) => {
+  const suffix = Math.floor(1e4 + Math.random() * 9e4);
+  const username = `guest_${suffix}`;
+  const uniqueId = `sehr_guest_${suffix}`;
+  const user = {
+    username,
+    uniqueId,
+    email: "",
+    avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+    coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+    bio: "Guest Explorer in Sehr Live! \u{1F1F5}\u{1F1F0}",
+    gender: "Male",
+    country: "Pakistan",
+    language: "Urdu / Hinglish",
+    coins: 5e3,
+    // starting gift coins for guest verified sign-ups
+    diamonds: 0,
+    vipLevel: 0,
+    userLevel: 1,
+    hostLevel: 1,
+    wealthLevel: 1,
+    xp: 0,
+    familyId: "",
+    agencyId: "",
+    isVerified: false,
+    isBanned: false,
+    twoFactorEnabled: false,
+    fullName: `Guest_${suffix}`,
+    dob: "",
+    phoneNumber: "",
+    kycStatus: "none",
+    followersCount: 0,
+    followingCount: 0,
+    totalLikesCount: 0,
+    selectedFrameId: "",
+    vipSuspended: false
+  };
+  dbData.users.push(user);
+  syncDocument("users", user.username, user);
+  const token = `sehr_session_guest_${suffix}`;
+  const sessionData = {
+    username: user.username,
+    loginTime: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  dbData.sessions[token] = sessionData;
+  dbData.user = user;
+  saveDatabase();
+  syncDocument("sessions", token, sessionData);
+  writeMetadata("user_profile", user);
+  res.json({
+    success: true,
+    message: "Authenticated as Guest successfully.",
+    token,
+    user
+  });
+});
 app2.post("/api/v1/auth/send-otp", (req, res) => {
   const { phoneNumber } = req.body;
   if (!phoneNumber || typeof phoneNumber !== "string" || phoneNumber.length < 7) {
@@ -447,12 +621,21 @@ app2.post("/api/v1/user", authenticateUser, (req, res) => {
     if (isNaN(coins) || coins < 0) {
       return res.status(400).json({ error: "Invalid coin balance value." });
     }
+    if (coins > (user.coins || 0)) {
+      return res.status(403).json({ error: "Security Exception: Users are unauthorized to increase their coin balance directly." });
+    }
   }
   if (req.body.diamonds !== void 0) {
     const diamonds = Number(req.body.diamonds);
     if (isNaN(diamonds) || diamonds < 0) {
       return res.status(400).json({ error: "Invalid diamond balance value." });
     }
+    if (diamonds > (user.diamonds || 0)) {
+      return res.status(403).json({ error: "Security Exception: Direct diamond balance increase is forbidden." });
+    }
+  }
+  if (req.body.agencyId !== void 0 && req.body.agencyId !== user.agencyId) {
+    return res.status(403).json({ error: "Security Exception: Direct agency status modification is forbidden." });
   }
   const updatedUser = { ...user, ...req.body };
   const idxInUsers = dbData.users.findIndex((u) => u.username === user.username);
@@ -622,6 +805,201 @@ app2.delete("/api/v1/agencies/:id", (req, res) => {
   deleteDocument("agencies", id);
   res.json({ message: "Agency deleted successfully" });
 });
+app2.get("/api/v1/coin-sellers", (req, res) => {
+  res.json(dbData.coinSellers || []);
+});
+app2.post("/api/v1/coin-sellers", (req, res) => {
+  const newSeller = {
+    id: `seller-${Date.now()}`,
+    status: "Verified Seller",
+    ...req.body
+  };
+  if (!dbData.coinSellers) dbData.coinSellers = [];
+  dbData.coinSellers.push(newSeller);
+  saveDatabase();
+  syncDocument("coinSellers", newSeller.id, newSeller);
+  res.status(201).json(newSeller);
+});
+app2.delete("/api/v1/coin-sellers/:id", (req, res) => {
+  const { id } = req.params;
+  if (!dbData.coinSellers) dbData.coinSellers = [];
+  dbData.coinSellers = dbData.coinSellers.filter((s) => s.id !== id);
+  saveDatabase();
+  deleteDocument("coinSellers", id);
+  res.json({ message: "Reseller deleted successfully" });
+});
+app2.get("/api/v1/agency-requests", (req, res) => {
+  res.json(dbData.agencyRequests || []);
+});
+app2.post("/api/v1/agency-requests", (req, res) => {
+  const newReq = {
+    id: `ARQ-${Date.now()}`,
+    status: "Pending",
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    ...req.body
+  };
+  if (!dbData.agencyRequests) dbData.agencyRequests = [];
+  dbData.agencyRequests.unshift(newReq);
+  const adminNotification = {
+    id: Date.now(),
+    title: "New Agency Request Submitted",
+    message: `${newReq.applicantName} requested to register ${newReq.type === "official_agency" ? "Official Reseller" : "Host Agency"}.`,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    unread: true,
+    category: "system"
+  };
+  if (!dbData.notifications) dbData.notifications = [];
+  dbData.notifications.unshift(adminNotification);
+  saveDatabase();
+  syncDocument("agencyRequests", newReq.id, newReq);
+  syncDocument("notifications", String(adminNotification.id), adminNotification);
+  res.status(201).json(newReq);
+});
+app2.put("/api/v1/agency-requests/:id", (req, res) => {
+  const { id } = req.params;
+  const { status, remarks } = req.body;
+  if (!dbData.agencyRequests) dbData.agencyRequests = [];
+  const index = dbData.agencyRequests.findIndex((r) => r.id === id);
+  if (index !== -1) {
+    const r = dbData.agencyRequests[index];
+    r.status = status;
+    if (remarks) r.remarks = remarks;
+    if (status === "Approved") {
+      const agencyId = `agency-${Math.floor(1e3 + Math.random() * 9e3)}`;
+      if (r.type === "host_agency") {
+        const newAgency = {
+          id: agencyId,
+          name: r.agencyName || r.applicantName,
+          ownerEmail: r.ownerEmail || `${r.applicantUsername || "applicant"}@sehr.live`,
+          salaryRate: r.rate || "40% Commission + $200 Base Bonus",
+          registeredHosts: 0,
+          monthlyCommission: 0,
+          status: "Active"
+        };
+        dbData.agencies.push(newAgency);
+        syncDocument("agencies", agencyId, newAgency);
+        if (r.applicantUsername) {
+          const userIndex = dbData.users.findIndex((u) => u.username === r.applicantUsername);
+          if (userIndex !== -1) {
+            dbData.users[userIndex].agencyId = agencyId;
+            syncDocument("users", r.applicantUsername, dbData.users[userIndex]);
+          }
+          if (r.applicantUsername === dbData.user.username) {
+            dbData.user.agencyId = agencyId;
+            writeMetadata("user_profile", dbData.user);
+          }
+        }
+      } else if (r.type === "official_agency") {
+        const reseller = {
+          id: agencyId,
+          name: r.applicantName,
+          whatsapp: r.contact,
+          city: r.city || "Pakistan",
+          rate: r.rate || "1000 Coins = 1500 PKR",
+          status: "Verified Seller",
+          description: r.description || "Official Coin Reseller licensed by Sahr Live Admin."
+        };
+        if (!dbData.coinSellers) dbData.coinSellers = [];
+        dbData.coinSellers.push(reseller);
+        syncDocument("coinSellers", agencyId, reseller);
+      }
+    }
+    saveDatabase();
+    syncDocument("agencyRequests", id, r);
+    res.json(r);
+  } else {
+    res.status(404).json({ error: "Agency request not found" });
+  }
+});
+app2.delete("/api/v1/agency-requests/:id", (req, res) => {
+  const { id } = req.params;
+  if (!dbData.agencyRequests) dbData.agencyRequests = [];
+  dbData.agencyRequests = dbData.agencyRequests.filter((r) => r.id !== id);
+  saveDatabase();
+  deleteDocument("agencyRequests", id);
+  res.json({ message: "Agency request deleted" });
+});
+app2.get("/api/v1/purchase-requests", (req, res) => {
+  res.json(dbData.purchaseRequests || []);
+});
+app2.post("/api/v1/purchase-requests", (req, res) => {
+  const newReq = {
+    id: `PRQ-${Date.now()}`,
+    status: "Pending",
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    ...req.body
+  };
+  if (!dbData.purchaseRequests) dbData.purchaseRequests = [];
+  dbData.purchaseRequests.unshift(newReq);
+  const adminNotification = {
+    id: Date.now(),
+    title: "New Coin Purchase Request",
+    message: `${newReq.username} requested to purchase ${newReq.coins} Coins offline.`,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    unread: true,
+    category: "system"
+  };
+  if (!dbData.notifications) dbData.notifications = [];
+  dbData.notifications.unshift(adminNotification);
+  saveDatabase();
+  syncDocument("purchaseRequests", newReq.id, newReq);
+  syncDocument("notifications", String(adminNotification.id), adminNotification);
+  res.status(201).json(newReq);
+});
+app2.put("/api/v1/purchase-requests/:id", (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  if (!dbData.purchaseRequests) dbData.purchaseRequests = [];
+  const index = dbData.purchaseRequests.findIndex((r) => r.id === id);
+  if (index !== -1) {
+    const r = dbData.purchaseRequests[index];
+    r.status = status;
+    if (status === "Approved") {
+      const username = r.username;
+      const coinsAmount = Number(r.coins || 0);
+      const userIndex = dbData.users.findIndex((u) => u.username === username);
+      if (userIndex !== -1) {
+        dbData.users[userIndex].coins = (dbData.users[userIndex].coins || 0) + coinsAmount;
+        syncDocument("users", username, dbData.users[userIndex]);
+      }
+      if (username === dbData.user.username) {
+        dbData.user.coins = (dbData.user.coins || 0) + coinsAmount;
+        writeMetadata("user_profile", dbData.user);
+      }
+      const adminUserIndex = dbData.adminUsersList.findIndex((u) => u.username === username);
+      if (adminUserIndex !== -1) {
+        dbData.adminUsersList[adminUserIndex].coins = (dbData.adminUsersList[adminUserIndex].coins || 0) + coinsAmount;
+        syncDocument("adminUsersList", username, dbData.adminUsersList[adminUserIndex]);
+      }
+      const newTxn = {
+        id: `TXN-${Math.floor(100 + Math.random() * 900)}`,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        status: "Completed",
+        type: "recharge",
+        details: `Purchased ${coinsAmount} Coins offline (Approved by Admin)`,
+        amount: coinsAmount,
+        currency: "coins",
+        username
+      };
+      if (!dbData.transactions) dbData.transactions = [];
+      dbData.transactions.unshift(newTxn);
+      syncDocument("transactions", newTxn.id, newTxn);
+    }
+    saveDatabase();
+    syncDocument("purchaseRequests", id, r);
+    res.json(r);
+  } else {
+    res.status(404).json({ error: "Purchase request not found" });
+  }
+});
+app2.delete("/api/v1/purchase-requests/:id", (req, res) => {
+  const { id } = req.params;
+  if (!dbData.purchaseRequests) dbData.purchaseRequests = [];
+  dbData.purchaseRequests = dbData.purchaseRequests.filter((r) => r.id !== id);
+  saveDatabase();
+  deleteDocument("purchaseRequests", id);
+  res.json({ message: "Purchase request deleted" });
+});
 app2.get("/api/v1/transactions", (req, res) => {
   res.json(dbData.transactions);
 });
@@ -632,15 +1010,90 @@ app2.post("/api/v1/transactions", (req, res) => {
   syncDocument("transactions", newTxn.id, newTxn);
   res.status(201).json(newTxn);
 });
-app2.get("/api/v1/notifications", (req, res) => {
-  res.json(dbData.notifications);
+async function cleanupExpiredNotifications() {
+  try {
+    const now = Date.now();
+    const expiryLimit = 24 * 60 * 60 * 1e3;
+    const activeNotifs = [];
+    const expiredNotifs = [];
+    const notifsList = dbData.notifications || [];
+    for (const item of notifsList) {
+      const ts = item.timestamp ? new Date(item.timestamp).getTime() : item.id && typeof item.id === "number" ? item.id : now;
+      if (now - ts > expiryLimit) {
+        expiredNotifs.push(item);
+      } else {
+        activeNotifs.push(item);
+      }
+    }
+    if (expiredNotifs.length > 0) {
+      console.log(`[SEHR-LIVE NOTIFICATION CLEANER] Automatically cleaning up ${expiredNotifs.length} expired notifications.`);
+      dbData.notifications = activeNotifs;
+      saveDatabase();
+      for (const expired of expiredNotifs) {
+        if (expired.id) {
+          await deleteDocument("notifications", String(expired.id));
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[SEHR-LIVE NOTIFICATION CLEANER] Error during clean-up:", err);
+  }
+}
+setInterval(() => {
+  cleanupExpiredNotifications();
+}, 10 * 60 * 1e3);
+app2.get("/api/v1/notifications", async (req, res) => {
+  await cleanupExpiredNotifications();
+  res.json(dbData.notifications || []);
 });
-app2.post("/api/v1/notifications", (req, res) => {
-  const newNotif = { id: Date.now(), isNew: true, time: "Just Now", ...req.body };
+app2.post("/api/v1/notifications", async (req, res) => {
+  const notifId = Date.now();
+  const newNotif = {
+    id: notifId,
+    isNew: true,
+    time: "Just Now",
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    ...req.body
+  };
+  if (!dbData.notifications) {
+    dbData.notifications = [];
+  }
   dbData.notifications.unshift(newNotif);
   saveDatabase();
-  syncDocument("notifications", String(newNotif.id), newNotif);
+  await syncDocument("notifications", String(newNotif.id), newNotif);
   res.status(201).json(newNotif);
+});
+app2.post("/api/v1/notifications/read-all", async (req, res) => {
+  try {
+    const notifs = dbData.notifications || [];
+    for (const item of notifs) {
+      if (item.isNew) {
+        item.isNew = false;
+        await syncDocument("notifications", String(item.id), item);
+      }
+    }
+    saveDatabase();
+    res.json({ success: true, message: "All notifications marked as read" });
+  } catch (error) {
+    console.error("Error marking all as read:", error);
+    res.status(500).json({ error: "Failed to mark all as read" });
+  }
+});
+app2.post("/api/v1/notifications/clear", async (req, res) => {
+  try {
+    const notifs = [...dbData.notifications || []];
+    dbData.notifications = [];
+    saveDatabase();
+    for (const item of notifs) {
+      if (item.id) {
+        await deleteDocument("notifications", String(item.id));
+      }
+    }
+    res.json({ success: true, message: "All notifications cleared" });
+  } catch (error) {
+    console.error("Error clearing notifications:", error);
+    res.status(500).json({ error: "Failed to clear notifications" });
+  }
 });
 app2.get("/api/v1/reports", (req, res) => {
   res.json(dbData.reports);
@@ -651,6 +1104,119 @@ app2.post("/api/v1/reports", (req, res) => {
   saveDatabase();
   syncDocument("reports", newReport.id, newReport);
   res.status(201).json(newReport);
+});
+app2.get("/api/v1/reels", (req, res) => {
+  res.json(dbData.reels || []);
+});
+app2.post("/api/v1/reels", (req, res) => {
+  const newReel = {
+    id: `r-${Date.now()}`,
+    likes: 0,
+    commentsCount: 0,
+    liked: false,
+    saves: 0,
+    saved: false,
+    shares: 0,
+    downloads: 0,
+    comments: [],
+    ...req.body
+  };
+  if (!dbData.reels) dbData.reels = [];
+  dbData.reels.unshift(newReel);
+  saveDatabase();
+  syncDocument("reels", newReel.id, newReel);
+  res.status(201).json(newReel);
+});
+app2.put("/api/v1/reels/:id", (req, res) => {
+  const { id } = req.params;
+  const index = dbData.reels.findIndex((r) => r.id === id);
+  if (index !== -1) {
+    dbData.reels[index] = { ...dbData.reels[index], ...req.body };
+    saveDatabase();
+    syncDocument("reels", id, dbData.reels[index]);
+    res.json(dbData.reels[index]);
+  } else {
+    res.status(404).json({ error: "Reel not found" });
+  }
+});
+app2.get("/api/v1/stories", (req, res) => {
+  res.json(dbData.stories || []);
+});
+app2.post("/api/v1/stories", (req, res) => {
+  const newStory = {
+    id: `story-${Date.now()}`,
+    likes: 0,
+    liked: false,
+    replies: [],
+    ...req.body
+  };
+  if (!dbData.stories) dbData.stories = [];
+  dbData.stories.unshift(newStory);
+  saveDatabase();
+  syncDocument("stories", newStory.id, newStory);
+  res.status(201).json(newStory);
+});
+app2.put("/api/v1/stories/:id", (req, res) => {
+  const { id } = req.params;
+  const index = dbData.stories.findIndex((s) => s.id === id);
+  if (index !== -1) {
+    dbData.stories[index] = { ...dbData.stories[index], ...req.body };
+    saveDatabase();
+    syncDocument("stories", id, dbData.stories[index]);
+    res.json(dbData.stories[index]);
+  } else {
+    res.status(404).json({ error: "Story not found" });
+  }
+});
+app2.get("/api/v1/chats", (req, res) => {
+  res.json(dbData.chats || []);
+});
+app2.post("/api/v1/chats", (req, res) => {
+  const newMsg = {
+    id: `msg-${Date.now()}`,
+    timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    ...req.body
+  };
+  if (!dbData.chats) dbData.chats = [];
+  dbData.chats.push(newMsg);
+  saveDatabase();
+  syncDocument("chats", newMsg.id, newMsg);
+  res.status(201).json(newMsg);
+});
+app2.post("/api/v1/reels/sync", (req, res) => {
+  dbData.reels = req.body;
+  saveDatabase();
+  if (Array.isArray(req.body)) {
+    req.body.forEach((r) => {
+      if (r.id) syncDocument("reels", r.id, r);
+    });
+  }
+  res.json({ success: true });
+});
+app2.post("/api/v1/stories/sync", (req, res) => {
+  dbData.stories = req.body;
+  saveDatabase();
+  if (Array.isArray(req.body)) {
+    req.body.forEach((s) => {
+      if (s.id) syncDocument("stories", s.id, s);
+    });
+  }
+  res.json({ success: true });
+});
+app2.post("/api/v1/chats/sync", (req, res) => {
+  dbData.chats = req.body;
+  saveDatabase();
+  if (Array.isArray(req.body)) {
+    req.body.forEach((c) => {
+      if (c.id) syncDocument("chats", c.id, c);
+    });
+  }
+  res.json({ success: true });
+});
+app2.delete("/api/v1/chats", (req, res) => {
+  dbData.chats = [];
+  saveDatabase();
+  res.json({ success: true, message: "Chats cleared" });
 });
 app2.put("/api/v1/reports/:id", (req, res) => {
   const { id } = req.params;

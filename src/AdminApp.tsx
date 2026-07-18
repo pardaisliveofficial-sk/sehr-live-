@@ -106,6 +106,42 @@ export default function AdminApp() {
     salaryRate: ""
   });
 
+  const [agencySubTab, setAgencySubTab] = useState<"registry" | "requests">("registry");
+  const [remarksInputs, setRemarksInputs] = useState<{[key: string]: string}>({});
+
+  const handleApproveAgencyRequest = async (id: string) => {
+    const remarks = remarksInputs[id] || "";
+    const success = await syncWithServer(`/api/v1/agency-requests/${id}`, "PUT", { status: "Approved", remarks });
+    if (success) {
+      triggerToast("Agency request approved successfully! Official credentials generated.");
+    }
+  };
+
+  const handleRejectAgencyRequest = async (id: string) => {
+    const remarks = remarksInputs[id] || "";
+    const success = await syncWithServer(`/api/v1/agency-requests/${id}`, "PUT", { status: "Rejected", remarks });
+    if (success) {
+      triggerToast("Agency request rejected.");
+    }
+  };
+
+  const handleSuspendAgencyRequest = async (id: string) => {
+    const remarks = remarksInputs[id] || "";
+    const success = await syncWithServer(`/api/v1/agency-requests/${id}`, "PUT", { status: "Suspended", remarks });
+    if (success) {
+      triggerToast("Agency request suspended.");
+    }
+  };
+
+  const handleDeleteAgencyRequest = async (id: string) => {
+    if (window.confirm("Are you sure you want to permanently delete this agency request record?")) {
+      const success = await syncWithServer(`/api/v1/agency-requests/${id}`, "DELETE", {});
+      if (success) {
+        triggerToast("Agency request record deleted.");
+      }
+    }
+  };
+
   const [editingFamily, setEditingFamily] = useState<any>(null);
   const [newFamily, setNewFamily] = useState<any>({
     name: "",
@@ -1043,151 +1079,333 @@ export default function AdminApp() {
           {/* ========================================================================= */}
           {activeTab === "agencies" && (
             <div className="space-y-6 text-left">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Form to Create/Update Agency */}
-                <div className="lg:col-span-4 bg-[#0f0f18] border border-white/5 p-5 rounded-2xl space-y-4">
-                  <h4 className="text-sm font-black text-white uppercase tracking-wider font-mono border-b border-white/5 pb-2">
-                    {editingAgency ? "✏️ Modify Agency Specs" : "➕ Register New Talent Agency"}
-                  </h4>
+              {/* Subtabs switcher */}
+              <div className="flex space-x-2 border-b border-white/5 pb-3 bg-transparent">
+                <button
+                  type="button"
+                  onClick={() => setAgencySubTab("registry")}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                    agencySubTab === "registry"
+                      ? "bg-purple-600 text-white shadow-lg"
+                      : "bg-[#12121a] text-gray-400 hover:text-white"
+                  }`}
+                >
+                  🏢 Approved Agencies Registry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAgencySubTab("requests")}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer relative ${
+                    agencySubTab === "requests"
+                      ? "bg-purple-600 text-white shadow-lg"
+                      : "bg-[#12121a] text-gray-400 hover:text-white"
+                  }`}
+                >
+                  📨 Pending Portal Requests
+                  {(db?.agencyRequests?.filter((r: any) => r.status === "Pending" || !r.status).length > 0) && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white font-mono text-[8px] font-black w-4 border border-black h-4 rounded-full flex items-center justify-center animate-pulse">
+                      {db.agencyRequests.filter((r: any) => r.status === "Pending" || !r.status).length}
+                    </span>
+                  )}
+                </button>
+              </div>
 
-                  <form onSubmit={editingAgency ? handleSaveAgencyEdit : handleAddAgency} className="space-y-3.5">
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase font-mono font-bold text-gray-400">Agency Name</label>
-                      <input
-                        type="text"
-                        required
-                        value={editingAgency ? editingAgency.name : newAgency.name}
-                        onChange={(e) => {
-                          if (editingAgency) setEditingAgency({ ...editingAgency, name: e.target.value });
-                          else setNewAgency({ ...newAgency, name: e.target.value });
-                        }}
-                        placeholder="e.g. Falcon Entertainment"
-                        className="w-full bg-black/40 border border-white/10 rounded-xl p-2.5 text-xs text-white focus:outline-none"
-                      />
-                    </div>
+              {agencySubTab === "registry" ? (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Form to Create/Update Agency */}
+                  <div className="lg:col-span-4 bg-[#0f0f18] border border-white/5 p-5 rounded-2xl space-y-4">
+                    <h4 className="text-sm font-black text-white uppercase tracking-wider font-mono border-b border-white/5 pb-2">
+                      {editingAgency ? "✏️ Modify Agency Specs" : "➕ Register New Talent Agency"}
+                    </h4>
 
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase font-mono font-bold text-gray-400">Owner Email Account</label>
-                      <input
-                        type="email"
-                        required
-                        value={editingAgency ? editingAgency.ownerEmail : newAgency.ownerEmail}
-                        onChange={(e) => {
-                          if (editingAgency) setEditingAgency({ ...editingAgency, ownerEmail: e.target.value });
-                          else setNewAgency({ ...newAgency, ownerEmail: e.target.value });
-                        }}
-                        placeholder="e.g. owner@falcon.live"
-                        className="w-full bg-black/40 border border-white/10 rounded-xl p-2.5 text-xs text-white focus:outline-none font-mono"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase font-mono font-bold text-gray-400">Salary Policy & Commission Structure</label>
-                      <input
-                        type="text"
-                        required
-                        value={editingAgency ? editingAgency.salaryRate : newAgency.salaryRate}
-                        onChange={(e) => {
-                          if (editingAgency) setEditingAgency({ ...editingAgency, salaryRate: e.target.value });
-                          else setNewAgency({ ...newAgency, salaryRate: e.target.value });
-                        }}
-                        placeholder="e.g. 40% Commission + $300 Base Bonus"
-                        className="w-full bg-black/40 border border-white/10 rounded-xl p-2.5 text-xs text-white focus:outline-none"
-                      />
-                    </div>
-
-                    {editingAgency && (
-                      <div className="grid grid-cols-2 gap-3 bg-transparent">
-                        <div className="space-y-1 bg-transparent font-mono">
-                          <label className="text-[9px] uppercase font-bold text-gray-400">Active Hosts</label>
-                          <input
-                            type="number"
-                            value={editingAgency.registeredHosts}
-                            onChange={(e) => setEditingAgency({ ...editingAgency, registeredHosts: Number(e.target.value) })}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl p-2 text-xs text-white focus:outline-none"
-                          />
-                        </div>
-                        <div className="space-y-1 bg-transparent font-mono">
-                          <label className="text-[9px] uppercase font-bold text-gray-400">Comm (USD)</label>
-                          <input
-                            type="number"
-                            value={editingAgency.monthlyCommission}
-                            onChange={(e) => setEditingAgency({ ...editingAgency, monthlyCommission: Number(e.target.value) })}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl p-2 text-xs text-white focus:outline-none"
-                          />
-                        </div>
+                    <form onSubmit={editingAgency ? handleSaveAgencyEdit : handleAddAgency} className="space-y-3.5">
+                      <div className="space-y-1">
+                        <label className="text-[9px] uppercase font-mono font-bold text-gray-400">Agency Name</label>
+                        <input
+                          type="text"
+                          required
+                          value={editingAgency ? editingAgency.name : newAgency.name}
+                          onChange={(e) => {
+                            if (editingAgency) setEditingAgency({ ...editingAgency, name: e.target.value });
+                            else setNewAgency({ ...newAgency, name: e.target.value });
+                          }}
+                          placeholder="e.g. Falcon Entertainment"
+                          className="w-full bg-black/40 border border-white/10 rounded-xl p-2.5 text-xs text-white focus:outline-none"
+                        />
                       </div>
-                    )}
 
-                    <div className="flex space-x-2 pt-2 bg-transparent">
-                      <button
-                        type="submit"
-                        className="flex-1 bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] hover:opacity-90 text-white font-black text-xs uppercase py-2.5 rounded-xl transition-all cursor-pointer text-center"
-                      >
-                        {editingAgency ? "Save Changes" : "Deploy Agency"}
-                      </button>
+                      <div className="space-y-1">
+                        <label className="text-[9px] uppercase font-mono font-bold text-gray-400">Owner Email Account</label>
+                        <input
+                          type="email"
+                          required
+                          value={editingAgency ? editingAgency.ownerEmail : newAgency.ownerEmail}
+                          onChange={(e) => {
+                            if (editingAgency) setEditingAgency({ ...editingAgency, ownerEmail: e.target.value });
+                            else setNewAgency({ ...newAgency, ownerEmail: e.target.value });
+                          }}
+                          placeholder="e.g. owner@falcon.live"
+                          className="w-full bg-black/40 border border-white/10 rounded-xl p-2.5 text-xs text-white focus:outline-none font-mono"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] uppercase font-mono font-bold text-gray-400">Salary Policy & Commission Structure</label>
+                        <input
+                          type="text"
+                          required
+                          value={editingAgency ? editingAgency.salaryRate : newAgency.salaryRate}
+                          onChange={(e) => {
+                            if (editingAgency) setEditingAgency({ ...editingAgency, salaryRate: e.target.value });
+                            else setNewAgency({ ...newAgency, salaryRate: e.target.value });
+                          }}
+                          placeholder="e.g. 40% Commission + $300 Base Bonus"
+                          className="w-full bg-black/40 border border-white/10 rounded-xl p-2.5 text-xs text-white focus:outline-none"
+                        />
+                      </div>
+
                       {editingAgency && (
-                        <button
-                          type="button"
-                          onClick={() => setEditingAgency(null)}
-                          className="px-4 bg-[#202030] text-gray-400 hover:text-white rounded-xl text-xs font-bold"
-                        >
-                          Cancel
-                        </button>
+                        <div className="grid grid-cols-2 gap-3 bg-transparent">
+                          <div className="space-y-1 bg-transparent font-mono">
+                            <label className="text-[9px] uppercase font-bold text-gray-400">Active Hosts</label>
+                            <input
+                              type="number"
+                              value={editingAgency.registeredHosts}
+                              onChange={(e) => setEditingAgency({ ...editingAgency, registeredHosts: Number(e.target.value) })}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl p-2 text-xs text-white focus:outline-none"
+                            />
+                          </div>
+                          <div className="space-y-1 bg-transparent font-mono">
+                            <label className="text-[9px] uppercase font-bold text-gray-400">Comm (USD)</label>
+                            <input
+                              type="number"
+                              value={editingAgency.monthlyCommission}
+                              onChange={(e) => setEditingAgency({ ...editingAgency, monthlyCommission: Number(e.target.value) })}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl p-2 text-xs text-white focus:outline-none"
+                            />
+                          </div>
+                        </div>
                       )}
-                    </div>
-                  </form>
-                </div>
 
-                {/* Table list of registered Agencies */}
-                <div className="lg:col-span-8 bg-[#0f0f18] border border-white/5 p-5 rounded-2xl space-y-4">
-                  <h4 className="text-sm font-black text-white uppercase tracking-wider font-mono border-b border-white/5 pb-2">
-                    Ecosystem Agencies Commissions Registry
-                  </h4>
+                      <div className="flex space-x-2 pt-2 bg-transparent">
+                        <button
+                          type="submit"
+                          className="flex-1 bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] hover:opacity-90 text-white font-black text-xs uppercase py-2.5 rounded-xl transition-all cursor-pointer text-center"
+                        >
+                          {editingAgency ? "Save Changes" : "Deploy Agency"}
+                        </button>
+                        {editingAgency && (
+                          <button
+                            type="button"
+                            onClick={() => setEditingAgency(null)}
+                            className="px-4 bg-[#202030] text-gray-400 hover:text-white rounded-xl text-xs font-bold"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </form>
+                  </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs font-sans">
-                      <thead>
-                        <tr className="border-b border-white/5 text-gray-500 uppercase text-[9px] font-mono tracking-wider">
-                          <th className="pb-3 pl-2">Agency Name</th>
-                          <th className="pb-3">Owner Account</th>
-                          <th className="pb-3">Salary Structure</th>
-                          <th className="pb-3">Talent Hosts</th>
-                          <th className="pb-3">Mo. Commission</th>
-                          <th className="pb-3 text-center">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/5 font-mono">
-                        {db.agencies.map((agency: any) => (
-                          <tr key={agency.id} className="hover:bg-white/2">
-                            <td className="py-4 pl-2 font-black text-white font-sans">{agency.name}</td>
-                            <td className="py-4 text-gray-300 font-mono text-[11px]">{agency.ownerEmail}</td>
-                            <td className="py-4 font-sans text-pink-400 font-bold">{agency.salaryRate}</td>
-                            <td className="py-4 font-bold text-center text-cyan-400">{agency.registeredHosts} hosts</td>
-                            <td className="py-4 font-bold text-emerald-400">${agency.monthlyCommission} USD</td>
-                            <td className="py-4 text-center">
-                              <div className="flex space-x-1.5 justify-center bg-transparent">
-                                <button
-                                  onClick={() => setEditingAgency(agency)}
-                                  className="p-1 text-gray-400 hover:text-white transition-all border border-white/5 rounded"
-                                >
-                                  <Edit className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteAgency(agency.id)}
-                                  className="p-1 text-red-500 hover:text-red-400 transition-all border border-red-500/10 rounded"
-                                >
-                                  <Trash className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </td>
+                  {/* Table list of registered Agencies */}
+                  <div className="lg:col-span-8 bg-[#0f0f18] border border-white/5 p-5 rounded-2xl space-y-4">
+                    <h4 className="text-sm font-black text-white uppercase tracking-wider font-mono border-b border-white/5 pb-2">
+                      Ecosystem Agencies Commissions Registry
+                    </h4>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs font-sans">
+                        <thead>
+                          <tr className="border-b border-white/5 text-gray-500 uppercase text-[9px] font-mono tracking-wider">
+                            <th className="pb-3 pl-2">Agency Name</th>
+                            <th className="pb-3">Owner Account</th>
+                            <th className="pb-3">Salary Structure</th>
+                            <th className="pb-3">Talent Hosts</th>
+                            <th className="pb-3">Mo. Commission</th>
+                            <th className="pb-3 text-center">Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-white/5 font-mono">
+                          {db.agencies.map((agency: any) => (
+                            <tr key={agency.id} className="hover:bg-white/2">
+                              <td className="py-4 pl-2 font-black text-white font-sans">{agency.name}</td>
+                              <td className="py-4 text-gray-300 font-mono text-[11px]">{agency.ownerEmail}</td>
+                              <td className="py-4 font-sans text-pink-400 font-bold">{agency.salaryRate}</td>
+                              <td className="py-4 font-bold text-center text-cyan-400">{agency.registeredHosts} hosts</td>
+                              <td className="py-4 font-bold text-emerald-400">${agency.monthlyCommission} USD</td>
+                              <td className="py-4 text-center">
+                                <div className="flex space-x-1.5 justify-center bg-transparent">
+                                  <button
+                                    onClick={() => setEditingAgency(agency)}
+                                    className="p-1 text-gray-400 hover:text-white transition-all border border-white/5 rounded"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteAgency(agency.id)}
+                                    className="p-1 text-red-500 hover:text-red-400 transition-all border border-red-500/10 rounded"
+                                  >
+                                    <Trash className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-6 bg-transparent">
+                  {/* Requests Stats Grid */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 bg-transparent">
+                    <div className="bg-[#0f0f18] border border-white/5 p-4 rounded-2xl flex flex-col justify-between">
+                      <span className="text-[10px] font-mono text-gray-400 uppercase tracking-wider">Total Requests</span>
+                      <strong className="text-xl font-black text-white font-mono mt-2">
+                        {db?.agencyRequests?.length || 0}
+                      </strong>
+                    </div>
+                    <div className="bg-[#0f0f18] border border-yellow-500/20 p-4 rounded-2xl flex flex-col justify-between">
+                      <span className="text-[10px] font-mono text-yellow-400 uppercase tracking-wider">Pending Approval</span>
+                      <strong className="text-xl font-black text-yellow-400 font-mono mt-2">
+                        {db?.agencyRequests?.filter((r: any) => r.status === "Pending" || !r.status).length || 0}
+                      </strong>
+                    </div>
+                    <div className="bg-[#0f0f18] border border-green-500/20 p-4 rounded-2xl flex flex-col justify-between">
+                      <span className="text-[10px] font-mono text-green-400 uppercase tracking-wider">Approved Licences</span>
+                      <strong className="text-xl font-black text-green-400 font-mono mt-2">
+                        {db?.agencyRequests?.filter((r: any) => r.status === "Approved").length || 0}
+                      </strong>
+                    </div>
+                    <div className="bg-[#0f0f18] border border-red-500/20 p-4 rounded-2xl flex flex-col justify-between">
+                      <span className="text-[10px] font-mono text-red-400 uppercase tracking-wider">Rejected Requests</span>
+                      <strong className="text-xl font-black text-red-400 font-mono mt-2">
+                        {db?.agencyRequests?.filter((r: any) => r.status === "Rejected").length || 0}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Requests Table */}
+                  <div className="bg-[#0f0f18] border border-white/5 p-5 rounded-2xl space-y-4">
+                    <h4 className="text-sm font-black text-white uppercase tracking-wider font-mono border-b border-white/5 pb-2">
+                      Sehr Portal Onboarding & Licensing Requests
+                    </h4>
+
+                    {(!db?.agencyRequests || db.agencyRequests.length === 0) ? (
+                      <p className="text-xs text-gray-500 italic py-4">No agency or reseller onboarding requests found in database.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs font-sans">
+                          <thead>
+                            <tr className="border-b border-white/5 text-gray-500 uppercase text-[9px] font-mono tracking-wider">
+                              <th className="pb-3 pl-2">Applicant / Type</th>
+                              <th className="pb-3">Proposed Agency Details</th>
+                              <th className="pb-3">Terms & Rates</th>
+                              <th className="pb-3">Status</th>
+                              <th className="pb-3">Decision Notes / Remarks</th>
+                              <th className="pb-3 text-center">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/5 font-mono">
+                            {db.agencyRequests.map((r: any) => (
+                              <tr key={r.id} className="hover:bg-white/2">
+                                <td className="py-4 pl-2 font-sans space-y-1">
+                                  <div className="font-bold text-white">@{r.applicantUsername || "unknown"}</div>
+                                  <div className="text-[10px] text-gray-400">{r.contact}</div>
+                                  <div className="mt-1">
+                                    {r.type === "official_agency" ? (
+                                      <span className="text-[8px] uppercase font-black bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 px-1.5 py-0.5 rounded">
+                                        🪙 Coin Reseller
+                                      </span>
+                                    ) : (
+                                      <span className="text-[8px] uppercase font-black bg-pink-500/15 text-pink-400 border border-pink-500/30 px-1.5 py-0.5 rounded">
+                                        🎙️ Host Recruiter
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-4 font-sans max-w-xs space-y-1">
+                                  <div className="font-black text-purple-400 font-mono text-xs">
+                                    {r.type === "official_agency" ? r.applicantName : r.agencyName}
+                                  </div>
+                                  {r.city && <div className="text-[10px] text-gray-400">Region: {r.city}</div>}
+                                  {r.ownerEmail && <div className="text-[10px] text-gray-400 font-mono">{r.ownerEmail}</div>}
+                                  <div className="text-[9.5px] text-gray-400 leading-normal max-h-16 overflow-y-auto mt-1 italic">
+                                    "{r.description || "No collateral/plan provided."}"
+                                  </div>
+                                </td>
+                                <td className="py-4 font-sans text-cyan-400 font-bold">
+                                  {r.rate || "Standard Policy"}
+                                </td>
+                                <td className="py-4">
+                                  <span className={`px-2 py-0.5 rounded-[3px] text-[8px] font-black uppercase font-mono ${
+                                    r.status === "Approved" ? "bg-green-500/20 text-green-400 border border-green-500/30" :
+                                    r.status === "Rejected" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
+                                    r.status === "Suspended" ? "bg-orange-500/20 text-orange-400 border border-orange-500/30" :
+                                    "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 animate-pulse"
+                                  }`}>
+                                    {r.status || "Pending"}
+                                  </span>
+                                  {r.remarks && (
+                                    <p className="text-pink-400 text-[8px] font-sans mt-1 max-w-[120px] truncate" title={r.remarks}>
+                                      {r.remarks}
+                                    </p>
+                                  )}
+                                </td>
+                                <td className="py-4 font-sans">
+                                  <input
+                                    type="text"
+                                    placeholder="Enter review note/remarks..."
+                                    value={remarksInputs[r.id] || ""}
+                                    onChange={(e) => setRemarksInputs(prev => ({ ...prev, [r.id]: e.target.value }))}
+                                    className="bg-black/40 border border-white/10 rounded px-2 py-1 text-[10px] text-white focus:outline-none w-44"
+                                  />
+                                </td>
+                                <td className="py-4 text-center">
+                                  <div className="flex flex-col space-y-1.5 justify-center items-center bg-transparent">
+                                    {(r.status !== "Approved") && (
+                                      <button
+                                        onClick={() => handleApproveAgencyRequest(r.id)}
+                                        className="w-24 py-1 bg-green-600 hover:bg-green-700 text-white font-bold text-[8.5px] uppercase rounded transition-all cursor-pointer shadow shadow-green-600/20"
+                                      >
+                                        ✓ Approve
+                                      </button>
+                                    )}
+                                    {(r.status !== "Rejected" && r.status !== "Approved") && (
+                                      <button
+                                        onClick={() => handleRejectAgencyRequest(r.id)}
+                                        className="w-24 py-1 bg-red-600 hover:bg-red-700 text-white font-bold text-[8.5px] uppercase rounded transition-all cursor-pointer"
+                                      >
+                                        ✗ Reject
+                                      </button>
+                                    )}
+                                    {r.status === "Approved" && (
+                                      <button
+                                        onClick={() => handleSuspendAgencyRequest(r.id)}
+                                        className="w-24 py-1 bg-orange-600 hover:bg-orange-700 text-white font-bold text-[8.5px] uppercase rounded transition-all cursor-pointer"
+                                      >
+                                        ⚠ Suspend
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => handleDeleteAgencyRequest(r.id)}
+                                      className="w-24 py-1 bg-[#1e1e2d] hover:bg-red-600/30 text-gray-400 hover:text-red-400 border border-white/5 rounded text-[8px] uppercase transition-all cursor-pointer flex items-center justify-center space-x-1"
+                                    >
+                                      <Trash className="w-2.5 h-2.5" />
+                                      <span>Delete Rec</span>
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

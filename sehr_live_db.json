@@ -1,500 +1,220 @@
 {
   "user": {
-    "fullName": "Pardais Live Official Pakistan",
-    "selectedFrameId": "",
-    "avatar": "https://lh3.googleusercontent.com/a/ACg8ocJV5OxvNxun9hxLFWX9IYIW7nbI3yQ7t73rmpnl7J-F3jOSotg=s96-c",
-    "followersCount": 0,
-    "phoneNumber": "",
-    "diamonds": 0,
-    "bio": "New Sehr Live member! Verified via Google. 🇵🇰",
-    "email": "pardaisliveofficial@gmail.com",
-    "followingCount": 0,
-    "userLevel": 1,
-    "country": "Pakistan",
-    "wealthLevel": 1,
-    "vipLevel": 0,
-    "language": "Urdu / Hinglish",
-    "familyId": "",
-    "isBanned": false,
-    "isVerified": true,
-    "agencyId": "",
-    "twoFactorEnabled": false,
-    "vipSuspended": false,
+    "username": "Sehr_User",
+    "uniqueId": "sehr_1001",
+    "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
     "coverPhoto": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-    "kycStatus": "approved",
-    "xp": 0,
-    "uniqueId": "sehr_6474",
-    "username": "pardaisliveofficial",
-    "totalLikesCount": 0,
-    "dob": "",
-    "coins": 25000,
+    "bio": "Senior Live Stream Creator on Sehr Live! 🌟",
+    "gender": "Male",
+    "country": "Pakistan",
+    "language": "Urdu / Hinglish",
+    "coins": 0,
+    "diamonds": 0,
+    "vipLevel": 0,
+    "userLevel": 1,
     "hostLevel": 1,
-    "gender": "Male"
+    "wealthLevel": 1,
+    "xp": 0,
+    "familyId": "",
+    "agencyId": "",
+    "isVerified": false,
+    "isBanned": false,
+    "twoFactorEnabled": false,
+    "fullName": "",
+    "dob": "",
+    "phoneNumber": "",
+    "kycStatus": "none",
+    "followersCount": 0,
+    "followingCount": 0,
+    "totalLikesCount": 0
   },
-  "users": [
-    {
-      "agencyId": "agency-alpha",
-      "vipSuspended": false,
-      "twoFactorEnabled": true,
-      "isVerified": false,
-      "vipLevel": 3,
-      "language": "Urdu / Hinglish",
-      "isBanned": false,
-      "familyId": "fam-kings",
-      "userLevel": 290,
-      "followingCount": 280,
-      "wealthLevel": 34,
-      "country": "Pakistan",
-      "bio": "Sehr Live VIP 👑 Support is everything! Family Creator & Diamond Earner.",
-      "diamonds": 51280,
-      "phoneNumber": "",
-      "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
-      "followersCount": 39370,
-      "selectedFrameId": "vip-frame-1",
-      "fullName": "",
-      "gender": "Male",
-      "hostLevel": 12,
-      "coins": 3025,
-      "level": 24,
-      "dob": "",
-      "test_value": 1784282509030,
-      "name": "Prince_Sehr",
-      "totalLikesCount": 1438828,
-      "uniqueId": "sehr_8899",
-      "xp": 34960,
-      "username": "Prince_Sehr",
-      "kycStatus": "none",
-      "coverPhoto": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80"
-    },
-    {
-      "fullName": "Pardais Live Official Pakistan",
-      "selectedFrameId": "",
-      "avatar": "https://lh3.googleusercontent.com/a/ACg8ocJV5OxvNxun9hxLFWX9IYIW7nbI3yQ7t73rmpnl7J-F3jOSotg=s96-c",
-      "followersCount": 0,
-      "phoneNumber": "",
-      "diamonds": 0,
-      "bio": "New Sehr Live member! Verified via Google. 🇵🇰",
-      "email": "pardaisliveofficial@gmail.com",
-      "followingCount": 0,
-      "userLevel": 1,
-      "country": "Pakistan",
-      "wealthLevel": 1,
-      "vipLevel": 0,
-      "language": "Urdu / Hinglish",
-      "familyId": "",
-      "isBanned": false,
-      "isVerified": true,
-      "agencyId": "",
-      "twoFactorEnabled": false,
-      "vipSuspended": false,
-      "coverPhoto": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-      "kycStatus": "approved",
-      "xp": 0,
-      "uniqueId": "sehr_6474",
-      "username": "pardaisliveofficial",
-      "totalLikesCount": 0,
-      "dob": "",
-      "coins": 25000,
-      "hostLevel": 1,
-      "gender": "Male"
-    }
-  ],
+  "users": [],
   "gifts": [
     {
-      "cost": 4999,
-      "color": "from-blue-500 to-indigo-600",
       "id": "g-car",
       "icon": "🏎️",
-      "animationClass": "animate-bounce",
+      "type": "luxury",
       "name": "Sports Car",
-      "type": "luxury",
+      "cost": 4999,
+      "category": "Luxury",
       "status": "active",
-      "category": "Luxury"
+      "color": "from-blue-500 to-indigo-600",
+      "animationClass": "animate-bounce"
     },
     {
-      "name": "VIP Crown",
-      "type": "3d",
       "category": "VIP",
-      "status": "active",
-      "color": "from-yellow-400 to-amber-600",
       "cost": 999,
-      "id": "g-crown",
       "animationClass": "animate-spin",
-      "icon": "👑"
+      "color": "from-yellow-400 to-amber-600",
+      "status": "active",
+      "icon": "👑",
+      "type": "3d",
+      "name": "VIP Crown",
+      "id": "g-crown"
     },
     {
-      "status": "active",
-      "category": "Luxury",
-      "type": "luxury",
-      "name": "Golden Dragon",
-      "animationClass": "animate-bounce",
-      "icon": "🐉",
-      "id": "g-dragon",
       "cost": 29999,
-      "color": "from-amber-500 to-red-600"
-    },
-    {
-      "color": "from-red-500 to-pink-500",
-      "cost": 99,
-      "id": "g-heart",
-      "icon": "💖",
-      "animationClass": "animate-pulse",
-      "name": "Love Heart",
-      "type": "2d",
-      "status": "active",
-      "category": "Popular"
-    },
-    {
-      "animationClass": "animate-pulse",
-      "icon": "🚀",
-      "id": "g-rocket",
-      "color": "from-purple-600 to-pink-600",
-      "cost": 9999,
       "category": "Luxury",
       "status": "active",
+      "animationClass": "animate-bounce",
+      "color": "from-amber-500 to-red-600",
+      "id": "g-dragon",
+      "name": "Golden Dragon",
       "type": "luxury",
-      "name": "Space Rocket"
+      "icon": "🐉"
     },
     {
       "category": "Popular",
+      "cost": 99,
+      "color": "from-red-500 to-pink-500",
+      "animationClass": "animate-pulse",
       "status": "active",
+      "icon": "💖",
       "type": "2d",
-      "name": "Red Rose",
-      "animationClass": "animate-bounce",
-      "icon": "🌹",
+      "name": "Love Heart",
+      "id": "g-heart"
+    },
+    {
+      "name": "Space Rocket",
+      "icon": "🚀",
+      "type": "luxury",
+      "id": "g-rocket",
+      "category": "Luxury",
+      "cost": 9999,
+      "color": "from-purple-600 to-pink-600",
+      "animationClass": "animate-pulse",
+      "status": "active"
+    },
+    {
       "id": "g-rose",
+      "type": "2d",
+      "icon": "🌹",
+      "name": "Red Rose",
+      "cost": 10,
+      "category": "Popular",
+      "status": "active",
       "color": "from-pink-500 to-rose-600",
-      "cost": 10
+      "animationClass": "animate-bounce"
     }
   ],
   "categories": [],
-  "hosts": [
-    {
-      "agencyId": "agency-alpha",
-      "likes": 12400,
-      "isLive": true,
-      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80",
-      "viewers": 450,
-      "id": "h-mehak",
-      "category": "audio",
-      "bio": "ASMR, poetry, light jokes. Cozy corner for late-night dreamers.",
-      "role": "Late Night Audio Room Host",
-      "statusText": "Cozy 10-seat general chat. Request mic and share your story!",
-      "name": "Mehak_Lounge ☕"
-    },
-    {
-      "id": "h-sahar",
-      "viewers": 1450,
-      "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150&q=80",
-      "isLive": true,
-      "agencyId": "agency-alpha",
-      "likes": 85200,
-      "statusText": "Playing beautiful Urdu ghazals and pop songs!",
-      "name": "Sahar Live 🎵",
-      "bio": "Sahar from Islamabad. Join my daily acoustic stream! Official Host of Alpha Agency.",
-      "role": "Music & Acoustic Session",
-      "category": "video"
-    },
-    {
-      "bio": "PK champion, daily battles! Keep tapping and make me win!",
-      "role": "Official PK Battle King",
-      "statusText": "PK Match vs Alpha_Queen! Let's win together guys!",
-      "name": "Zain_Killer 🔥",
-      "category": "pk",
-      "viewers": 3200,
-      "id": "h-zain",
-      "agencyId": "agency-delta",
-      "likes": 215400,
-      "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&h=150&q=80",
-      "isLive": true
-    }
-  ],
-  "families": [
-    {
-      "name": "👑 SAHR KINGS",
-      "id": "fam-kings",
-      "description": "The elite guild of premium supporters. Loyalty and respect always.",
-      "members": 245,
-      "leader": "Prince_Sehr",
-      "avatar": "https://images.unsplash.com/photo-1513829096999-4978602294fc?auto=format&fit=crop&w=100&h=100&q=80",
-      "rank": 1
-    },
-    {
-      "name": "⚡ PK WARRIORS",
-      "id": "fam-warriors",
-      "description": "Winning battles one diamond at a time! Join if you are active.",
-      "members": 180,
-      "leader": "Zain_Killer",
-      "avatar": "https://images.unsplash.com/photo-1531256379416-9f000e90aacc?auto=format&fit=crop&w=100&h=100&q=80",
-      "rank": 2
-    }
-  ],
-  "agencies": [
-    {
-      "salaryRate": "35% Commission + $200 Base Bonus",
-      "monthlyCommission": 1250,
-      "name": "Alpha Talent Agency",
-      "id": "agency-alpha",
-      "registeredHosts": 45,
-      "ownerEmail": "owner@alphatalent.live"
-    },
-    {
-      "registeredHosts": 32,
-      "id": "agency-delta",
-      "name": "Delta Elite Entertainment",
-      "ownerEmail": "delta@elite.live",
-      "salaryRate": "40% Commission + $350 PK Victory Bonus",
-      "monthlyCommission": 2400
-    }
-  ],
-  "transactions": [
-    {
-      "details": "Purchased 15k Coins via EasyPaisa",
-      "type": "recharge",
-      "timestamp": "2026-07-15T07:40:30.305Z",
-      "status": "Completed",
-      "amount": 15000,
-      "id": "TXN-101",
-      "currency": "coins"
-    },
-    {
-      "timestamp": "2026-07-15T04:40:30.305Z",
-      "type": "recharge",
-      "details": "Purchased 20k Coins via JazzCash",
-      "status": "Completed",
-      "amount": 20000,
-      "currency": "coins",
-      "id": "TXN-102"
-    },
-    {
-      "details": "Withdrawn $500 to Bank Alfalah",
-      "type": "withdraw",
-      "timestamp": "2026-07-14T09:40:30.305Z",
-      "status": "Completed",
-      "amount": 500,
-      "id": "TXN-103",
-      "currency": "USD"
-    }
-  ],
+  "hosts": [],
+  "families": [],
+  "agencies": [],
+  "transactions": [],
   "notifications": [],
-  "reports": [
-    {
-      "reporter": "Malik_Sheraz_40",
-      "id": "REP-401",
-      "username": "toxic_viewer_9",
-      "status": "pending",
-      "timestamp": "2026-07-15T09:40:30.305Z",
-      "reason": "Abusive language in live chat chatroom"
-    },
-    {
-      "status": "resolved",
-      "username": "spammer_pak",
-      "reason": "Spamming referral scam link in mic seat",
-      "timestamp": "2026-07-15T09:40:30.306Z",
-      "reporter": "Sardar_Sb_VIP",
-      "id": "REP-402"
-    }
-  ],
-  "kycRequests": [
-    {
-      "phoneNumber": "+923001234567",
-      "fullName": "Syed Prince Shah",
-      "documentType": "id_card",
-      "status": "pending",
-      "faceVerified": true,
-      "idBack": "https://images.unsplash.com/photo-1554774853-aae0a22c8aa4?auto=format&fit=crop&w=300&q=80",
-      "dob": "1998-05-15",
-      "id": "KYC-8801",
-      "idFront": "https://images.unsplash.com/photo-1554774853-aae0a22c8aa4?auto=format&fit=crop&w=300&q=80",
-      "username": "Prince_Sehr",
-      "timestamp": "2026-07-15T09:40:30.306Z"
-    }
-  ],
-  "events": [
-    {
-      "duration": "12 Hours",
-      "active": true,
-      "reward": "2x Diamonds Multiplier",
-      "title": "🇵🇰 Pakistan Day Mega Stream Event",
-      "id": "evt-1"
-    },
-    {
-      "title": "🔥 PK Battle Royale Tournament",
-      "id": "evt-2",
-      "duration": "July 18 - 20",
-      "reward": "Exclusive Gold Profile Frame",
-      "active": true
-    }
-  ],
+  "reports": [],
+  "kycRequests": [],
+  "events": [],
   "configurations": {
-    "maintenanceMode": false,
-    "maintenanceDuration": "2 hours",
     "pkrToUsd": 280,
-    "forceUpdate": false,
     "appVersion": "v1.4.2",
-    "pkSettings": {
-      "pkTappingMultiplier": 1.5,
-      "allowSpectatorInterference": true,
-      "defaultDuration": 180
-    },
-    "coinExchangeRate": 150,
     "vipFrames": [
       {
+        "gradientFrom": "from-amber-700",
+        "badgeEmoji": "🥉",
+        "minLevel": 15,
+        "isActive": true,
+        "id": "vip-frame-1",
         "gradientTo": "to-amber-500",
         "glowColor": "#b27a50",
-        "badgeEmoji": "🥉",
-        "id": "vip-frame-1",
-        "name": "Royal Bronze VIP 1",
-        "gradientFrom": "from-amber-700",
-        "minLevel": 15,
-        "isActive": true
+        "name": "Royal Bronze VIP 1"
       },
       {
-        "id": "vip-frame-2",
-        "badgeEmoji": "🥈",
-        "name": "Sky Silver Wings VIP 2",
-        "gradientTo": "to-blue-300",
         "glowColor": "#94a3b8",
+        "name": "Sky Silver Wings VIP 2",
+        "id": "vip-frame-2",
+        "gradientTo": "to-blue-300",
         "isActive": true,
         "gradientFrom": "from-slate-400",
+        "badgeEmoji": "🥈",
         "minLevel": 30
       },
       {
-        "minLevel": 45,
+        "isActive": true,
         "gradientFrom": "from-yellow-600",
-        "isActive": true,
-        "glowColor": "#fbbf24",
-        "gradientTo": "to-yellow-300",
-        "name": "Golden Dragon VIP 3",
         "badgeEmoji": "👑",
-        "id": "vip-frame-3"
+        "minLevel": 45,
+        "glowColor": "#fbbf24",
+        "name": "Golden Dragon VIP 3",
+        "id": "vip-frame-3",
+        "gradientTo": "to-yellow-300"
       },
       {
-        "minLevel": 60,
         "gradientFrom": "from-red-600",
-        "isActive": true,
-        "glowColor": "#ef4444",
-        "gradientTo": "to-pink-500",
-        "name": "Ruby Fire VIP 4",
         "badgeEmoji": "🔥",
-        "id": "vip-frame-4"
+        "minLevel": 60,
+        "isActive": true,
+        "id": "vip-frame-4",
+        "gradientTo": "to-pink-500",
+        "glowColor": "#ef4444",
+        "name": "Ruby Fire VIP 4"
       },
       {
-        "id": "vip-frame-5",
-        "name": "Celestial Diamond VIP 5",
+        "isActive": true,
+        "gradientFrom": "from-cyan-500",
         "badgeEmoji": "💎",
-        "glowColor": "#06b6d4",
-        "gradientTo": "to-blue-400",
-        "isActive": true,
         "minLevel": 75,
-        "gradientFrom": "from-cyan-500"
+        "glowColor": "#06b6d4",
+        "name": "Celestial Diamond VIP 5",
+        "id": "vip-frame-5",
+        "gradientTo": "to-blue-400"
       },
       {
         "isActive": true,
-        "minLevel": 90,
         "gradientFrom": "from-fuchsia-600",
+        "minLevel": 90,
         "badgeEmoji": "🌀",
-        "id": "vip-frame-6",
-        "name": "Sovereign Neon Pulsar VIP 6",
         "glowColor": "#d946ef",
+        "name": "Sovereign Neon Pulsar VIP 6",
+        "id": "vip-frame-6",
         "gradientTo": "to-pink-600"
       }
     ],
+    "forceUpdate": false,
+    "maintenanceMode": false,
+    "pkSettings": {
+      "pkTappingMultiplier": 1.5,
+      "defaultDuration": 180,
+      "allowSpectatorInterference": true
+    },
+    "coinExchangeRate": 150,
     "banners": [
       {
-        "active": true,
-        "image": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+        "title": "🇵🇰 PAKISTAN DAY MEGA STREAM FESTIVAL",
         "link": "event-pak-day",
+        "active": true,
         "id": "b-1",
-        "title": "🇵🇰 PAKISTAN DAY MEGA STREAM FESTIVAL"
+        "image": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80"
       },
       {
-        "link": "agency-info",
-        "active": true,
+        "id": "b-2",
         "image": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=80",
-        "title": "👑 SAHR TALENT RECRUITMENT PROGRAM",
-        "id": "b-2"
+        "active": true,
+        "link": "agency-info",
+        "title": "👑 SAHR TALENT RECRUITMENT PROGRAM"
       },
       {
-        "link": "pk-tourney",
-        "active": true,
+        "id": "b-3",
         "image": "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80",
-        "title": "⚡ OFFICIAL PK BATTLE TOURNAMENT LIVE NOW",
-        "id": "b-3"
+        "active": true,
+        "link": "pk-tourney",
+        "title": "⚡ OFFICIAL PK BATTLE TOURNAMENT LIVE NOW"
       }
-    ]
+    ],
+    "maintenanceDuration": "2 hours"
   },
-  "adminUsersList": [
-    {
-      "userLevel": 12,
-      "fullName": "Alina Malik",
-      "vipLevel": 0,
-      "isBanned": false,
-      "coins": 520,
-      "isVerified": false,
-      "username": "Alina_Malik",
-      "kycStatus": "none"
-    },
-    {
-      "fullName": "Sheraz Malik",
-      "userLevel": 35,
-      "isBanned": false,
-      "vipLevel": 1,
-      "isVerified": true,
-      "username": "Malik_Sheraz_40",
-      "coins": 34000,
-      "kycStatus": "approved"
-    },
-    {
-      "vipLevel": 3,
-      "isBanned": false,
-      "userLevel": 24,
-      "fullName": "",
-      "kycStatus": "none",
-      "coins": 3025,
-      "username": "Prince_Sehr",
-      "isVerified": false
-    },
-    {
-      "isVerified": true,
-      "username": "Sardar_Sb_VIP",
-      "coins": 120000,
-      "kycStatus": "approved",
-      "fullName": "Sardar Yar Khan",
-      "userLevel": 50,
-      "isBanned": false,
-      "vipLevel": 3
-    },
-    {
-      "coins": 25000,
-      "isVerified": true,
-      "username": "pardaisliveofficial",
-      "kycStatus": "approved",
-      "userLevel": 1,
-      "fullName": "Pardais Live Official Pakistan",
-      "vipLevel": 0,
-      "isBanned": false
-    },
-    {
-      "kycStatus": "rejected",
-      "coins": 0,
-      "isVerified": false,
-      "username": "toxic_viewer_9",
-      "vipLevel": 0,
-      "isBanned": true,
-      "userLevel": 4,
-      "fullName": "Kashif Butt"
-    }
-  ],
+  "adminUsersList": [],
   "reels": [],
   "stories": [],
   "chats": [],
   "messages": [],
-  "sessions": {
-    "sehr_session_pardaisliveofficial_w05t7r4a": {
-      "loginTime": "2026-07-17T10:42:18.095Z",
-      "username": "pardaisliveofficial"
-    }
-  },
-  "otps": {}
+  "sessions": {},
+  "otps": {},
+  "agencyRequests": [],
+  "purchaseRequests": [],
+  "coinTransactions": [],
+  "approvalStatus": [],
+  "adminActions": [],
+  "coinSellers": []
 }

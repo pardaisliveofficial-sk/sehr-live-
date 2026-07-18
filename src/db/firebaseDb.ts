@@ -11,22 +11,38 @@ import {
 import fs from "fs";
 import path from "path";
 
-const firebaseConfig = {
+// Initialize Firebase using Client SDK
+let firebaseConfig = {
   projectId: "sehr-live-production",
   appId: "1:496371999211:web:3caed46eb0e946c1c9b9ae",
   apiKey: "AIzaSyDUcaaRaU2ZJNUp90CMdl9gER_0oe1Db_E",
-  authDomain: "sehr-live-production.firebaseapp.com"
+  authDomain: "sehrlive.soulverseapps.com"
 };
 
-// Initialize Firebase using Client SDK
+let FIRESTORE_DB_ID = "ai-studio-sehrlive-472fb6a7-1901-43d4-8fd3-710376199072";
+
+try {
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(configPath)) {
+    const configData = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    if (configData.projectId) firebaseConfig.projectId = configData.projectId;
+    if (configData.appId) firebaseConfig.appId = configData.appId;
+    if (configData.apiKey) firebaseConfig.apiKey = configData.apiKey;
+    if (configData.authDomain) firebaseConfig.authDomain = configData.authDomain;
+    if (configData.firestoreDatabaseId) FIRESTORE_DB_ID = configData.firestoreDatabaseId;
+    console.log("[SEHR-LIVE FIREBASE] Dynamically loaded configuration from firebase-applet-config.json.");
+  }
+} catch (err) {
+  console.error("[SEHR-LIVE FIREBASE] Failed to load config dynamically:", err);
+}
+
 const apps = getApps();
 const app = apps.length === 0 
   ? initializeApp(firebaseConfig) 
   : getApp();
 
-console.log("[SEHR-LIVE FIREBASE] Firebase Client SDK initialized successfully for server-side persistence.");
+console.log("[SEHR-LIVE FIREBASE] Firebase Client SDK initialized successfully with projectId:", firebaseConfig.projectId);
 
-const FIRESTORE_DB_ID = "ai-studio-sehrlive-472fb6a7-1901-43d4-8fd3-710376199072";
 export const db = getFirestore(app, FIRESTORE_DB_ID);
 
 // Collection keys to map to Firestore
@@ -46,7 +62,13 @@ export const COLLECTIONS = [
   "reels",
   "stories",
   "chats",
-  "messages"
+  "messages",
+  "agencyRequests",
+  "purchaseRequests",
+  "coinTransactions",
+  "approvalStatus",
+  "adminActions",
+  "coinSellers"
 ];
 
 // Memory Cache synced with Firestore
@@ -68,7 +90,7 @@ export const dbDataCache: any = {
     wealthLevel: 32,
     xp: 750,
     familyId: "fam-kings",
-    agencyId: "agency-alpha",
+    agencyId: "",
     isVerified: false,
     isBanned: false,
     twoFactorEnabled: true,
@@ -100,7 +122,13 @@ export const dbDataCache: any = {
   chats: [],
   messages: [],
   sessions: {},
-  otps: {}
+  otps: {},
+  agencyRequests: [],
+  purchaseRequests: [],
+  coinTransactions: [],
+  approvalStatus: [],
+  adminActions: [],
+  coinSellers: []
 };
 
 // Helper to check if database has been seeded
@@ -140,8 +168,8 @@ export async function checkAndSeedDatabase() {
       { name: "gifts", key: "id", data: localDb.gifts },
       { name: "hosts", key: "id", data: localDb.hosts },
       { name: "families", key: "id", data: localDb.families },
-      { name: "agencies", key: "id", data: localDb.agencies },
-      { name: "transactions", key: "id", data: localDb.transactions },
+      { name: "agencies", key: "id", data: [] }, // No demo agencies!
+      { name: "transactions", key: "id", data: [] }, // No demo transactions!
       { name: "notifications", key: "id", data: localDb.notifications },
       { name: "reports", key: "id", data: localDb.reports },
       { name: "kycRequests", key: "id", data: localDb.kycRequests },
