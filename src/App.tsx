@@ -152,7 +152,34 @@ const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Resp
       };
     }
   }
-  return window.fetch(input, { ...init, headers });
+
+  // Prepend production backend URL for Android App / Capacitor environments where relative fetches fail
+  let finalInput = input;
+  if (typeof finalInput === "string" && finalInput.startsWith("/")) {
+    const isAndroidAPK = typeof window !== "undefined" && (
+      (window as any).Capacitor || 
+      window.location.hostname === "localhost" || 
+      window.location.hostname === "127.0.0.1" || 
+      !window.location.hostname ||
+      window.location.protocol === "file:"
+    );
+    if (isAndroidAPK) {
+      finalInput = `https://sehrlive.soulverseapps.com${finalInput}`;
+    }
+  } else if (finalInput instanceof URL && finalInput.pathname.startsWith("/")) {
+    const isAndroidAPK = typeof window !== "undefined" && (
+      (window as any).Capacitor || 
+      window.location.hostname === "localhost" || 
+      window.location.hostname === "127.0.0.1" || 
+      !window.location.hostname ||
+      window.location.protocol === "file:"
+    );
+    if (isAndroidAPK && (finalInput.hostname === "localhost" || finalInput.hostname === "127.0.0.1" || !finalInput.hostname)) {
+      finalInput = new URL(`https://sehrlive.soulverseapps.com${finalInput.pathname}${finalInput.search}${finalInput.hash}`);
+    }
+  }
+
+  return window.fetch(finalInput, { ...init, headers });
 };
 
 interface PattiConfig {
@@ -254,6 +281,17 @@ export default function App() {
   const [termsAccepted, setTermsAccepted] = useState<boolean>(false);
   const [showTermsModal, setShowTermsModal] = useState<boolean>(false);
   const [showGoogleChooser, setShowGoogleChooser] = useState<boolean>(false);
+  const [savedGoogleAccounts, setSavedGoogleAccounts] = useState<{email: string, name: string}[]>(() => {
+    const raw = localStorage.getItem("sehr_saved_google_accounts");
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
   const [customGoogleEmail, setCustomGoogleEmail] = useState<string>("");
   const [customGoogleName, setCustomGoogleName] = useState<string>("");
   const [isExpandingCustomGoogle, setIsExpandingCustomGoogle] = useState<boolean>(false);
@@ -4149,7 +4187,7 @@ export default function App() {
       const photoURL = `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(name || email)}`;
 
       // Call full-stack backend endpoint to register/authenticate user and generate session token
-      const res = await window.fetch("/api/v1/auth/google-login", {
+      const res = await fetch("/api/v1/auth/google-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -4172,6 +4210,21 @@ export default function App() {
         setUser(data.user);
         setIsLoggedIn(true);
         setShowGoogleChooser(false);
+        
+        // Save account to saved list so they can easily switch or log back in
+        const emailLower = email.trim().toLowerCase();
+        const existingList = (() => {
+          const raw = localStorage.getItem("sehr_saved_google_accounts");
+          if (raw) {
+            try { return JSON.parse(raw); } catch (e) { return []; }
+          }
+          return [];
+        })();
+        const filtered = existingList.filter((a: any) => a.email.toLowerCase() !== emailLower);
+        const updatedAccounts = [...filtered, { email: email.trim(), name: name.trim() || email.split("@")[0] }];
+        setSavedGoogleAccounts(updatedAccounts);
+        localStorage.setItem("sehr_saved_google_accounts", JSON.stringify(updatedAccounts));
+        
         console.log("[SEHR-LIVE] Google login success. Token and user synchronized:", data.user);
       } else {
         throw new Error("Invalid session response from backend server.");
@@ -4191,7 +4244,7 @@ export default function App() {
     setLoginError("");
     try {
       // Call full-stack backend endpoint to register a guest session and generate session token
-      const res = await window.fetch("/api/v1/auth/guest-login", {
+      const res = await fetch("/api/v1/auth/guest-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" }
       });
@@ -5164,7 +5217,10 @@ export default function App() {
                           <div className="absolute top-4 right-4">
                             <button
                               type="button"
-                              onClick={() => setShowGoogleChooser(false)}
+                              onClick={() => {
+                                setShowGoogleChooser(false);
+                                setIsExpandingCustomGoogle(false);
+                              }}
                               className="text-gray-400 hover:text-gray-700 font-bold p-1 transition-colors text-sm"
                             >
                               ✕
@@ -5183,71 +5239,85 @@ export default function App() {
                             <p className="text-[10px] text-gray-500 mt-0.5">to continue to <span className="font-extrabold text-[#7b2cbf]">Sehr Live</span></p>
                           </div>
 
-                          {/* Accounts list */}
-                          <div className="space-y-2 max-h-[220px] overflow-y-auto scrollbar-thin pr-1 text-left">
-                            {/* Primary Developer Email Option (pardaisliveofficial@gmail.com) */}
-                            <button
-                              type="button"
-                              onClick={() => handleExecuteGoogleLogin("pardaisliveofficial@gmail.com", "Pardais Live")}
-                              className="w-full p-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 flex items-center space-x-3 transition-all text-left group cursor-pointer bg-transparent"
-                            >
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                                PL
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-bold text-gray-900 truncate group-hover:text-blue-600">Pardais Live</p>
-                                <p className="text-[10px] text-gray-500 truncate">pardaisliveofficial@gmail.com</p>
-                              </div>
-                              <span className="text-[10px] text-gray-400 font-mono bg-gray-100 px-1.5 py-0.5 rounded-full uppercase scale-90 shrink-0">Active</span>
-                            </button>
+                          {/* Accounts list / Custom Login Form */}
+                          <div className="space-y-3 max-h-[260px] overflow-y-auto scrollbar-thin pr-1 text-left">
+                            {savedGoogleAccounts.length > 0 && !isExpandingCustomGoogle ? (
+                              <div className="space-y-2">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Choose an account</p>
+                                {savedGoogleAccounts.map((account) => {
+                                  const initials = account.name ? account.name.substring(0, 2).toUpperCase() : "G";
+                                  return (
+                                    <div 
+                                      key={account.email} 
+                                      className="w-full rounded-xl border border-gray-200 flex items-center justify-between p-2.5 hover:bg-gray-50 transition-all text-left"
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={() => handleExecuteGoogleLogin(account.email, account.name)}
+                                        className="flex flex-1 items-center space-x-3 text-left bg-transparent cursor-pointer min-w-0"
+                                      >
+                                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#7b2cbf] to-[#ff007f] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                                          {initials}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-xs font-bold text-gray-900 truncate">{account.name}</p>
+                                          <p className="text-[10px] text-gray-500 truncate">{account.email}</p>
+                                        </div>
+                                      </button>
+                                      
+                                      {/* Option to clear this account from local history */}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const updated = savedGoogleAccounts.filter(a => a.email !== account.email);
+                                          setSavedGoogleAccounts(updated);
+                                          localStorage.setItem("sehr_saved_google_accounts", JSON.stringify(updated));
+                                        }}
+                                        className="text-gray-300 hover:text-red-500 p-1.5 text-xs transition-colors"
+                                        title="Remove account from device"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  );
+                                })}
 
-                            {/* Standard Demo Accounts */}
-                            <button
-                              type="button"
-                              onClick={() => handleExecuteGoogleLogin("arooj.queen@gmail.com", "Arooj Queen")}
-                              className="w-full p-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 flex items-center space-x-3 transition-all text-left group cursor-pointer bg-transparent"
-                            >
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-pink-500 to-[#ff007f] flex items-center justify-center text-white text-xs font-bold shrink-0">
-                                AQ
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCustomGoogleEmail("");
+                                    setCustomGoogleName("");
+                                    setIsExpandingCustomGoogle(true);
+                                  }}
+                                  className="w-full p-2.5 rounded-xl border border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50/20 flex items-center justify-center space-x-2 transition-all text-left text-xs font-bold text-blue-600 py-3 cursor-pointer bg-transparent mt-2"
+                                >
+                                  <span>➕ Use another account</span>
+                                </button>
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-bold text-gray-900 truncate group-hover:text-blue-600">Arooj Queen</p>
-                                <p className="text-[10px] text-gray-500 truncate">arooj.queen@gmail.com</p>
-                              </div>
-                            </button>
-
-                            {/* Use Another Account Option */}
-                            {!isExpandingCustomGoogle ? (
-                              <button
-                                type="button"
-                                onClick={() => setIsExpandingCustomGoogle(true)}
-                                className="w-full p-2.5 rounded-xl border border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50/20 flex items-center justify-center space-x-2 transition-all text-left text-xs font-bold text-blue-600 py-3 cursor-pointer bg-transparent"
-                              >
-                                <span>➕ Use another account</span>
-                              </button>
                             ) : (
-                              <div className="p-3 border border-blue-100 bg-blue-50/10 rounded-xl space-y-2 mt-1 animate-fadeIn">
+                              <div className="p-1 space-y-3 animate-fadeIn">
                                 <div className="space-y-1">
-                                  <label className="text-[9px] font-black uppercase text-gray-500 tracking-wider">Email Address</label>
+                                  <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider">Google Email / ID</label>
                                   <input
                                     type="email"
                                     placeholder="yourname@gmail.com"
                                     value={customGoogleEmail}
                                     onChange={(e) => setCustomGoogleEmail(e.target.value)}
-                                    className="w-full p-2 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none text-gray-900 bg-white"
+                                    className="w-full p-2.5 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none text-gray-900 bg-white"
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <label className="text-[9px] font-black uppercase text-gray-500 tracking-wider">Display Name</label>
+                                  <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider">Display Name</label>
                                   <input
                                     type="text"
                                     placeholder="Sahr Star"
                                     value={customGoogleName}
                                     onChange={(e) => setCustomGoogleName(e.target.value)}
-                                    className="w-full p-2 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none text-gray-900 bg-white"
+                                    className="w-full p-2.5 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none text-gray-900 bg-white"
                                   />
                                 </div>
-                                <div className="flex space-x-2 pt-1">
+                                <div className="flex space-x-2 pt-2">
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -5257,17 +5327,19 @@ export default function App() {
                                       }
                                       handleExecuteGoogleLogin(customGoogleEmail, customGoogleName || customGoogleEmail.split("@")[0]);
                                     }}
-                                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 rounded-lg transition-all cursor-pointer text-center"
+                                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 rounded-lg transition-all cursor-pointer text-center"
                                   >
-                                    Sign In
+                                    Sign In & Continue
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setIsExpandingCustomGoogle(false)}
-                                    className="bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs px-3 rounded-lg transition-all cursor-pointer"
-                                  >
-                                    Back
-                                  </button>
+                                  {savedGoogleAccounts.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsExpandingCustomGoogle(false)}
+                                      className="bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs px-3 rounded-lg transition-all cursor-pointer"
+                                    >
+                                      Back
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             )}
