@@ -16,7 +16,7 @@ import {
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 
 // Production API Request Logging & Monitoring Middleware
 app.use((req, res, next) => {
