@@ -158,24 +158,38 @@ const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Resp
   if (typeof finalInput === "string" && finalInput.startsWith("/")) {
     const isAndroidAPK = typeof window !== "undefined" && (
       (window as any).Capacitor || 
-      window.location.hostname === "localhost" || 
-      window.location.hostname === "127.0.0.1" || 
-      !window.location.hostname ||
-      window.location.protocol === "file:"
+      window.location.protocol === "file:" ||
+      window.location.protocol.includes("capacitor") ||
+      navigator.userAgent.toLowerCase().includes("android") ||
+      navigator.userAgent.toLowerCase().includes("capacitor") ||
+      (!window.location.hostname.includes("run.app") && (
+        window.location.hostname === "localhost" || 
+        window.location.hostname === "127.0.0.1" || 
+        !window.location.hostname
+      ))
     );
     if (isAndroidAPK) {
+      const oldUrl = finalInput;
       finalInput = `https://sehrlive.soulverseapps.com${finalInput}`;
+      console.log(`[SEHR-LIVE APK FETCH] Rewrote relative string path from ${oldUrl} to ${finalInput}`);
     }
   } else if (finalInput instanceof URL && finalInput.pathname.startsWith("/")) {
     const isAndroidAPK = typeof window !== "undefined" && (
       (window as any).Capacitor || 
-      window.location.hostname === "localhost" || 
-      window.location.hostname === "127.0.0.1" || 
-      !window.location.hostname ||
-      window.location.protocol === "file:"
+      window.location.protocol === "file:" ||
+      window.location.protocol.includes("capacitor") ||
+      navigator.userAgent.toLowerCase().includes("android") ||
+      navigator.userAgent.toLowerCase().includes("capacitor") ||
+      (!window.location.hostname.includes("run.app") && (
+        window.location.hostname === "localhost" || 
+        window.location.hostname === "127.0.0.1" || 
+        !window.location.hostname
+      ))
     );
     if (isAndroidAPK && (finalInput.hostname === "localhost" || finalInput.hostname === "127.0.0.1" || !finalInput.hostname)) {
+      const oldUrl = finalInput.toString();
       finalInput = new URL(`https://sehrlive.soulverseapps.com${finalInput.pathname}${finalInput.search}${finalInput.hash}`);
+      console.log(`[SEHR-LIVE APK FETCH] Rewrote URL object from ${oldUrl} to ${finalInput.toString()}`);
     }
   }
 
@@ -295,6 +309,7 @@ export default function App() {
   const [customGoogleEmail, setCustomGoogleEmail] = useState<string>("");
   const [customGoogleName, setCustomGoogleName] = useState<string>("");
   const [isExpandingCustomGoogle, setIsExpandingCustomGoogle] = useState<boolean>(false);
+  const [chooserError, setChooserError] = useState<string>("");
   const [loginError, setLoginError] = useState<string>("");
   const [loginPhone, setLoginPhone] = useState<string>("");
   const [loginOtp, setLoginOtp] = useState<string>("");
@@ -4231,8 +4246,9 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("Google Sign-In Error:", err);
-      setLoginError(err.message || "Google Authentication failed. Please try again.");
-      setShowGoogleChooser(false);
+      const msg = err.message || "Google Authentication failed. Please try again.";
+      setLoginError(msg);
+      setChooserError(msg);
     }
   };
 
@@ -5297,13 +5313,21 @@ export default function App() {
                               </div>
                             ) : (
                               <div className="p-1 space-y-3 animate-fadeIn">
+                                {chooserError && (
+                                  <div className="p-2.5 bg-red-50 border border-red-200 text-red-600 rounded-xl text-[11px] font-medium leading-relaxed animate-fadeIn">
+                                    ⚠️ {chooserError}
+                                  </div>
+                                )}
                                 <div className="space-y-1">
                                   <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider">Google Email / ID</label>
                                   <input
                                     type="email"
                                     placeholder="yourname@gmail.com"
                                     value={customGoogleEmail}
-                                    onChange={(e) => setCustomGoogleEmail(e.target.value)}
+                                    onChange={(e) => {
+                                      setCustomGoogleEmail(e.target.value);
+                                      setChooserError("");
+                                    }}
                                     className="w-full p-2.5 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none text-gray-900 bg-white"
                                   />
                                 </div>
@@ -5313,7 +5337,10 @@ export default function App() {
                                     type="text"
                                     placeholder="Sahr Star"
                                     value={customGoogleName}
-                                    onChange={(e) => setCustomGoogleName(e.target.value)}
+                                    onChange={(e) => {
+                                      setCustomGoogleName(e.target.value);
+                                      setChooserError("");
+                                    }}
                                     className="w-full p-2.5 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none text-gray-900 bg-white"
                                   />
                                 </div>
@@ -5322,9 +5349,10 @@ export default function App() {
                                     type="button"
                                     onClick={() => {
                                       if (!customGoogleEmail || !customGoogleEmail.includes("@")) {
-                                        alert("Please enter a valid Google email address.");
+                                        setChooserError("Please enter a valid Google email address.");
                                         return;
                                       }
+                                      setChooserError("");
                                       handleExecuteGoogleLogin(customGoogleEmail, customGoogleName || customGoogleEmail.split("@")[0]);
                                     }}
                                     className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 rounded-lg transition-all cursor-pointer text-center"
@@ -5334,7 +5362,10 @@ export default function App() {
                                   {savedGoogleAccounts.length > 0 && (
                                     <button
                                       type="button"
-                                      onClick={() => setIsExpandingCustomGoogle(false)}
+                                      onClick={() => {
+                                        setChooserError("");
+                                        setIsExpandingCustomGoogle(false);
+                                      }}
                                       className="bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs px-3 rounded-lg transition-all cursor-pointer"
                                     >
                                       Back
