@@ -153,7 +153,7 @@ const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Resp
     }
   }
 
-  // Prepend production backend URL for Android App / Capacitor environments where relative fetches fail
+  // Prepend production backend API URL for Android App / Capacitor environments where relative fetches fail
   let finalInput = input;
   if (typeof finalInput === "string" && finalInput.startsWith("/")) {
     const isAndroidAPK = typeof window !== "undefined" && (
@@ -170,7 +170,7 @@ const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Resp
     );
     if (isAndroidAPK) {
       const oldUrl = finalInput;
-      finalInput = `https://sehrlive.soulverseapps.com${finalInput}`;
+      finalInput = `https://api.sehrlive.soulverseapps.com${finalInput}`;
       console.log(`[SEHR-LIVE APK FETCH] Rewrote relative string path from ${oldUrl} to ${finalInput}`);
     }
   } else if (finalInput instanceof URL && finalInput.pathname.startsWith("/")) {
@@ -188,7 +188,7 @@ const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Resp
     );
     if (isAndroidAPK && (finalInput.hostname === "localhost" || finalInput.hostname === "127.0.0.1" || !finalInput.hostname)) {
       const oldUrl = finalInput.toString();
-      finalInput = new URL(`https://sehrlive.soulverseapps.com${finalInput.pathname}${finalInput.search}${finalInput.hash}`);
+      finalInput = new URL(`https://api.sehrlive.soulverseapps.com${finalInput.pathname}${finalInput.search}${finalInput.hash}`);
       console.log(`[SEHR-LIVE APK FETCH] Rewrote URL object from ${oldUrl} to ${finalInput.toString()}`);
     }
   }
