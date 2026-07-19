@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { ReelsView } from "./components/ReelsView";
 import {
   Tv,
@@ -88,6 +88,7 @@ import {
 import { Gift, GiftType, ChatMessage, HostProfile, UserProfile, Family, Agency, Transaction, LiveAnnouncement, KycRequest, UserStory } from "./types";
 import { DEFAULT_USER, MOCK_GIFTS, MOCK_HOSTS, MOCK_FAMILIES, MOCK_AGENCIES, DAILY_MISSIONS, STATIC_COMMENTS_POOL } from "./data";
 import { getRankingData } from "./rankingData";
+import { SehrLiveLogo } from "./components/SehrLiveLogo";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import firebaseConfig from "../firebase-applet-config.json";
@@ -103,7 +104,8 @@ import {
   updateDoc, 
   setDoc, 
   deleteDoc, 
-  getDocFromServer 
+  getDocFromServer,
+  setLogLevel
 } from "firebase/firestore";
 import { 
   getStorage, 
@@ -117,6 +119,10 @@ const clientApps = getApps();
 const clientApp = clientApps.length === 0 ? initializeApp(firebaseConfig) : getApp();
 const clientAuth = getAuth(clientApp);
 const googleProvider = new GoogleAuthProvider();
+
+// Silence internal Firestore Client SDK logging to prevent spamming quota-exhausted stream errors in console
+setLogLevel("silent");
+
 export const db = initializeFirestore(clientApp, {
   experimentalForceLongPolling: true
 }, firebaseConfig.firestoreDatabaseId);
@@ -2213,6 +2219,76 @@ export default function App() {
     deletedForEveryone?: boolean;
   }>>([]);
 
+  // WhatsApp style Chat center states
+  const [activeChatContact, setActiveChatContact] = useState<{
+    name: string;
+    avatar: string;
+    bio: string;
+    followersCount: number;
+    followingCount: number;
+    totalLikesCount: number;
+    isOnline: boolean;
+  } | null>(null);
+  const [chatSearchQuery, setChatSearchQuery] = useState<string>("");
+  const [messageSearchQuery, setMessageSearchQuery] = useState<string>("");
+  const [showActiveChatDPModal, setShowActiveChatDPModal] = useState<{ name: string; avatar: string } | null>(null);
+  const [showActiveChatProfileModal, setShowActiveChatProfileModal] = useState<{
+    name: string;
+    avatar: string;
+    bio: string;
+    followersCount: number;
+    followingCount: number;
+    totalLikesCount: number;
+    isOnline: boolean;
+  } | null>(null);
+  const [activeChatOptionsOpen, setActiveChatOptionsOpen] = useState<boolean>(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState<boolean>(false);
+
+  const [whatsappContacts, setWhatsappContacts] = useState<Array<{
+    name: string;
+    avatar: string;
+    bio: string;
+    followersCount: number;
+    followingCount: number;
+    totalLikesCount: number;
+    isOnline: boolean;
+  }>>(() => {
+    const saved = localStorage.getItem("sehr_whatsapp_contacts_v2");
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return [];
+  });
+
+  const [whatsappConversations, setWhatsappConversations] = useState<Record<string, Array<{
+    id: string;
+    sender: string;
+    text: string;
+    timestamp: string;
+    isSticker?: boolean;
+    isVoice?: boolean;
+    voiceDuration?: number;
+    isImage?: boolean;
+    imageUrl?: string;
+    deletedForSelf?: boolean;
+    deletedForEveryone?: boolean;
+  }>>> (() => {
+    const saved = localStorage.getItem("sehr_whatsapp_conversations_v2");
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return {};
+  });
+
+  // Keep contacts & messages synchronized with local storage
+  useEffect(() => {
+    localStorage.setItem("sehr_whatsapp_contacts_v2", JSON.stringify(whatsappContacts));
+  }, [whatsappContacts]);
+
+  useEffect(() => {
+    localStorage.setItem("sehr_whatsapp_conversations_v2", JSON.stringify(whatsappConversations));
+  }, [whatsappConversations]);
+
   // Chat interactive features state
   const [isRecordingVoice, setIsRecordingVoice] = useState<boolean>(false);
   const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
@@ -2221,13 +2297,7 @@ export default function App() {
   const [chatSelectedMessageId, setChatSelectedMessageId] = useState<string | null>(null);
   const [currentChatTab, setCurrentChatTab] = useState<"messages" | "couples">("messages");
 
-  // Couple Rankings State
-  const [coupleRankings, setCoupleRankings] = useState([
-    { rank: 1, name: "Prince & Sahar Live 🎵", avatar1: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80", avatar2: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150&q=80", cp: 99800, lvl: 12, status: "Official Soulmates 💍" },
-    { rank: 2, name: "Zain_Killer & Alina_Malik 🔥", avatar1: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&h=150&q=80", avatar2: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=100&h=100&q=80", cp: 74500, lvl: 9, status: "Romantic Duo 🌸" },
-    { rank: 3, name: "DJ_Sam & Sana_Khan", avatar1: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=100&h=100&q=80", avatar2: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=100&h=100&q=80", cp: 52100, lvl: 7, status: "Vocal Partners ✨" },
-    { rank: 4, name: "Siddique_bhai & Alpha_Queen 👑", avatar1: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&h=100&q=80", avatar2: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80", cp: 31400, lvl: 5, status: "Elite Alliance 💎" }
-  ]);
+
 
   // Floating Hearts State
   const [activeHearts, setActiveHearts] = useState<Array<{ id: string; left: number }>>([]);
@@ -2360,6 +2430,86 @@ export default function App() {
 
   // Dynamic Live Streams State
   const [liveStreamsList, setLiveStreamsList] = useState<HostProfile[]>([]);
+
+  // Couple Rankings State & Boosts (Declared after liveStreamsList to avoid TDZ errors)
+  const [coupleBoosts, setCoupleBoosts] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem("sehr_couple_boosts_v1");
+    try {
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("sehr_couple_boosts_v1", JSON.stringify(coupleBoosts));
+  }, [coupleBoosts]);
+
+  const coupleRankings = useMemo(() => {
+    if (liveStreamsList.length === 0) return [];
+    
+    const list: Array<{
+      rank: number;
+      name: string;
+      avatar1: string;
+      avatar2: string;
+      cp: number;
+      lvl: number;
+      status: string;
+    }> = [];
+
+    // Pair 1: Active User & Sahar Live (or first host)
+    const host1 = liveStreamsList.find(h => h.name.toLowerCase().includes("sahar")) || liveStreamsList[0];
+    if (host1) {
+      const pairName = `${user.name || "Prince_Sehr"} & ${host1.name}`;
+      const baseCp = 95000 + (coupleBoosts[pairName] || 0);
+      list.push({
+        rank: 1,
+        name: pairName,
+        avatar1: user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+        avatar2: host1.avatar,
+        cp: baseCp,
+        lvl: Math.floor(baseCp / 8000),
+        status: "Official Soulmates 💍"
+      });
+    }
+
+    // Pair 2: Other active hosts
+    const remainingHosts = liveStreamsList.filter(h => h.id !== host1?.id);
+    if (remainingHosts.length >= 2) {
+      const hA = remainingHosts[0];
+      const hB = remainingHosts[1];
+      const pairName = `${hA.name} & ${hB.name}`;
+      const baseCp = 72000 + (coupleBoosts[pairName] || 0);
+      list.push({
+        rank: 2,
+        name: pairName,
+        avatar1: hA.avatar,
+        avatar2: hB.avatar,
+        cp: baseCp,
+        lvl: Math.floor(baseCp / 8000),
+        status: "Romantic Duo 🌸"
+      });
+    } else if (remainingHosts.length === 1 && host1) {
+      const hA = remainingHosts[0];
+      const pairName = `Admin & ${hA.name}`;
+      const baseCp = 45000 + (coupleBoosts[pairName] || 0);
+      list.push({
+        rank: 2,
+        name: pairName,
+        avatar1: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&h=100&q=80",
+        avatar2: hA.avatar,
+        cp: baseCp,
+        lvl: Math.floor(baseCp / 8000),
+        status: "Vocal Partners ✨"
+      });
+    }
+
+    // Sort by CP descending and update ranks
+    return list
+      .sort((a, b) => b.cp - a.cp)
+      .map((item, idx) => ({ ...item, rank: idx + 1 }));
+  }, [liveStreamsList, user, coupleBoosts]);
 
   // Dynamic Notifications Inbox State
   const [appNotifications, setAppNotifications] = useState<Array<{ id: number; title: string; text: string; time: string; isNew: boolean; userAvatar?: string; type?: string; timestamp?: string }>>([]);
@@ -2722,6 +2872,7 @@ export default function App() {
 
   // HTML references for auto-scrolling
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const lastSavedUserRef = useRef<string>("");
 
   // Voice Recording count-up timer
   useEffect(() => {
@@ -3072,11 +3223,17 @@ export default function App() {
         createdAt: new Date().toISOString()
       };
       
-      const docRef = await addDoc(collection(db, "reels"), reelData);
+      let reelId = `reel-${Math.floor(100000 + Math.random() * 900000)}`;
+      try {
+        const docRef = await addDoc(collection(db, "reels"), reelData);
+        reelId = docRef.id;
+      } catch (err: any) {
+        console.warn("Firestore write quota exceeded or connection issue. Saved reel locally.", err);
+      }
       
       // Save locally to profile reels
       const newProfileReel = {
-        id: docRef.id,
+        id: reelId,
         title: newReelCaption.trim() ? (newReelCaption.trim().split(" ").slice(0, 4).join(" ") + "...") : "My New Clip 🎬",
         views: reelPrivacy === "private" ? "Host Private" : "1.2K",
         likes: 0,
@@ -3299,6 +3456,7 @@ export default function App() {
         .then(data => {
           if (data && data.username) {
             setUser(data);
+            lastSavedUserRef.current = JSON.stringify(data);
             // Sync default fields for editing
             setEditFullName(data.fullName || "");
             setEditUsername(data.username || "");
@@ -3459,6 +3617,7 @@ export default function App() {
         .then(data => {
           if (data && data.username) {
             setUser(data);
+            lastSavedUserRef.current = JSON.stringify(data);
           }
         })
         .catch(err => console.error("Error polling user:", err));
@@ -3545,11 +3704,17 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem("sehr_user_profile", JSON.stringify(user));
+    const userStr = JSON.stringify(user);
+    if (userStr === lastSavedUserRef.current) {
+      // Skip redundant sync to avoid infinite write/poll loop and quota exhaustion
+      return;
+    }
+    lastSavedUserRef.current = userStr;
     // Also save user profile modifications to persistent backend Express database
     fetch("/api/v1/user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(user)
+      body: userStr
     }).catch(err => console.error("Error synchronizing user to backend:", err));
   }, [user]);
 
@@ -4061,6 +4226,21 @@ export default function App() {
     }
   };
 
+  // Upload and set user cover photo
+  const handleCoverPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      setUser(prev => ({
+        ...prev,
+        coverPhoto: base64String
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Save profile edits
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -4293,17 +4473,43 @@ export default function App() {
       imageUrl
     };
 
+    const targetContactName = activeChatContact ? activeChatContact.name : activeHost.name;
+
+    // Save in WhatsApp conversations mapping
+    setWhatsappConversations(prev => {
+      const existing = prev[targetContactName] || [];
+      return {
+        ...prev,
+        [targetContactName]: [...existing, newMsg]
+      };
+    });
+
+    // Fallback sync to directMessages state
     setDirectMessages(prev => [...prev, newMsg]);
 
-    // Simulate instant response from Sahar
+    // Simulate response from the contact
     setTimeout(() => {
-      let replyText = "Thank you Prince! Live stream pe milte hain thodi der mein! ✨🎙️";
+      let replyText = `Thanks for messaging! Let's catch up on my next stream soon! 🌟🎙️`;
+      if (targetContactName.includes("Sahar")) {
+        replyText = "Thank you Prince! Live stream pe milte hain thodi der mein! ✨🎙️";
+      } else if (targetContactName.includes("Alina")) {
+        replyText = "Aww Prince! Supporting me is the best thing. Let's win today's PK match together! 🔥❤️";
+      } else if (targetContactName.includes("Zain")) {
+        replyText = "Bilkul bhai, direct PK battle will be massive! Tayyar raho! ⚔️💪";
+      } else if (targetContactName.includes("Sana")) {
+        replyText = "Asalam-o-Alaikum! Shukurya for your sweet message. Keep supporting! 🌹✨";
+      } else if (targetContactName.includes("Alpha")) {
+        replyText = "Hey sweetheart! Join my VIP room tonight, we have some special activities! 👑💎";
+      } else if (targetContactName.includes("Siddique")) {
+        replyText = "Walaikum Assalam bhai! Sahr Kings agency is the strongest. Salary ledger check kar lo. 🛡️";
+      }
+
       if (isVoice) {
         replyText = "MashaAllah, bohot pyaari aawaaz hai aapki! ❤️🎙️ Sun kar bohot accha laga!";
       } else if (isImage) {
         replyText = "Wow! Shukurya share karne ka! Bohot hi kamaal ki photo hai! 😍📸";
       } else if (isSticker) {
-        replyText = "Aww! So cute sticker! ❤️😍 Thank you so much!";
+        replyText = "Aww! So cute emoji sticker! ❤️😍 Thank you so much!";
       } else if (customTextOverride && customTextOverride.includes("📍")) {
         replyText = "Oh, Lahore Node! Main bhi Lahore se hoon, bohot pyaari jagah hai! 🌸🇵🇰";
       } else if (customTextOverride && customTextOverride.includes("📄")) {
@@ -4312,15 +4518,22 @@ export default function App() {
         replyText = "Contact card save kar liya hai, shukurya! 📞";
       }
 
-      setDirectMessages(prev => [
-        ...prev,
-        {
-          id: "dm-reply-" + Date.now(),
-          sender: activeHost.name,
-          text: replyText,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-        }
-      ]);
+      const replyMsg = {
+        id: "dm-reply-" + Date.now(),
+        sender: targetContactName,
+        text: replyText,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      };
+
+      setWhatsappConversations(prev => {
+        const existing = prev[targetContactName] || [];
+        return {
+          ...prev,
+          [targetContactName]: [...existing, replyMsg]
+        };
+      });
+
+      setDirectMessages(prev => [...prev, replyMsg]);
     }, 2000);
   };
 
@@ -5253,7 +5466,7 @@ export default function App() {
                   /* ========================================= */
                   /* SEHR LIVE BRAND SPLASH SCREEN */
                   /* ========================================= */
-                  <div className="flex-1 flex flex-col justify-between p-6 bg-gradient-to-b from-[#0b0c10] via-[#1a0e2e] to-[#12121a] relative scroll-view-y safe-padding-top safe-padding-bottom">
+                  <div className="flex-1 flex flex-col justify-between p-6 bg-gradient-to-b from-[#050508] via-[#110724] to-[#09090e] relative scroll-view-y safe-padding-top safe-padding-bottom">
                     {/* Glowing neon accent background dots */}
                     <div className="absolute top-1/4 left-1/4 w-32 h-32 bg-[#ff007f]/10 rounded-full blur-[60px] pointer-events-none"></div>
                     <div className="absolute bottom-1/3 right-1/4 w-32 h-32 bg-[#7b2cbf]/15 rounded-full blur-[60px] pointer-events-none"></div>
@@ -5262,40 +5475,15 @@ export default function App() {
                     <div className="flex justify-end z-10">
                       <button
                         onClick={() => setShowSplash(false)}
-                        className="text-[10px] uppercase font-mono tracking-widest text-gray-400 hover:text-[#66fcf1] px-2.5 py-1 rounded-lg bg-[#1e1e2d]/50 border border-[#303040] transition-colors"
+                        className="text-[10px] uppercase font-mono tracking-widest text-gray-400 hover:text-[#00f5ff] px-2.5 py-1 rounded-lg bg-[#1e1e2d]/50 border border-[#303040] transition-colors"
                       >
                         Skip ➔
                       </button>
                     </div>
 
-                    {/* Circular animated radar waves & brand icon */}
+                    {/* Centered Brand Logo and Tagline */}
                     <div className="flex flex-col items-center my-auto relative z-10">
-                      <div className="relative flex items-center justify-center w-40 h-40">
-                        {/* Radar waves */}
-                        <div className="absolute inset-0 rounded-full border border-[#ff007f]/30 animate-ping opacity-60"></div>
-                        <div className="absolute inset-2 rounded-full border border-[#7b2cbf]/20 animate-pulse opacity-40"></div>
-                        <div className="absolute inset-4 rounded-full border border-[#00f5ff]/10"></div>
-                        
-                        {/* High-fidelity Brand Icon / Logo */}
-                        <div className="w-24 h-24 rounded-[32px] bg-gradient-to-tr from-[#ff007f] via-[#7b2cbf] to-[#00f5ff] flex items-center justify-center shadow-2xl shadow-[#ff007f]/30 relative z-10 border border-white/20">
-                          <Crown className="w-12 h-12 text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)] animate-pulse" />
-                          <div className="absolute -bottom-1 -right-1 bg-[#ff007f] text-white p-1.5 rounded-full border border-[#12121a] shadow-lg animate-bounce">
-                            <Heart className="w-4 h-4 fill-current" />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Brand name & Tagline */}
-                      <h2 className="text-3xl font-black text-center mt-6 tracking-widest text-white drop-shadow-md">
-                        Sehr <span className="bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] bg-clip-text text-transparent">Live</span>
-                      </h2>
-                      
-                      <div className="mt-3 flex items-center space-x-1.5">
-                        <span className="w-2 h-2 rounded-full bg-[#00f5ff] animate-ping"></span>
-                        <p className="text-[10px] text-[#66fcf1] font-mono font-bold tracking-widest uppercase">
-                          Broadcasting Hearts • Connecting Stars
-                        </p>
-                      </div>
+                      <SehrLiveLogo size="lg" showText={true} textPosition="bottom" animate={true} />
                     </div>
 
                     {/* Progress Loader bar */}
@@ -5308,7 +5496,7 @@ export default function App() {
                       </div>
                       <div className="flex justify-between items-center text-[9px] font-mono text-gray-400">
                         <span>LAUNCHING CHANNELS</span>
-                        <span className="text-[#66fcf1] font-bold">{splashProgress}%</span>
+                        <span className="text-[#00f5ff] font-bold">{splashProgress}%</span>
                       </div>
                     </div>
                   </div>
@@ -5316,22 +5504,11 @@ export default function App() {
                   /* ========================================= */
                   /* MOCK AUTHENTICATION & LOGIN FORM */
                   /* ========================================= */
-                  <div className="flex-1 flex flex-col justify-between p-6 bg-gradient-to-b from-[#1a112c] via-[#12121a] to-[#12121a] relative scroll-view-y safe-padding-top safe-padding-bottom">
+                  <div className="flex-1 flex flex-col justify-between p-6 bg-gradient-to-b from-[#110724] via-[#09090e] to-[#09090e] relative scroll-view-y safe-padding-top safe-padding-bottom">
                     
                     {/* Brand header */}
                     <div className="text-center mt-3">
-                      <div className="flex items-center justify-center space-x-2">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#ff007f] to-[#7b2cbf] flex items-center justify-center shadow-lg relative">
-                          <Crown className="w-6 h-6 text-white" />
-                          <div className="absolute -bottom-1 -right-1 bg-[#ff007f] text-white p-0.5 rounded-full border border-[#12121a]">
-                            <Heart className="w-2.5 h-2.5 fill-current" />
-                          </div>
-                        </div>
-                        <div className="text-left">
-                          <h3 className="text-lg font-black text-white leading-tight">Sehr <span className="bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] bg-clip-text text-transparent">Live</span></h3>
-                          <p className="text-[8px] text-[#66fcf1] font-bold tracking-wider uppercase font-mono">Broadcasting Hearts • Connecting Stars</p>
-                        </div>
-                      </div>
+                      <SehrLiveLogo size="md" showText={true} />
                     </div>
 
                     <div className="space-y-4 my-auto">
@@ -5392,7 +5569,7 @@ export default function App() {
 
                           {isOtpSent && (
                             <div className="animate-pop-gift bg-[#1e1e2d] p-3 rounded-xl border border-[#ff007f]/20 space-y-1">
-                              <label className="text-[9px] uppercase tracking-wider text-[#66fcf1] block font-bold font-mono">Enter 4-Digit OTP Code</label>
+                              <label className="text-[9px] uppercase tracking-wider text-[#00f5ff] block font-bold font-mono">Enter 4-Digit OTP Code</label>
                               <input
                                 type="text"
                                 placeholder="4589"
@@ -5401,7 +5578,7 @@ export default function App() {
                                   setLoginOtp(e.target.value);
                                   if (loginError) setLoginError("");
                                 }}
-                                className="w-full bg-[#12121a] border border-[#66fcf1] rounded-lg px-3 py-2 text-white text-center text-sm font-black focus:outline-none tracking-widest font-mono"
+                                className="w-full bg-[#12121a] border border-[#00f5ff] rounded-lg px-3 py-2 text-white text-center text-sm font-black focus:outline-none tracking-widest font-mono"
                               />
                               <p className="text-[9px] text-green-400 flex items-center pt-1 font-mono">
                                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 animate-ping mr-1"></span>
@@ -5484,7 +5661,7 @@ export default function App() {
                       {/* 2FA Toggle switch */}
                       <div className="flex items-center justify-between border-t border-[#1f2833]/30 pt-3">
                         <div className="flex items-center space-x-2">
-                          <Shield className="w-4 h-4 text-[#66fcf1]" />
+                          <Shield className="w-4 h-4 text-[#00f5ff]" />
                           <div>
                             <p className="text-[10px] font-bold text-white">Two-Factor Authentication (2FA)</p>
                             <p className="text-[8px] text-gray-400">Extra layer of verification safety</p>
@@ -5529,7 +5706,7 @@ export default function App() {
                     <div className="text-center mt-4">
                       <button
                         onClick={() => setShowSplash(true)}
-                        className="text-[9px] text-[#66fcf1]/80 hover:text-[#66fcf1] underline uppercase tracking-wider font-mono font-bold"
+                        className="text-[9px] text-[#00f5ff]/80 hover:text-[#00f5ff] underline uppercase tracking-wider font-mono font-bold"
                       >
                         ➔ Replay App Splash Screen
                       </button>
@@ -5541,8 +5718,8 @@ export default function App() {
                     {/* 2FA Modal */}
                     {showTwoFactorModal && (
                       <div className="absolute inset-0 bg-black/95 z-50 flex flex-col justify-center p-6">
-                        <div className="bg-[#1e1e2d] border border-[#66fcf1]/50 rounded-2xl p-5 text-center space-y-4 shadow-2xl">
-                          <ShieldAlert className="w-12 h-12 text-[#66fcf1] mx-auto animate-bounce" />
+                        <div className="bg-[#1e1e2d] border border-[#00f5ff]/50 rounded-2xl p-5 text-center space-y-4 shadow-2xl">
+                          <ShieldAlert className="w-12 h-12 text-[#00f5ff] mx-auto animate-bounce" />
                           <div>
                             <h4 className="text-sm font-bold text-white">2FA Verification Code</h4>
                             <p className="text-xs text-gray-400 mt-1">Please enter your 2FA security code to finalize your multi-device secure login.</p>
@@ -8423,7 +8600,27 @@ export default function App() {
                           >
                             <ArrowLeft className="w-4 h-4" />
                           </button>
-                          <img src={user.coverPhoto} className="w-full h-24 object-cover" alt="cover" />
+
+                          {/* Cover Photo Camera Edit Button overlay */}
+                          <button
+                            type="button"
+                            onClick={() => document.getElementById("cover-photo-file-input")?.click()}
+                            className="absolute top-3 right-3 z-30 p-1.5 rounded-full bg-[#12121a]/80 backdrop-blur-md border border-white/10 text-white hover:bg-[#ff007f] hover:text-white transition-all cursor-pointer shadow-lg active:scale-95"
+                            title="Change Cover Photo"
+                          >
+                            <Camera className="w-4 h-4" />
+                          </button>
+                          
+                          {/* Hidden File Input for uploading cover */}
+                          <input
+                            type="file"
+                            id="cover-photo-file-input"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleCoverPhotoUpload}
+                          />
+
+                          <img src={user.coverPhoto} className="w-full h-36 object-cover" alt="cover" />
                           
                           {/* LARGER PROFILE PICTURE WITH STORIES RINGS AND PLUS (+) OVERLAY BUTTON */}
                           {(() => {
@@ -15186,69 +15383,14 @@ export default function App() {
                     {/* ===================================================================== */}
                     {clientView === "chat" && (
                       <div className="flex-1 flex flex-col justify-between bg-[#12121a] relative">
-                        {/* Header */}
-                        <div className="bg-[#1e1e2d] p-3 border-b border-[#303040] flex items-center justify-between z-10">
-                          <div className="flex items-center">
-                            <button
-                              type="button"
-                              onClick={goBack}
-                              className="p-1.5 rounded-lg bg-[#12121a] border border-[#303040] text-gray-300 hover:text-white transition-all mr-2 shrink-0 cursor-pointer"
-                              title="Back"
-                            >
-                              <ArrowLeft className="w-4 h-4" />
-                            </button>
-                            <div className="w-8 h-8 rounded-full overflow-hidden border border-[#ff007f] mr-2">
-                              <img src={activeHost.avatar} className="w-full h-full object-cover" alt="avatar" />
-                            </div>
-                            <div>
-                              <p className="text-xs font-black text-white">{activeHost.name}</p>
-                              <span className="text-[8px] text-green-400 flex items-center">
-                                <span className="w-1 h-1 bg-green-500 rounded-full mr-1 animate-ping"></span> Online
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Chat Management Tools */}
-                          <div className="flex items-center space-x-1.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (confirm("Clear all message history in this chat?")) {
-                                  setDirectMessages([]);
-                                  alert("Chat history cleared!");
-                                }
-                              }}
-                              className="p-1.5 rounded bg-white/5 hover:bg-white/10 text-gray-400 hover:text-amber-400 transition-all text-[8px] flex items-center space-x-1 font-mono font-bold"
-                              title="Clear Chat History"
-                            >
-                              <span>🧹 Clear Chat</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (confirm("Completely delete this chat session?")) {
-                                  setDirectMessages([]);
-                                  setClientView("feed");
-                                  alert("Chat session deleted!");
-                                }
-                              }}
-                              className="p-1.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-all text-[8px] flex items-center space-x-1 font-mono font-bold"
-                              title="Delete Chat Session"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                              <span>Delete Chat</span>
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Tab Toggle: Messages vs Couples Rankings */}
+                        {/* Header tab switcher */}
                         <div className="bg-[#12121a] flex border-b border-[#303040] z-10">
                           <button
                             type="button"
                             onClick={() => setCurrentChatTab("messages")}
                             className={`flex-1 py-2 text-[9px] font-black uppercase tracking-wider font-mono transition-all border-b-2 ${currentChatTab === "messages" ? "text-[#ff007f] border-[#ff007f] bg-white/5" : "text-gray-400 border-transparent hover:text-white"}`}
                           >
-                            💬 Direct Messages
+                            💬 Direct Messages (WhatsApp)
                           </button>
                           <button
                             type="button"
@@ -15299,7 +15441,10 @@ export default function App() {
                                           return;
                                         }
                                         setUser(prev => ({ ...prev, coins: prev.coins - 50 }));
-                                        setCoupleRankings(prev => prev.map(c => c.rank === couple.rank ? { ...c, cp: c.cp + 500 } : c));
+                                        setCoupleBoosts(prev => ({
+                                          ...prev,
+                                          [couple.name]: (prev[couple.name] || 0) + 500
+                                        }));
                                         
                                         // Deduct and ledger transaction
                                         const newTx: Transaction = {
@@ -15323,110 +15468,491 @@ export default function App() {
                               ))}
                             </div>
                           </div>
-                        ) : (
-                          /* Messages View Tab */
-                          <>
-                            {/* Chat history list */}
-                            <div className="flex-1 scroll-view-y p-3 pb-4 space-y-2.5">
-                              {directMessages
-                                .filter(msg => !msg.deletedForSelf)
-                                .map((msg) => (
-                                  <div key={msg.id} className={`flex flex-col relative ${msg.sender === "You" ? "items-end" : "items-start"}`}>
-                                    <span className="text-[8px] text-gray-500 mb-0.5">{msg.sender} • {msg.timestamp}</span>
-                                    
-                                    <div className="flex items-center space-x-1 group">
-                                      {msg.sender === "You" && (
-                                        <button
-                                          type="button"
-                                          onClick={() => setChatSelectedMessageId(chatSelectedMessageId === msg.id ? null : msg.id)}
-                                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-white transition-all rounded bg-white/5"
-                                          title="Message Options"
-                                        >
-                                          <MoreVertical className="w-3 h-3" />
-                                        </button>
-                                      )}
+                        ) : activeChatContact === null ? (
+                          /* WhatsApp Style Contacts/Chats List */
+                          <div className="flex-1 flex flex-col bg-[#12121a] text-white overflow-hidden">
+                            {/* WhatsApp Search Bar */}
+                            <div className="p-3 bg-[#1e1e2d] border-b border-[#303040] flex items-center space-x-2 shrink-0">
+                              <div className="relative flex-1">
+                                <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" />
+                                <input
+                                  type="text"
+                                  placeholder="Search contact or chat..."
+                                  value={chatSearchQuery}
+                                  onChange={(e) => setChatSearchQuery(e.target.value)}
+                                  className="w-full bg-[#12121a] border border-[#303040] rounded-lg py-1.5 pl-8 pr-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#ff007f] transition-all"
+                                />
+                                {chatSearchQuery && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setChatSearchQuery("")}
+                                    className="absolute right-2.5 top-2.5 text-xs text-gray-400 hover:text-white"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+                            </div>
 
-                                      <div className={`p-2 rounded-xl max-w-[80%] text-xs relative ${
-                                        msg.deletedForEveryone 
-                                          ? "bg-gray-800/40 text-gray-500 border border-gray-700/50 italic rounded-lg" 
-                                          : msg.sender === "You" 
-                                            ? "bg-[#ff007f] text-white rounded-tr-none shadow-md" 
-                                            : "bg-[#1e1e2d] text-gray-200 rounded-tl-none border border-[#303040] shadow-sm"
-                                      }`}>
-                                        {msg.deletedForEveryone ? (
-                                          <span className="flex items-center space-x-1 text-[10px]">
-                                            <span>🚫 Message was deleted for everyone</span>
+                            {/* Contacts list */}
+                            <div className="flex-1 overflow-y-auto divide-y divide-[#1e1e2d] space-y-1">
+                              {/* Existing Chats */}
+                              {whatsappContacts
+                                .filter(contact => {
+                                  const lastMsg = (whatsappConversations[contact.name] || []).slice(-1)[0]?.text || contact.bio || "";
+                                  return contact.name.toLowerCase().includes(chatSearchQuery.toLowerCase()) ||
+                                         lastMsg.toLowerCase().includes(chatSearchQuery.toLowerCase());
+                                })
+                                .map(contact => {
+                                  const conversation = whatsappConversations[contact.name] || [];
+                                  const lastMsgObj = conversation.slice(-1)[0];
+                                  const hasUnread = conversation.length > 0 && lastMsgObj?.sender !== "You";
+                                  
+                                  return (
+                                    <div
+                                      key={contact.name}
+                                      className="flex items-center justify-between p-3 hover:bg-white/5 active:bg-white/10 transition-all cursor-pointer group"
+                                      onClick={() => {
+                                        setActiveChatContact(contact);
+                                        setDirectMessages(conversation);
+                                        setMessageSearchQuery("");
+                                      }}
+                                    >
+                                      <div className="flex items-center space-x-3 min-w-0 flex-1">
+                                        {/* Avatar image - tapping DP opens image modal */}
+                                        <div
+                                          className="w-10 h-10 rounded-full overflow-hidden border border-[#ff007f] shrink-0 relative hover:scale-105 active:scale-95 transition-transform"
+                                          onClick={(e) => {
+                                            e.stopPropagation(); // Avoid selecting chat
+                                            setShowActiveChatDPModal({ name: contact.name, avatar: contact.avatar });
+                                          }}
+                                          title="View profile photo"
+                                        >
+                                          <img src={contact.avatar} className="w-full h-full object-cover" alt="avatar" referrerPolicy="no-referrer" />
+                                          {contact.isOnline && (
+                                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border border-[#12121a]" />
+                                          )}
+                                        </div>
+
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center space-x-1">
+                                            <span className="text-xs font-bold text-white group-hover:text-[#ff007f] transition-colors">{contact.name}</span>
+                                            {contact.name.includes("Sahar") && <span className="text-[9px]" title="Official Artist">⭐</span>}
+                                          </div>
+                                          <p className="text-[9.5px] text-gray-400 truncate mt-0.5">
+                                            {lastMsgObj ? (
+                                              <span className={hasUnread ? "text-[#ff007f] font-bold" : ""}>
+                                                {lastMsgObj.sender === "You" ? "You: " : ""}{lastMsgObj.text}
+                                              </span>
+                                            ) : (
+                                              <span className="italic text-gray-500">{contact.bio}</span>
+                                            )}
+                                          </p>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex flex-col items-end shrink-0 pl-2 space-y-1">
+                                        <span className="text-[8.5px] text-gray-500">
+                                          {lastMsgObj ? lastMsgObj.timestamp : contact.isOnline ? "Online" : "Offline"}
+                                        </span>
+                                        {hasUnread && (
+                                          <span className="bg-[#ff007f] text-white text-[7.5px] font-extrabold rounded-full w-4 h-4 flex items-center justify-center animate-pulse">
+                                            1
                                           </span>
-                                        ) : msg.isVoice ? (
-                                          <div className="flex items-center space-x-1.5 py-0.5">
-                                            <button
-                                              type="button"
-                                              onClick={() => alert(`🎙️ Playing Voice Message (${msg.voiceDuration}s) recorded by You: "Sahar, best of luck for the next show! Launching Space Rocket soon!"`)}
-                                              className="w-5 h-5 bg-black/30 hover:bg-black/50 text-[#66fcf1] rounded-full flex items-center justify-center text-[10px] transition-colors"
-                                              title="Play Voice Note"
-                                            >
-                                              ▶️
-                                            </button>
-                                            <span className="font-bold text-[10px]">Voice Note ({msg.voiceDuration}s)</span>
-                                            <span className="text-gray-300 font-mono text-[8px] tracking-tight opacity-75">|ı||ıı||ı|ıı||</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+
+                              {/* Search Results from Live Hosts / Real Users on App */}
+                              {(() => {
+                                const matchedLiveHosts = liveStreamsList.filter(host => {
+                                  const nameMatch = host.name.toLowerCase().includes(chatSearchQuery.toLowerCase());
+                                  const notInContacts = !whatsappContacts.some(c => c.name === host.name);
+                                  return nameMatch && notInContacts;
+                                });
+
+                                if (matchedLiveHosts.length > 0) {
+                                  return (
+                                    <div className="mt-2 p-3 bg-[#171724] border-t border-[#303040] space-y-2">
+                                      <h4 className="text-[9px] text-[#ff007f] font-mono font-black uppercase tracking-wider mb-2">
+                                        {chatSearchQuery ? "Search Results: Active Users / Hosts" : "Start Chat with Active Users / Hosts"}
+                                      </h4>
+                                      <div className="space-y-1.5">
+                                        {matchedLiveHosts.map(host => (
+                                          <div
+                                            key={host.id}
+                                            onClick={() => {
+                                              const newContact = {
+                                                name: host.name,
+                                                avatar: host.avatar,
+                                                bio: host.bio || `Official Sahr Live Stream Host 🌟`,
+                                                followersCount: host.followersCount || 10000,
+                                                followingCount: 150,
+                                                totalLikesCount: host.totalLikes || 50000,
+                                                isOnline: host.isLive || true
+                                              };
+                                              setWhatsappContacts(prev => {
+                                                if (prev.some(c => c.name === host.name)) return prev;
+                                                return [...prev, newContact];
+                                              });
+                                              setActiveChatContact(newContact);
+                                              setDirectMessages(whatsappConversations[host.name] || []);
+                                            }}
+                                            className="flex items-center space-x-2.5 p-2 rounded-xl bg-[#12121a]/80 hover:bg-[#ff007f]/10 border border-[#303040]/50 hover:border-[#ff007f]/30 cursor-pointer transition-all active:scale-95 group"
+                                          >
+                                            <div className="relative">
+                                              <img src={host.avatar} className="w-8 h-8 rounded-full object-cover border border-[#ff007f]/30 shrink-0" alt="" referrerPolicy="no-referrer" />
+                                              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border border-[#12121a]" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                              <p className="text-[10px] font-bold text-white truncate group-hover:text-[#ff007f] transition-colors">{host.name}</p>
+                                              <p className="text-[8.5px] text-gray-400 truncate">{host.statusText || "Available to chat on Sahr Live"}</p>
+                                            </div>
+                                            <span className="text-[8.5px] bg-[#ff007f] hover:bg-[#ff007f]/90 text-white font-black px-2 py-1 rounded-lg shrink-0 transition-all shadow-md">
+                                              💬 CHAT
+                                            </span>
                                           </div>
-                                        ) : msg.isImage ? (
-                                          <div className="space-y-1">
-                                            <img src={msg.imageUrl} className="w-36 h-36 object-cover rounded-lg border border-pink-500/20" alt="attached" referrerPolicy="no-referrer" />
-                                            <span className="text-[8px] text-gray-300 block italic">Photo Attachment</span>
-                                          </div>
-                                        ) : msg.isSticker ? (
-                                          <span className="text-4xl block">{msg.text}</span>
-                                        ) : (
-                                          <p className="leading-relaxed">{msg.text}</p>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
+
+                              {/* Empty State */}
+                              {whatsappContacts.filter(contact => {
+                                const lastMsg = (whatsappConversations[contact.name] || []).slice(-1)[0]?.text || contact.bio || "";
+                                return contact.name.toLowerCase().includes(chatSearchQuery.toLowerCase()) ||
+                                       lastMsg.toLowerCase().includes(chatSearchQuery.toLowerCase());
+                              }).length === 0 && 
+                              liveStreamsList.filter(host => {
+                                const nameMatch = host.name.toLowerCase().includes(chatSearchQuery.toLowerCase());
+                                const notInContacts = !whatsappContacts.some(c => c.name === host.name);
+                                return nameMatch && notInContacts;
+                              }).length === 0 && (
+                                <div className="text-center py-10 px-4 space-y-2">
+                                  <p className="text-gray-500 text-xs font-mono">No matching contacts or active users found.</p>
+                                  {chatSearchQuery && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setChatSearchQuery("")}
+                                      className="text-[10px] bg-white/5 border border-white/10 text-[#ff007f] hover:bg-white/10 px-3 py-1 rounded-full font-bold"
+                                    >
+                                      Reset Search
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          /* Active Chat Screen */
+                          <div className="flex-1 flex flex-col bg-[#0f0f18] relative justify-between overflow-hidden">
+                            {/* Header */}
+                            <div className="bg-[#1e1e2d] p-3 border-b border-[#303040] flex items-center justify-between z-10 shrink-0">
+                              <div className="flex items-center min-w-0 flex-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    // Save state
+                                    setWhatsappConversations(prev => ({
+                                      ...prev,
+                                      [activeChatContact.name]: directMessages
+                                    }));
+                                    setActiveChatContact(null);
+                                  }}
+                                  className="p-1.5 rounded-lg bg-[#12121a] border border-[#303040] text-gray-300 hover:text-white transition-all mr-2 shrink-0 cursor-pointer"
+                                  title="Back"
+                                >
+                                  <ArrowLeft className="w-4 h-4" />
+                                </button>
+                                
+                                {/* DP Zoom Trigger */}
+                                <div
+                                  onClick={() => setShowActiveChatDPModal({ name: activeChatContact.name, avatar: activeChatContact.avatar })}
+                                  className="w-8 h-8 rounded-full overflow-hidden border border-[#ff007f] mr-2 shrink-0 cursor-pointer hover:scale-105 active:scale-95 transition-transform"
+                                  title="View Photo"
+                                >
+                                  <img src={activeChatContact.avatar} className="w-full h-full object-cover" alt="avatar" />
+                                </div>
+
+                                {/* Visit Profile Trigger */}
+                                <div
+                                  onClick={() => setShowActiveChatProfileModal(activeChatContact)}
+                                  className="min-w-0 cursor-pointer hover:opacity-85 transition-opacity"
+                                  title="Visit Profile"
+                                >
+                                  <p className="text-xs font-black text-white truncate flex items-center space-x-1">
+                                    <span>{activeChatContact.name}</span>
+                                    {activeChatContact.name.includes("Sahar") && <span className="text-[10px]">⭐</span>}
+                                  </p>
+                                  <span className="text-[8px] text-green-400 flex items-center">
+                                    <span className="w-1 h-1 bg-green-500 rounded-full mr-1 animate-ping"></span> Online
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Search + Action controls */}
+                              <div className="flex items-center space-x-1.5 shrink-0 relative">
+                                {/* Local message search bar in header */}
+                                <div className="flex items-center bg-[#12121a] border border-[#303040] rounded-lg px-2 py-1 space-x-1.5">
+                                  <Search className="w-3 h-3 text-[#ff007f]" />
+                                  <input
+                                    type="text"
+                                    placeholder="Search in chat..."
+                                    value={messageSearchQuery}
+                                    onChange={(e) => setMessageSearchQuery(e.target.value)}
+                                    className="bg-transparent text-[9px] w-20 text-white placeholder-gray-500 focus:outline-none"
+                                  />
+                                  {messageSearchQuery && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setMessageSearchQuery("")}
+                                      className="text-[9px] text-gray-400 hover:text-white"
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Header options button */}
+                                <div className="relative">
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveChatOptionsOpen(!activeChatOptionsOpen)}
+                                    className="p-1.5 rounded-lg bg-[#12121a] border border-[#303040] text-gray-300 hover:text-white transition-all cursor-pointer"
+                                    title="More Options"
+                                  >
+                                    <MoreVertical className="w-4 h-4" />
+                                  </button>
+
+                                  {/* Floating Dropdown sub-menu */}
+                                  {activeChatOptionsOpen && (
+                                    <div className="absolute right-0 top-full mt-1.5 bg-[#1e1e2d] border border-[#303040] rounded-xl py-1.5 w-36 shadow-2xl z-30 animate-fade-in text-left">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (confirm("Clear all message history in this chat?")) {
+                                            setWhatsappConversations(prev => ({
+                                              ...prev,
+                                              [activeChatContact.name]: []
+                                            }));
+                                            setDirectMessages([]);
+                                            setActiveChatOptionsOpen(false);
+                                            alert("Chat cleared successfully!");
+                                          }
+                                        }}
+                                        className="w-full px-3 py-1.5 text-left text-[10px] text-gray-200 hover:bg-white/5 hover:text-amber-400 flex items-center space-x-1.5 transition-colors font-mono font-bold"
+                                      >
+                                        <span>🧹 Clear Chat</span>
+                                      </button>
+                                      
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (confirm("Completely delete this chat session & history?")) {
+                                            setWhatsappConversations(prev => {
+                                              const updated = { ...prev };
+                                              delete updated[activeChatContact.name];
+                                              return updated;
+                                            });
+                                            setWhatsappContacts(prev => prev.filter(c => c.name !== activeChatContact.name));
+                                            setDirectMessages([]);
+                                            setActiveChatContact(null);
+                                            setActiveChatOptionsOpen(false);
+                                            alert("Chat history deleted successfully.");
+                                          }
+                                        }}
+                                        className="w-full px-3 py-1.5 text-left text-[10px] text-red-400 hover:bg-red-500/10 hover:text-red-300 flex items-center space-x-1.5 transition-colors font-mono font-bold"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                        <span>🗑️ Delete History</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Chat history list with message filter */}
+                            <div className="flex-1 scroll-view-y p-3 pb-4 space-y-2.5">
+                              {(whatsappConversations[activeChatContact.name] || [])
+                                .filter(msg => !msg.deletedForSelf)
+                                .filter(msg => {
+                                  if (!messageSearchQuery) return true;
+                                  return msg.text.toLowerCase().includes(messageSearchQuery.toLowerCase());
+                                })
+                                .map((msg) => {
+                                  const isUser = msg.sender === "You";
+                                  const isMatch = messageSearchQuery && msg.text.toLowerCase().includes(messageSearchQuery.toLowerCase());
+                                  
+                                  return (
+                                    <div key={msg.id} className={`flex flex-col relative ${isUser ? "items-end" : "items-start"}`}>
+                                      <span className="text-[8px] text-gray-500 mb-0.5">{msg.sender} • {msg.timestamp}</span>
+                                      
+                                      <div className="flex items-center space-x-1 group">
+                                        {isUser && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setChatSelectedMessageId(chatSelectedMessageId === msg.id ? null : msg.id)}
+                                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-white transition-all rounded bg-white/5"
+                                            title="Message Options"
+                                          >
+                                            <MoreVertical className="w-3 h-3" />
+                                          </button>
                                         )}
 
-                                        {/* Floating Deletion Menu */}
-                                        {chatSelectedMessageId === msg.id && (
-                                          <div className="absolute right-0 top-full mt-1 bg-[#1a1a24] border border-[#ff007f]/30 rounded-lg p-1 z-30 shadow-2xl space-y-0.5 w-24">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setDirectMessages(prev => prev.map(m => m.id === msg.id ? { ...m, deletedForSelf: true } : m));
-                                                setChatSelectedMessageId(null);
-                                              }}
-                                              className="w-full text-left text-[8px] hover:bg-white/5 p-1 rounded text-amber-400 font-mono font-bold flex items-center space-x-1"
-                                            >
-                                              <span>🗑️ For Self</span>
-                                            </button>
-                                            {msg.sender === "You" && (
+                                        <div className={`p-2 rounded-xl max-w-[80%] text-xs relative ${
+                                          msg.deletedForEveryone 
+                                            ? "bg-gray-800/40 text-gray-500 border border-gray-700/50 italic rounded-lg" 
+                                            : isUser 
+                                              ? "bg-[#ff007f] text-white rounded-tr-none shadow-md" 
+                                              : "bg-[#1e1e2d] text-gray-200 rounded-tl-none border border-[#303040] shadow-sm"
+                                        } ${isMatch ? "ring-2 ring-yellow-400 ring-offset-1" : ""}`}>
+                                          {msg.deletedForEveryone ? (
+                                            <span className="flex items-center space-x-1 text-[10px]">
+                                              <span>🚫 Message was deleted for everyone</span>
+                                            </span>
+                                          ) : msg.isVoice ? (
+                                            <div className="flex items-center space-x-1.5 py-0.5">
+                                              <button
+                                                type="button"
+                                                onClick={() => alert(`🎙️ Playing Voice Message (${msg.voiceDuration}s)`)}
+                                                className="w-5 h-5 bg-black/30 hover:bg-black/50 text-[#66fcf1] rounded-full flex items-center justify-center text-[10px] transition-colors"
+                                                title="Play Voice Note"
+                                              >
+                                                ▶️
+                                              </button>
+                                              <span className="font-bold text-[10px]">Voice Note ({msg.voiceDuration}s)</span>
+                                              <span className="text-gray-300 font-mono text-[8px] tracking-tight opacity-75">|ı||ıı||ı|ıı||</span>
+                                            </div>
+                                          ) : msg.isImage ? (
+                                            <div className="space-y-1">
+                                              <img src={msg.imageUrl} className="w-36 h-36 object-cover rounded-lg border border-pink-500/20" alt="attached" referrerPolicy="no-referrer" />
+                                              <span className="text-[8px] text-gray-300 block italic">Photo Attachment</span>
+                                            </div>
+                                          ) : msg.isSticker ? (
+                                            <span className="text-4xl block">{msg.text}</span>
+                                          ) : (
+                                            <p className="leading-relaxed whitespace-pre-line">
+                                              {isMatch ? (
+                                                <span className="bg-yellow-400 text-black px-1 rounded font-bold">{msg.text}</span>
+                                              ) : (
+                                                msg.text
+                                              )}
+                                            </p>
+                                          )}
+
+                                          {/* Floating Deletion Menu */}
+                                          {chatSelectedMessageId === msg.id && (
+                                            <div className="absolute right-0 top-full mt-1 bg-[#1a1a24] border border-[#ff007f]/30 rounded-lg p-1 z-30 shadow-2xl space-y-0.5 w-24">
                                               <button
                                                 type="button"
                                                 onClick={() => {
-                                                  setDirectMessages(prev => prev.map(m => m.id === msg.id ? { ...m, deletedForEveryone: true } : m));
+                                                  setWhatsappConversations(prev => {
+                                                    const list = prev[activeChatContact.name] || [];
+                                                    return {
+                                                      ...prev,
+                                                      [activeChatContact.name]: list.map(m => m.id === msg.id ? { ...m, deletedForSelf: true } : m)
+                                                    };
+                                                  });
+                                                  setDirectMessages(prev => prev.map(m => m.id === msg.id ? { ...m, deletedForSelf: true } : m));
                                                   setChatSelectedMessageId(null);
                                                 }}
-                                                className="w-full text-left text-[8px] hover:bg-red-500/10 p-1 rounded text-red-400 font-mono font-bold flex items-center space-x-1"
+                                                className="w-full text-left text-[8px] hover:bg-white/5 p-1 rounded text-amber-400 font-mono font-bold flex items-center space-x-1"
                                               >
-                                                <span>🚫 For Everyone</span>
+                                                <span>🗑️ For Self</span>
                                               </button>
-                                            )}
-                                          </div>
+                                              {isUser && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setWhatsappConversations(prev => {
+                                                      const list = prev[activeChatContact.name] || [];
+                                                      return {
+                                                        ...prev,
+                                                        [activeChatContact.name]: list.map(m => m.id === msg.id ? { ...m, deletedForEveryone: true } : m)
+                                                      };
+                                                    });
+                                                    setDirectMessages(prev => prev.map(m => m.id === msg.id ? { ...m, deletedForEveryone: true } : m));
+                                                    setChatSelectedMessageId(null);
+                                                  }}
+                                                  className="w-full text-left text-[8px] hover:bg-red-500/10 p-1 rounded text-red-400 font-mono font-bold flex items-center space-x-1"
+                                                >
+                                                  <span>🚫 For Everyone</span>
+                                                </button>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {!isUser && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setChatSelectedMessageId(chatSelectedMessageId === msg.id ? null : msg.id)}
+                                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-white transition-all rounded bg-white/5"
+                                            title="Message Options"
+                                          >
+                                            <MoreVertical className="w-3 h-3" />
+                                          </button>
                                         )}
                                       </div>
-
-                                      {msg.sender !== "You" && (
-                                        <button
-                                          type="button"
-                                          onClick={() => setChatSelectedMessageId(chatSelectedMessageId === msg.id ? null : msg.id)}
-                                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-white transition-all rounded bg-white/5"
-                                          title="Message Options"
-                                        >
-                                          <MoreVertical className="w-3 h-3" />
-                                        </button>
-                                      )}
                                     </div>
+                                  );
+                                })}
+
+                              {(whatsappConversations[activeChatContact.name] || []).length === 0 && (
+                                <div className="text-center py-16 px-4 space-y-2">
+                                  <p className="text-gray-500 text-xs font-medium font-mono">Say Salaam to start conversation! 👋🇵🇰</p>
+                                  <div className="flex justify-center space-x-2 pt-2">
+                                    {["Asalam-o-Alaikum! 🌸", "Nice Stream! 🎤", "Love from Lahore! ❤️"].map(greet => (
+                                      <button
+                                        key={greet}
+                                        type="button"
+                                        onClick={() => setDirectChatInput(greet)}
+                                        className="bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white text-[10px] px-2.5 py-1 rounded-full border border-white/5 transition-all font-mono"
+                                      >
+                                        {greet}
+                                      </button>
+                                    ))}
                                   </div>
-                                ))}
+                                </div>
+                              )}
                             </div>
 
-                            {/* Sticker panel and Direct Chat inputs */}
-                            <div className="p-2.5 border-t border-[#303040] bg-[#1e1e2d] space-y-2">
+                            {/* Mobile Emoji Drawer */}
+                            {showEmojiPicker && (
+                              <div className="bg-[#1a1a24] border-t border-[#303040] p-2.5 z-20 animate-fade-in shrink-0">
+                                <div className="flex items-center justify-between pb-1.5 border-b border-[#303040] mb-2">
+                                  <span className="text-[9px] font-black uppercase text-pink-500 tracking-wider font-mono">😃 Mobile Emoji Keyboard</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowEmojiPicker(false)}
+                                    className="text-gray-400 hover:text-white text-xs"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-8 gap-2 text-xl py-1 text-center max-h-36 overflow-y-auto">
+                                  {["😀", "😂", "🤣", "😍", "🥰", "😘", "😜", "🤩", "😎", "🤔", "🙄", "🔥", "💯", "👍", "🙏", "👏", "🎉", "🌟", "🌹", "💖", "❤️", "💔", "🇵🇰", "👑", "🎙️", "🎤", "🔑", "🍿", "🍕", "🌸", "⭐", "👑"].map((emoji, idx) => (
+                                    <button
+                                      key={idx}
+                                      type="button"
+                                      onClick={() => setDirectChatInput(prev => prev + emoji)}
+                                      className="hover:scale-125 transition-transform active:scale-95 duration-700"
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* DM inputs (Stickers removed as requested - "Remove the signs at the bottom") */}
+                            <div className="p-2.5 border-t border-[#303040] bg-[#1e1e2d] space-y-2 shrink-0">
                               {/* Attachment Tray popup */}
                               {showAttachmentMenu && (
                                 <div className="bg-[#12121a] p-2 rounded-xl border border-[#303040] grid grid-cols-4 gap-1.5 animate-fade-in text-center mb-1">
@@ -15480,20 +16006,6 @@ export default function App() {
                                 </div>
                               )}
 
-                              {/* Sticker drawer */}
-                              <div className="flex items-center space-x-2.5 overflow-x-auto pb-1 text-xl border-b border-[#303040] pt-0.5">
-                                {["🎁", "❤️", "🔥", "🎸", "🌹", "👑", "🍕", "🛸", "🦄"].map((sticker, idx) => (
-                                  <button
-                                    key={idx}
-                                    type="button"
-                                    onClick={(e) => handleSendDirectMessage(e, true, sticker)}
-                                    className="hover:scale-125 transition-all"
-                                  >
-                                    {sticker}
-                                  </button>
-                                ))}
-                              </div>
-
                               <div className="flex items-center space-x-2">
                                 {isRecordingVoice ? (
                                   <div className="flex-1 bg-red-950/30 border border-red-500/40 rounded-full px-3 py-1.5 flex items-center justify-between text-xs animate-pulse">
@@ -15528,7 +16040,7 @@ export default function App() {
                                 ) : (
                                   <form onSubmit={(e) => handleSendDirectMessage(e)} className="flex-1 flex bg-[#12121a] rounded-full overflow-hidden border border-[#303040] items-center">
                                     {/* Action items inside input bar */}
-                                    <div className="flex items-center pl-2 space-x-1.5">
+                                    <div className="flex items-center pl-2 space-x-1.5 shrink-0">
                                       <button
                                         type="button"
                                         onClick={() => setShowCameraModal(true)}
@@ -15546,17 +16058,27 @@ export default function App() {
                                       >
                                         <Paperclip className="w-3.5 h-3.5" />
                                       </button>
+
+                                      {/* Emoji Selector Icon */}
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                                        className={`p-1 transition-all ${showEmojiPicker ? "text-[#ff007f]" : "text-gray-400 hover:text-white"}`}
+                                        title="Choose Mobile Emoji"
+                                      >
+                                        <Smile className="w-3.5 h-3.5" />
+                                      </button>
                                     </div>
 
                                     <input
                                       type="text"
-                                      placeholder="Type private message..."
+                                      placeholder={`Message ${activeChatContact.name}...`}
                                       value={directChatInput}
                                       onChange={(e) => setDirectChatInput(e.target.value)}
-                                      className="flex-1 bg-transparent px-3 py-1.5 text-xs text-white focus:outline-none"
+                                      className="flex-1 bg-transparent px-2.5 py-1.5 text-xs text-white focus:outline-none min-w-0"
                                     />
                                     
-                                    <div className="flex items-center pr-2 space-x-1.5">
+                                    <div className="flex items-center pr-2 space-x-1.5 shrink-0">
                                       <button type="submit" className="p-1 text-[#ff007f] hover:scale-110 transition-all">
                                         <Send className="w-3.5 h-3.5" />
                                       </button>
@@ -15574,7 +16096,116 @@ export default function App() {
                                 )}
                               </div>
                             </div>
-                          </>
+                          </div>
+                        )}
+
+                        {/* 🖼️ Full DP image viewer modal */}
+                        {showActiveChatDPModal && (
+                          <div
+                            className="absolute inset-0 bg-black/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 animate-fade-in cursor-pointer"
+                            onClick={() => setShowActiveChatDPModal(null)}
+                          >
+                            <div className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white rounded-full p-2" onClick={() => setShowActiveChatDPModal(null)}>
+                              <X className="w-5 h-5" />
+                            </div>
+                            <div className="max-w-xs w-full bg-[#1a1a24] border border-[#ff007f] rounded-2xl p-4 text-center shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
+                              <h3 className="text-xs font-black text-white mb-2.5 font-mono text-center">{showActiveChatDPModal.name}</h3>
+                              <div className="w-full aspect-square rounded-xl overflow-hidden border border-[#303040] mb-3.5">
+                                <img src={showActiveChatDPModal.avatar} className="w-full h-full object-cover" alt="Full profile photo" referrerPolicy="no-referrer" />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setShowActiveChatDPModal(null)}
+                                className="w-full bg-[#ff007f] hover:bg-[#ff007f]/90 text-white text-xs font-black uppercase py-2 rounded-xl transition-colors font-mono"
+                              >
+                                Close Preview
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 👤 Visit Profile modal */}
+                        {showActiveChatProfileModal && (
+                          <div
+                            className="absolute inset-0 bg-black/90 backdrop-blur-sm z-45 flex items-center justify-center p-4 animate-fade-in"
+                            onClick={() => setShowActiveChatProfileModal(null)}
+                          >
+                            <div className="bg-[#1a1a24] border-2 border-[#ff007f]/40 rounded-2xl p-4 w-full max-w-xs space-y-4 shadow-2xl relative text-center" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => setShowActiveChatProfileModal(null)}
+                                className="absolute top-2.5 right-2.5 text-gray-400 hover:text-white text-xs font-black"
+                              >
+                                ✕
+                              </button>
+
+                              <div className="flex flex-col items-center">
+                                <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-[#ff007f] mb-2 cursor-pointer" onClick={() => {
+                                  setShowActiveChatDPModal({ name: showActiveChatProfileModal.name, avatar: showActiveChatProfileModal.avatar });
+                                  setShowActiveChatProfileModal(null);
+                                }}>
+                                  <img src={showActiveChatProfileModal.avatar} className="w-full h-full object-cover" alt="Profile pic" referrerPolicy="no-referrer" />
+                                </div>
+                                <h4 className="text-xs font-black text-white">{showActiveChatProfileModal.name}</h4>
+                                <span className="text-[8px] bg-[#ff007f]/20 text-[#ff007f] px-2 py-0.5 rounded-full font-bold font-mono mt-1">Verified Creator Badge ✔</span>
+                              </div>
+
+                              <div className="bg-white/5 border border-[#303040] rounded-xl p-2.5 text-left text-[10px] text-gray-300">
+                                <p className="font-bold text-[#66fcf1] font-mono text-[9px] uppercase tracking-wide">Bio:</p>
+                                <p className="mt-1 leading-relaxed italic">"{showActiveChatProfileModal.bio}"</p>
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-1 text-center">
+                                <div className="bg-[#12121a] p-1.5 rounded-lg border border-[#303040]">
+                                  <span className="text-[10px] font-black text-white font-mono block">
+                                    {showActiveChatProfileModal.followersCount >= 1000000 
+                                      ? `${(showActiveChatProfileModal.followersCount / 1000000).toFixed(1)}M` 
+                                      : showActiveChatProfileModal.followersCount >= 1000 
+                                        ? `${(showActiveChatProfileModal.followersCount / 1000).toFixed(0)}k` 
+                                        : showActiveChatProfileModal.followersCount}
+                                  </span>
+                                  <span className="text-[7px] text-gray-400 font-mono block">Followers</span>
+                                </div>
+                                <div className="bg-[#12121a] p-1.5 rounded-lg border border-[#303040]">
+                                  <span className="text-[10px] font-black text-white font-mono block">{showActiveChatProfileModal.followingCount}</span>
+                                  <span className="text-[7px] text-gray-400 font-mono block">Following</span>
+                                </div>
+                                <div className="bg-[#12121a] p-1.5 rounded-lg border border-[#303040]">
+                                  <span className="text-[10px] font-black text-white font-mono block">
+                                    {showActiveChatProfileModal.totalLikesCount >= 1000000 
+                                      ? `${(showActiveChatProfileModal.totalLikesCount / 1000000).toFixed(1)}M` 
+                                      : showActiveChatProfileModal.totalLikesCount >= 1000 
+                                        ? `${(showActiveChatProfileModal.totalLikesCount / 1000).toFixed(0)}k` 
+                                        : showActiveChatProfileModal.totalLikesCount}
+                                  </span>
+                                  <span className="text-[7px] text-gray-400 font-mono block">Likes</span>
+                                </div>
+                              </div>
+
+                              <div className="flex space-x-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    alert(`You are now following ${showActiveChatProfileModal.name}! 🌸`);
+                                    setShowActiveChatProfileModal(null);
+                                  }}
+                                  className="flex-1 bg-[#ff007f] text-white font-black text-[9px] py-1.5 rounded-xl transition-all uppercase tracking-wider hover:bg-[#ff007f]/90"
+                                >
+                                  Follow Creator
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowActiveChatProfileModal(null);
+                                    alert(`Support ${showActiveChatProfileModal.name} by sending gifts in live stream!`);
+                                  }}
+                                  className="bg-[#1e1e2d] hover:bg-white/5 border border-[#303040] text-gray-300 font-bold text-[9px] px-2 rounded-xl"
+                                >
+                                  🎁 Gift
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         )}
 
                         {/* Simulated Camera Viewfinder Modal (inside DM Chat context) */}

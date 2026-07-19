@@ -71,15 +71,33 @@ async function loadDatabase() {
   }
 }
 
+let lastSavedUserStr = "";
+let lastSavedConfigStr = "";
+let lastSavedCategoriesStr = "";
+
 function saveDatabase() {
   try {
     // Write local backup for safety
     fs.writeFileSync(DB_PATH, JSON.stringify(dbData, null, 2), "utf-8");
 
-    // Asynchronously push metadata updates to Firebase Firestore
-    writeMetadata("user_profile", dbData.user);
-    writeMetadata("configurations", dbData.configurations);
-    writeMetadata("categories", { list: dbData.categories });
+    // Asynchronously push metadata updates to Firebase Firestore only if they have actually changed
+    const currentUserStr = JSON.stringify(dbData.user || {});
+    if (currentUserStr !== lastSavedUserStr) {
+      writeMetadata("user_profile", dbData.user);
+      lastSavedUserStr = currentUserStr;
+    }
+
+    const currentConfigStr = JSON.stringify(dbData.configurations || {});
+    if (currentConfigStr !== lastSavedConfigStr) {
+      writeMetadata("configurations", dbData.configurations);
+      lastSavedConfigStr = currentConfigStr;
+    }
+
+    const currentCategoriesStr = JSON.stringify(dbData.categories || []);
+    if (currentCategoriesStr !== lastSavedCategoriesStr) {
+      writeMetadata("categories", { list: dbData.categories });
+      lastSavedCategoriesStr = currentCategoriesStr;
+    }
   } catch (e) {
     console.error("[SEHR-LIVE FIREBASE] Error saving database:", e);
   }

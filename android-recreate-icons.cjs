@@ -35,30 +35,71 @@ const SPLASH_CONFIGS = [
 const getLegacyIconSVG = () => `
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#120c24"/>
-      <stop offset="50%" stop-color="#310c5c"/>
-      <stop offset="100%" stop-color="#640969"/>
+    <linearGradient id="sehrGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff007f" />
+      <stop offset="60%" stop-color="#7b2cbf" />
+      <stop offset="100%" stop-color="#00f5ff" />
     </linearGradient>
-    <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ff2e93"/>
-      <stop offset="50%" stop-color="#ff7a00"/>
-      <stop offset="100%" stop-color="#ff0055"/>
+    <linearGradient id="sehrBorderGrad" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00f5ff" />
+      <stop offset="50%" stop-color="#7b2cbf" />
+      <stop offset="100%" stop-color="#ff007f" />
     </linearGradient>
-    <linearGradient id="accent-grad" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#00f0ff"/>
-      <stop offset="100%" stop-color="#7000ff"/>
-    </linearGradient>
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity="0.5"/>
+    <filter id="logoGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
     </filter>
   </defs>
-  <rect x="16" y="16" width="480" height="480" rx="100" fill="url(#bg-grad)" stroke="#ff2e93" stroke-width="8"/>
-  <g filter="url(#shadow)" transform="translate(0, 0)">
-    <circle cx="256" cy="256" r="140" fill="none" stroke="url(#accent-grad)" stroke-width="12" stroke-dasharray="10 15 50 15" stroke-linecap="round"/>
-    <path d="M210 166 L350 256 L210 346 Z" fill="url(#logo-grad)" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M380 200 A 80 80 0 0 1 380 312" fill="none" stroke="url(#accent-grad)" stroke-width="8" stroke-linecap="round"/>
-    <path d="M410 170 A 120 120 0 0 1 410 342" fill="none" stroke="url(#logo-grad)" stroke-width="6" stroke-linecap="round"/>
+  {/* Outer rounded-squircle backplate */}
+  <rect x="16" y="16" width="480" height="480" rx="140" fill="#09090e" stroke="url(#sehrBorderGrad)" stroke-width="12"/>
+  
+  {/* Nested brand symbol with exact centering and premium scaling */}
+  <g transform="translate(112, 112) scale(2.88)">
+    <circle
+      cx="50"
+      cy="50"
+      r="41"
+      stroke="url(#sehrGrad)"
+      stroke-width="1.2"
+      stroke-dasharray="6, 12"
+      opacity="0.5"
+    />
+    <path
+      d="M 68 28 C 68 22, 32 20, 28 32 C 24 44, 48 46, 48 52 C 48 58, 32 60, 32 54"
+      stroke="url(#sehrGrad)"
+      stroke-width="7"
+      stroke-linecap="round"
+      fill="none"
+      opacity="0.15"
+    />
+    <path
+      d="M 70 30 C 70 20, 30 20, 30 32 C 30 42, 50 42, 50 48 C 50 54, 40 56, 32 54"
+      stroke="url(#sehrGrad)"
+      stroke-width="8.5"
+      stroke-linecap="round"
+      fill="none"
+    />
+    <path
+      d="M 30 70 C 30 80, 70 80, 70 68 C 70 58, 50 58, 50 52 C 50 46, 60 44, 68 46"
+      stroke="url(#sehrGrad)"
+      stroke-width="8.5"
+      stroke-linecap="round"
+      fill="none"
+    />
+    <g filter="url(#logoGlow)">
+      <polygon points="44,38 64,50 44,62" fill="#09090e" />
+      <polygon points="45,40 61,50 45,60" fill="url(#sehrGrad)" />
+    </g>
+    <path
+      d="M 68,43 C 71,46 71,54 68,57"
+      stroke="#00f5ff"
+      stroke-width="2.5"
+      stroke-linecap="round"
+      fill="none"
+    />
   </g>
 </svg>
 `;
@@ -66,30 +107,70 @@ const getLegacyIconSVG = () => `
 const getLegacyRoundIconSVG = () => `
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#120c24"/>
-      <stop offset="50%" stop-color="#310c5c"/>
-      <stop offset="100%" stop-color="#640969"/>
+    <linearGradient id="sehrGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff007f" />
+      <stop offset="60%" stop-color="#7b2cbf" />
+      <stop offset="100%" stop-color="#00f5ff" />
     </linearGradient>
-    <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ff2e93"/>
-      <stop offset="50%" stop-color="#ff7a00"/>
-      <stop offset="100%" stop-color="#ff0055"/>
+    <linearGradient id="sehrBorderGrad" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00f5ff" />
+      <stop offset="50%" stop-color="#7b2cbf" />
+      <stop offset="100%" stop-color="#ff007f" />
     </linearGradient>
-    <linearGradient id="accent-grad" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#00f0ff"/>
-      <stop offset="100%" stop-color="#7000ff"/>
-    </linearGradient>
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity="0.5"/>
+    <filter id="logoGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
     </filter>
   </defs>
-  <circle cx="256" cy="256" r="240" fill="url(#bg-grad)" stroke="#ff2e93" stroke-width="8"/>
-  <g filter="url(#shadow)">
-    <circle cx="256" cy="256" r="140" fill="none" stroke="url(#accent-grad)" stroke-width="12" stroke-dasharray="10 15 50 15" stroke-linecap="round"/>
-    <path d="M210 166 L350 256 L210 346 Z" fill="url(#logo-grad)" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M380 200 A 80 80 0 0 1 380 312" fill="none" stroke="url(#accent-grad)" stroke-width="8" stroke-linecap="round"/>
-    <path d="M410 170 A 120 120 0 0 1 410 342" fill="none" stroke="url(#logo-grad)" stroke-width="6" stroke-linecap="round"/>
+  {/* Circle backplate for round icons */}
+  <circle cx="256" cy="256" r="240" fill="#09090e" stroke="url(#sehrBorderGrad)" stroke-width="12"/>
+  
+  <g transform="translate(112, 112) scale(2.88)">
+    <circle
+      cx="50"
+      cy="50"
+      r="41"
+      stroke="url(#sehrGrad)"
+      stroke-width="1.2"
+      stroke-dasharray="6, 12"
+      opacity="0.5"
+    />
+    <path
+      d="M 68 28 C 68 22, 32 20, 28 32 C 24 44, 48 46, 48 52 C 48 58, 32 60, 32 54"
+      stroke="url(#sehrGrad)"
+      stroke-width="7"
+      stroke-linecap="round"
+      fill="none"
+      opacity="0.15"
+    />
+    <path
+      d="M 70 30 C 70 20, 30 20, 30 32 C 30 42, 50 42, 50 48 C 50 54, 40 56, 32 54"
+      stroke="url(#sehrGrad)"
+      stroke-width="8.5"
+      stroke-linecap="round"
+      fill="none"
+    />
+    <path
+      d="M 30 70 C 30 80, 70 80, 70 68 C 70 58, 50 58, 50 52 C 50 46, 60 44, 68 46"
+      stroke="url(#sehrGrad)"
+      stroke-width="8.5"
+      stroke-linecap="round"
+      fill="none"
+    />
+    <g filter="url(#logoGlow)">
+      <polygon points="44,38 64,50 44,62" fill="#09090e" />
+      <polygon points="45,40 61,50 45,60" fill="url(#sehrGrad)" />
+    </g>
+    <path
+      d="M 68,43 C 71,46 71,54 68,57"
+      stroke="#00f5ff"
+      stroke-width="2.5"
+      stroke-linecap="round"
+      fill="none"
+    />
   </g>
 </svg>
 `;
@@ -97,60 +178,161 @@ const getLegacyRoundIconSVG = () => `
 const getAdaptiveForegroundSVG = () => `
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ff2e93"/>
-      <stop offset="50%" stop-color="#ff7a00"/>
-      <stop offset="100%" stop-color="#ff0055"/>
+    <linearGradient id="sehrGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff007f" />
+      <stop offset="60%" stop-color="#7b2cbf" />
+      <stop offset="100%" stop-color="#00f5ff" />
     </linearGradient>
-    <linearGradient id="accent-grad" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#00f0ff"/>
-      <stop offset="70%" stop-color="#7000ff"/>
-    </linearGradient>
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity="0.5"/>
+    <filter id="logoGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
     </filter>
   </defs>
-  <g filter="url(#shadow)" transform="scale(0.65) translate(138, 138)">
-    <circle cx="256" cy="256" r="140" fill="none" stroke="url(#accent-grad)" stroke-width="12" stroke-dasharray="10 15 50 15" stroke-linecap="round"/>
-    <path d="M210 166 L350 256 L210 346 Z" fill="url(#logo-grad)" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M380 200 A 80 80 0 0 1 380 312" fill="none" stroke="url(#accent-grad)" stroke-width="8" stroke-linecap="round"/>
-    <path d="M410 170 A 120 120 0 0 1 410 342" fill="none" stroke="url(#logo-grad)" stroke-width="6" stroke-linecap="round"/>
+  {/* Foreground element without hard backplate for adaptive styling */}
+  <g transform="translate(112, 112) scale(2.88)">
+    <circle
+      cx="50"
+      cy="50"
+      r="41"
+      stroke="url(#sehrGrad)"
+      stroke-width="1.2"
+      stroke-dasharray="6, 12"
+      opacity="0.5"
+    />
+    <path
+      d="M 68 28 C 68 22, 32 20, 28 32 C 24 44, 48 46, 48 52 C 48 58, 32 60, 32 54"
+      stroke="url(#sehrGrad)"
+      stroke-width="7"
+      stroke-linecap="round"
+      fill="none"
+      opacity="0.15"
+    />
+    <path
+      d="M 70 30 C 70 20, 30 20, 30 32 C 30 42, 50 42, 50 48 C 50 54, 40 56, 32 54"
+      stroke="url(#sehrGrad)"
+      stroke-width="8.5"
+      stroke-linecap="round"
+      fill="none"
+    />
+    <path
+      d="M 30 70 C 30 80, 70 80, 70 68 C 70 58, 50 58, 50 52 C 50 46, 60 44, 68 46"
+      stroke="url(#sehrGrad)"
+      stroke-width="8.5"
+      stroke-linecap="round"
+      fill="none"
+    />
+    <g filter="url(#logoGlow)">
+      <polygon points="44,38 64,50 44,62" fill="#09090e" />
+      <polygon points="45,40 61,50 45,60" fill="url(#sehrGrad)" />
+    </g>
+    <path
+      d="M 68,43 C 71,46 71,54 68,57"
+      stroke="#00f5ff"
+      stroke-width="2.5"
+      stroke-linecap="round"
+      fill="none"
+    />
   </g>
 </svg>
 `;
 
 const getSplashSVG = (width, height) => {
-  const scale = 0.5;
+  const scale = 0.55;
   const tx = width / 2 - 256 * scale;
   const ty = height / 2 - 256 * scale;
 
   return `
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#120c24"/>
-      <stop offset="50%" stop-color="#310c5c"/>
-      <stop offset="100%" stop-color="#640969"/>
+    {/* Premium deep dark gradient */}
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#050508"/>
+      <stop offset="50%" stop-color="#110724"/>
+      <stop offset="100%" stop-color="#09090e"/>
     </linearGradient>
-    <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ff2e93"/>
-      <stop offset="50%" stop-color="#ff7a00"/>
-      <stop offset="100%" stop-color="#ff0055"/>
+    <linearGradient id="sehrGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff007f" />
+      <stop offset="60%" stop-color="#7b2cbf" />
+      <stop offset="100%" stop-color="#00f5ff" />
     </linearGradient>
-    <linearGradient id="accent-grad" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#00f0ff"/>
-      <stop offset="100%" stop-color="#7000ff"/>
+    <linearGradient id="sehrBorderGrad" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00f5ff" />
+      <stop offset="50%" stop-color="#7b2cbf" />
+      <stop offset="100%" stop-color="#ff007f" />
     </linearGradient>
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity="0.5"/>
+    <filter id="logoGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+    {/* Glow Filter for lights background */}
+    <filter id="neonBlur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="50" />
     </filter>
   </defs>
+  
+  {/* Dark gradient background */}
   <rect x="0" y="0" width="${width}" height="${height}" fill="url(#bg-grad)"/>
-  <g filter="url(#shadow)" transform="translate(${tx}, ${ty}) scale(${scale})">
-    <circle cx="256" cy="256" r="140" fill="none" stroke="url(#accent-grad)" stroke-width="12" stroke-dasharray="10 15 50 15" stroke-linecap="round"/>
-    <path d="M210 166 L350 256 L210 346 Z" fill="url(#logo-grad)" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M380 200 A 80 80 0 0 1 380 312" fill="none" stroke="url(#accent-grad)" stroke-width="8" stroke-linecap="round"/>
-    <path d="M410 170 A 120 120 0 0 1 410 342" fill="none" stroke="url(#logo-grad)" stroke-width="6" stroke-linecap="round"/>
+
+  {/* Ambient glowing circles (subtle neon light-wave effect) */}
+  <circle cx="${width * 0.2}" cy="${height * 0.3}" r="150" fill="#ff007f" opacity="0.08" filter="url(#neonBlur)"/>
+  <circle cx="${width * 0.8}" cy="${height * 0.7}" r="180" fill="#7b2cbf" opacity="0.10" filter="url(#neonBlur)"/>
+  <circle cx="${width * 0.5}" cy="${height * 0.5}" r="100" fill="#00f5ff" opacity="0.05" filter="url(#neonBlur)"/>
+
+  {/* Center brand logo box */}
+  <g transform="translate(${tx}, ${ty}) scale(${scale})">
+    {/* Premium rounded-squircle plate inside splash */}
+    <rect x="16" y="16" width="480" height="480" rx="140" fill="#09090e" stroke="url(#sehrBorderGrad)" stroke-width="10"/>
+
+    <g transform="translate(112, 112) scale(2.88)">
+      <circle
+        cx="50"
+        cy="50"
+        r="41"
+        stroke="url(#sehrGrad)"
+        stroke-width="1.2"
+        stroke-dasharray="6, 12"
+        opacity="0.5"
+      />
+      <path
+        d="M 68 28 C 68 22, 32 20, 28 32 C 24 44, 48 46, 48 52 C 48 58, 32 60, 32 54"
+        stroke="url(#sehrGrad)"
+        stroke-width="7"
+        stroke-linecap="round"
+        fill="none"
+        opacity="0.15"
+      />
+      <path
+        d="M 70 30 C 70 20, 30 20, 30 32 C 30 42, 50 42, 50 48 C 50 54, 40 56, 32 54"
+        stroke="url(#sehrGrad)"
+        stroke-width="8.5"
+        stroke-linecap="round"
+        fill="none"
+      />
+      <path
+        d="M 30 70 C 30 80, 70 80, 70 68 C 70 58, 50 58, 50 52 C 50 46, 60 44, 68 46"
+        stroke="url(#sehrGrad)"
+        stroke-width="8.5"
+        stroke-linecap="round"
+        fill="none"
+      />
+      <g filter="url(#logoGlow)">
+        <polygon points="44,38 64,50 44,62" fill="#09090e" />
+        <polygon points="45,40 61,50 45,60" fill="url(#sehrGrad)" />
+      </g>
+      <path
+        d="M 68,43 C 71,46 71,54 68,57"
+        stroke="#00f5ff"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        fill="none"
+      />
+    </g>
   </g>
 </svg>
 `;

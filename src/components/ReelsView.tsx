@@ -14,7 +14,12 @@ import {
   Send,
   ArrowLeft,
   Film,
-  LockKeyhole
+  LockKeyhole,
+  Search,
+  User,
+  Check,
+  Plus,
+  MessageCircle
 } from "lucide-react";
 
 // Normalize Cloudflare R2 / S3 custom public domains
@@ -356,6 +361,55 @@ export const ReelsView: React.FC<ReelsViewProps> = ({
   const lastTouchYRef = useRef<number>(0);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
+  // TikTok-style Search & Creator Interaction State
+  const [showSearch, setShowSearch] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchTab, setSearchTab] = useState<"top" | "users" | "videos">("top");
+  const [selectedUserProfile, setSelectedUserProfile] = useState<any | null>(null);
+  const [selectedUserChat, setSelectedUserChat] = useState<any | null>(null);
+  const [directChatText, setDirectChatText] = useState<string>("");
+  const [localDMs, setLocalDMs] = useState<Record<string, Array<{ sender: string; text: string; timestamp: string }>>>({});
+
+  // Derive unique creators from reels
+  const searchCreators = React.useMemo(() => {
+    const creatorMap: Record<string, any> = {};
+    reels.forEach(r => {
+      if (!creatorMap[r.creator]) {
+        creatorMap[r.creator] = {
+          username: r.creator,
+          avatar: r.avatar,
+          isFollowed: r.isFollowed || false,
+          bio: r.creator === "Sahar Live 🎵" 
+            ? "Official Sahar Live Star 🌟 Singer | Performer | PK King Pakistan"
+            : `Sahr Live Official Content Creator 🎥 | ${r.location || "Pakistan"}`,
+          followers: r.creator === "Sahar Live 🎵" ? "1.4M" : "142K",
+          following: r.creator === "Sahar Live 🎵" ? "280" : "185",
+          likes: r.creator === "Sahar Live 🎵" ? "25.4M" : "890K",
+          videos: []
+        };
+      }
+      creatorMap[r.creator].videos.push(r);
+    });
+    return Object.values(creatorMap);
+  }, [reels]);
+
+  const filteredCreators = React.useMemo(() => {
+    if (!searchQuery.trim()) return searchCreators;
+    return searchCreators.filter(c => 
+      c.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.bio.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [searchCreators, searchQuery]);
+
+  const filteredSearchReels = React.useMemo(() => {
+    if (!searchQuery.trim()) return reels;
+    return reels.filter(r => 
+      r.creator.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.caption.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.song.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [reels, searchQuery]);
+
   // Filter and sort reels
   const filteredReels = reels.filter(r => {
     if (blockedUsers.includes(r.creator)) return false;
@@ -460,7 +514,13 @@ export const ReelsView: React.FC<ReelsViewProps> = ({
           </button>
         </div>
         
-        <div className="w-8 h-8 flex-shrink-0"></div>
+        <button
+          onClick={() => setShowSearch(true)}
+          className="p-2 rounded-full bg-black/45 backdrop-blur-md border border-white/10 text-white hover:bg-[#ff007f] hover:text-white transition-all cursor-pointer flex-shrink-0 shadow active:scale-95"
+          title="Search Reels & Creators"
+        >
+          <Search className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Pull-to-Refresh Slider Indicator */}
@@ -1237,6 +1297,450 @@ export const ReelsView: React.FC<ReelsViewProps> = ({
             >
               <Send className="w-3 h-3" />
               <span>Send</span>
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* 🔎 TIKTOK-STYLE SEARCH OVERLAY */}
+      {showSearch && (
+        <div className="absolute inset-0 bg-[#07070a]/98 z-50 flex flex-col text-left">
+          {/* Search Header Input bar */}
+          <div className="pt-12 pb-3 px-4 flex items-center space-x-3 border-b border-white/5 bg-[#09090e]">
+            <div className="flex-1 bg-white/5 border border-white/10 rounded-full py-2 px-3.5 flex items-center space-x-2.5 focus-within:border-[#ff007f]/50 focus-within:bg-white/10 transition-all">
+              <Search className="w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search usernames, songs, bios, or captions..."
+                className="bg-transparent border-none outline-none text-white text-xs w-full placeholder-gray-500 font-medium"
+                autoFocus
+              />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery("")}
+                  className="text-[10px] bg-white/10 hover:bg-white/20 text-gray-300 rounded-full px-1.5 py-0.5"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => {
+                setShowSearch(false);
+                setSearchQuery("");
+              }}
+              className="text-xs font-bold text-[#ff007f] tracking-wide active:scale-95 transition-transform"
+            >
+              Cancel
+            </button>
+          </div>
+
+          {/* TikTok Search Tabs */}
+          <div className="flex items-center justify-around border-b border-white/5 bg-[#09090e] py-1 text-center">
+            {(["top", "users", "videos"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setSearchTab(t)}
+                className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider transition-all duration-150 relative ${
+                  searchTab === t ? "text-[#ff007f] font-black" : "text-white/60 hover:text-white"
+                }`}
+              >
+                {t}
+                {searchTab === t && (
+                  <span className="absolute bottom-0 inset-x-8 h-0.5 bg-[#ff007f] rounded-full" />
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Search Results Main Display Area */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* If query is empty, show trending tags/suggestions */}
+            {!searchQuery.trim() && (
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-400 font-mono mb-2.5">Suggested Searches</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {["Sahar Live 🎵", "Karachi battles", "Lahore concert", "PK match gold", "singing reels", "PK King"].map((term) => (
+                      <button
+                        key={term}
+                        onClick={() => setSearchQuery(term)}
+                        className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-full px-3 py-1.5 text-[9.5px] font-bold text-gray-200 transition-colors"
+                      >
+                        🔎 {term}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-400 font-mono mb-2.5">Trending Sahr Creators</h4>
+                  <div className="space-y-2.5">
+                    {searchCreators.slice(0, 3).map((creator) => (
+                      <div 
+                        key={creator.username}
+                        onClick={() => setSelectedUserProfile(creator)}
+                        className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-all cursor-pointer"
+                      >
+                        <div className="flex items-center space-x-3 min-w-0">
+                          <img src={creator.avatar} className="w-9 h-9 rounded-full object-cover border border-[#ff007f]/30" alt="" />
+                          <div className="min-w-0">
+                            <div className="flex items-center space-x-1">
+                              <span className="text-[11px] font-black text-white truncate">@{creator.username}</span>
+                              <span className="text-[7px] bg-[#ff007f] text-white px-1 rounded-sm font-mono scale-90">VERIFIED</span>
+                            </div>
+                            <p className="text-[8px] text-gray-400 truncate max-w-[170px] mt-0.5">{creator.bio}</p>
+                          </div>
+                        </div>
+                        <span className="text-[8.5px] text-gray-400 font-mono font-bold mr-1">{creator.followers} followers</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {searchQuery.trim() && (
+              <div className="space-y-5">
+                {/* 1. USERS SECTION */}
+                {(searchTab === "top" || searchTab === "users") && (
+                  <div>
+                    {searchTab === "top" && (
+                      <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-400 font-mono mb-2.5">Accounts</h4>
+                    )}
+                    {filteredCreators.length === 0 ? (
+                      searchTab === "users" && (
+                        <div className="text-center py-6 text-gray-500 text-[10px]">No creators found matching "{searchQuery}"</div>
+                      )
+                    ) : (
+                      <div className="space-y-3">
+                        {filteredCreators.map((creator) => (
+                          <div 
+                            key={creator.username}
+                            className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5 hover:border-white/10 transition-all cursor-pointer"
+                            onClick={() => setSelectedUserProfile(creator)}
+                          >
+                            <div className="flex items-center space-x-3 min-w-0">
+                              <img src={creator.avatar} className="w-10 h-10 rounded-full object-cover border border-[#ff007f]/40" alt="" />
+                              <div className="min-w-0">
+                                <div className="flex items-center space-x-1">
+                                  <span className="text-[11px] font-black text-white truncate">@{creator.username}</span>
+                                  <span className="text-[7px] bg-blue-500 text-white px-1 rounded-sm font-mono scale-90">✓ POPULAR</span>
+                                </div>
+                                <p className="text-[8.5px] text-gray-400 truncate max-w-[160px] mt-0.5">{creator.bio}</p>
+                                <span className="text-[7.5px] text-gray-500 font-mono">{creator.followers} Followers • {creator.likes} Likes</span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => {
+                                  setReels(prev => prev.map(r => {
+                                    if (r.creator === creator.username) {
+                                      return { ...r, isFollowed: !r.isFollowed };
+                                    }
+                                    return r;
+                                  }));
+                                }}
+                                className={`px-2.5 py-1 rounded-full text-[8.5px] font-black uppercase tracking-wider transition-all duration-300 ${
+                                  creator.isFollowed 
+                                    ? "bg-white/10 text-white border border-white/15" 
+                                    : "bg-[#ff007f] text-white hover:bg-[#ff007f]/90"
+                                }`}
+                              >
+                                {creator.isFollowed ? "Following" : "Follow"}
+                              </button>
+
+                              <button
+                                onClick={() => setSelectedUserChat(creator)}
+                                className="p-1.5 bg-white/5 hover:bg-[#ff007f]/20 border border-white/10 hover:border-pink-500/30 rounded-full text-pink-500 transition-colors"
+                                title="Message Creator"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 2. VIDEOS / REELS GRID SECTION */}
+                {(searchTab === "top" || searchTab === "videos") && (
+                  <div>
+                    {searchTab === "top" && (
+                      <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-400 font-mono mb-2.5">Videos</h4>
+                    )}
+                    {filteredSearchReels.length === 0 ? (
+                      <div className="text-center py-6 text-gray-500 text-[10px]">No videos found matching "{searchQuery}"</div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {filteredSearchReels.map((reel) => {
+                          const rawIndex = sortedReels.findIndex(r => r.id === reel.id);
+                          return (
+                            <div
+                              key={reel.id}
+                              onClick={() => {
+                                if (rawIndex !== -1) {
+                                  setCurrentReelIndex(rawIndex);
+                                  setShowSearch(false);
+                                } else {
+                                  alert("Playing searched video stream...");
+                                  setShowSearch(false);
+                                }
+                              }}
+                              className="aspect-[9/16] relative bg-[#12121a] rounded-xl overflow-hidden cursor-pointer group hover:scale-102 transition-all border border-white/5"
+                            >
+                              <div className="absolute inset-0 bg-black/25 z-10" />
+                              <div className={`absolute inset-0 ${reel.videoBg || "bg-gradient-to-tr from-indigo-900 to-pink-900"} flex items-center justify-center`}>
+                                <Film className="w-5 h-5 text-white/20 group-hover:scale-110 transition-transform" />
+                              </div>
+
+                              <div className="absolute inset-x-0 bottom-0 p-1.5 bg-gradient-to-t from-black/90 to-transparent z-20">
+                                <p className="text-[7.5px] text-white line-clamp-2 leading-tight font-medium mb-1">
+                                  {reel.caption}
+                                </p>
+                                <div className="flex items-center justify-between text-[6.5px] text-gray-400 font-mono">
+                                  <span>@{reel.creator}</span>
+                                  <span>❤️ {reel.likes}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 👤 TIKTOK-STYLE USER PROFILE MODAL */}
+      {selectedUserProfile && (
+        <div className="absolute inset-0 bg-[#07070a]/99 z-50 flex flex-col text-left animate-fade-in">
+          {/* Header Bar */}
+          <div className="pt-12 pb-3 px-4 flex items-center justify-between border-b border-white/5 bg-[#09090e]">
+            <button
+              onClick={() => setSelectedUserProfile(null)}
+              className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="text-[10px] font-black uppercase font-mono tracking-wider">Close</span>
+            </button>
+            <span className="text-xs font-black text-white font-mono uppercase tracking-wider">Creator Room</span>
+            <div className="w-8 h-8"></div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto pb-8">
+            {/* User Big Info Card */}
+            <div className="p-5 flex flex-col items-center text-center space-y-4 bg-gradient-to-b from-[#12121c]/40 to-transparent border-b border-white/5">
+              <div className="relative">
+                <img 
+                  src={selectedUserProfile.avatar} 
+                  className="w-20 h-20 rounded-full object-cover border-2 border-[#ff007f] shadow-lg shadow-[#ff007f]/10" 
+                  alt="" 
+                />
+                <span className="absolute bottom-0 right-0 text-xl animate-bounce">⚡</span>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-center space-x-1.5">
+                  <h3 className="text-base font-black text-white">@{selectedUserProfile.username}</h3>
+                  <span className="text-[7.5px] bg-[#ff007f] text-white px-1.5 py-0.5 rounded-sm font-black uppercase tracking-wider font-mono">STAR</span>
+                </div>
+                <p className="text-[10.5px] text-gray-400 mt-1 max-w-[280px] leading-relaxed mx-auto">
+                  {selectedUserProfile.bio}
+                </p>
+                <div className="flex items-center justify-center space-x-2 mt-2">
+                  <span className="text-[8px] bg-white/5 border border-white/10 rounded px-2 py-0.5 text-[#00f5ff] font-mono font-bold">
+                    📍 Karachi Server
+                  </span>
+                  <span className="text-[8px] bg-[#ff007f]/10 border border-[#ff007f]/20 rounded px-2 py-0.5 text-[#ff007f] font-mono font-bold">
+                    🛡️ Verified PK Host
+                  </span>
+                </div>
+              </div>
+
+              {/* Stats Counters */}
+              <div className="grid grid-cols-3 gap-6 text-center w-full max-w-[280px] py-2">
+                <div>
+                  <p className="text-xs font-mono font-black text-white">{selectedUserProfile.following}</p>
+                  <p className="text-[8.5px] text-gray-500 uppercase font-bold tracking-wider mt-0.5">Following</p>
+                </div>
+                <div>
+                  <p className="text-xs font-mono font-black text-white">{selectedUserProfile.followers}</p>
+                  <p className="text-[8.5px] text-gray-500 uppercase font-bold tracking-wider mt-0.5">Followers</p>
+                </div>
+                <div>
+                  <p className="text-xs font-mono font-black text-white">{selectedUserProfile.likes}</p>
+                  <p className="text-[8.5px] text-gray-500 uppercase font-bold tracking-wider mt-0.5">Likes</p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center space-x-3 w-full max-w-[280px]">
+                <button
+                  onClick={() => {
+                    setReels(prev => prev.map(r => {
+                      if (r.creator === selectedUserProfile.username) {
+                        return { ...r, isFollowed: !r.isFollowed };
+                      }
+                      return r;
+                    }));
+                    setSelectedUserProfile(prev => ({
+                      ...prev,
+                      isFollowed: !prev.isFollowed
+                    }));
+                  }}
+                  className={`flex-1 py-2 rounded-full text-[9.5px] font-black uppercase tracking-wider transition-all duration-300 ${
+                    selectedUserProfile.isFollowed 
+                      ? "bg-white/10 text-white border border-white/15" 
+                      : "bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] text-white hover:opacity-90"
+                  }`}
+                >
+                  {selectedUserProfile.isFollowed ? "✓ Following" : "Follow Creator"}
+                </button>
+
+                <button
+                  onClick={() => setSelectedUserChat(selectedUserProfile)}
+                  className="flex-1 py-2 bg-[#12121e] border border-pink-500/25 hover:border-pink-500 text-[#ff007f] rounded-full text-[9.5px] font-black uppercase tracking-wider transition-colors flex items-center justify-center space-x-1"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>Send Message</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Creator Videos Gallery Section */}
+            <div className="p-4 space-y-3">
+              <div className="flex items-center space-x-1.5 border-b border-white/5 pb-2">
+                <Film className="w-3.5 h-3.5 text-pink-500" />
+                <h4 className="text-[9.5px] font-black uppercase tracking-wider text-white font-mono">
+                  All Broadcasts & Videos ({selectedUserProfile.videos?.length || 0})
+                </h4>
+              </div>
+
+              {selectedUserProfile.videos?.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 text-[10px]">This star hasn't uploaded any clips yet.</div>
+              ) : (
+                <div className="grid grid-cols-3 gap-1.5">
+                  {selectedUserProfile.videos?.map((v: any) => {
+                    const idx = sortedReels.findIndex(r => r.id === v.id);
+                    return (
+                      <div
+                        key={v.id}
+                        onClick={() => {
+                          if (idx !== -1) {
+                            setCurrentReelIndex(idx);
+                            setSelectedUserProfile(null);
+                            setShowSearch(false);
+                          }
+                        }}
+                        className="aspect-[9/16] relative rounded-xl overflow-hidden bg-[#12121c] border border-white/5 cursor-pointer group hover:opacity-85 transition-opacity"
+                      >
+                        <div className="absolute inset-0 bg-black/20" />
+                        <div className={`absolute inset-0 ${v.videoBg || "bg-indigo-950"} flex items-center justify-center`}>
+                          <span className="text-xs">🎬</span>
+                        </div>
+                        <div className="absolute bottom-0 inset-x-0 p-1.5 bg-gradient-to-t from-black/90 to-transparent">
+                          <p className="text-[7px] text-white truncate font-semibold">{v.caption}</p>
+                          <span className="text-[6.5px] text-gray-400 block font-mono">❤️ {v.likes}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 💬 Sleek Direct Message Modal */}
+      {selectedUserChat && (
+        <div className="absolute inset-0 bg-[#07070a]/99 z-[60] flex flex-col text-left animate-fade-in">
+          {/* Header Bar */}
+          <div className="pt-12 pb-3 px-4 flex items-center justify-between border-b border-white/5 bg-[#09090e]">
+            <button
+              onClick={() => setSelectedUserChat(null)}
+              className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="text-[10px] font-black uppercase font-mono tracking-wider">Back</span>
+            </button>
+            <div className="flex items-center space-x-2">
+              <img src={selectedUserChat.avatar} className="w-6 h-6 rounded-full object-cover" alt="" />
+              <span className="text-[10px] font-black text-white font-mono uppercase">Chat with @{selectedUserChat.username}</span>
+            </div>
+            <div className="w-8 h-8"></div>
+          </div>
+
+          {/* DM Conversation History Area */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+            <div className="text-center py-4 text-[8px] text-gray-500 font-mono">
+              🛡️ End-to-end Encrypted on Sahr PK Live Stream Network
+            </div>
+
+            {/* Default greeting message from creator */}
+            <div className="flex items-start space-x-2">
+              <img src={selectedUserChat.avatar} className="w-7 h-7 rounded-full object-cover border border-white/5" alt="" />
+              <div className="bg-white/5 border border-white/5 text-white rounded-2xl rounded-tl-none p-3 max-w-[75%] text-xs leading-relaxed">
+                Asalam-o-Alaikum! Welcome to my chat room. Follow me and support my live PK matches with rose gifts! 🌹
+                <span className="block text-[7px] text-gray-500 font-mono mt-1 text-right">Just now</span>
+              </div>
+            </div>
+
+            {/* Locally saved messages */}
+            {(localDMs[selectedUserChat.username] || []).map((msg, index) => (
+              <div key={index} className="flex items-start justify-end space-x-2">
+                <div className="bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] text-white rounded-2xl rounded-tr-none p-3 max-w-[75%] text-xs leading-relaxed">
+                  {msg.text}
+                  <span className="block text-[7px] text-white/60 font-mono mt-1 text-right">{msg.timestamp}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* DM Input Bar */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!directChatText.trim()) return;
+
+              const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              setLocalDMs(prev => {
+                const list = prev[selectedUserChat.username] || [];
+                return {
+                  ...prev,
+                  [selectedUserChat.username]: [...list, {
+                    sender: "Me",
+                    text: directChatText,
+                    timestamp
+                  }]
+                };
+              });
+              setDirectChatText("");
+            }}
+            className="p-3 bg-[#09090e] border-t border-white/5 flex items-center space-x-2 pb-6"
+          >
+            <input
+              type="text"
+              value={directChatText}
+              onChange={(e) => setDirectChatText(e.target.value)}
+              placeholder={`Send message to @${selectedUserChat.username}...`}
+              className="flex-1 bg-white/5 border border-white/10 rounded-full py-2.5 px-4 text-xs text-white outline-none placeholder-gray-500 focus:border-[#ff007f]/50 transition-all"
+            />
+            <button
+              type="submit"
+              className="p-2.5 bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] hover:opacity-95 text-white rounded-full transition-transform active:scale-95 flex items-center justify-center"
+            >
+              <Send className="w-3.5 h-3.5" />
             </button>
           </form>
         </div>

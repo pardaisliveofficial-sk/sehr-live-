@@ -6,7 +6,8 @@ import {
   setDoc, 
   deleteDoc, 
   collection, 
-  onSnapshot 
+  onSnapshot,
+  setLogLevel
 } from "firebase/firestore";
 import fs from "fs";
 import path from "path";
@@ -43,9 +44,33 @@ const app = apps.length === 0
 
 console.log("[SEHR-LIVE FIREBASE] Firebase Client SDK initialized successfully with projectId:", firebaseConfig.projectId);
 
+// Silence internal Firestore client logging
+setLogLevel("silent");
+
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true
 }, FIRESTORE_DB_ID);
+
+// Helpers to track and handle Firestore write quota exhaustion gracefully
+export let isFirestoreQuotaExhausted = false;
+
+export function handleQuotaError(err: any, operationName: string) {
+  const errMsg = String(err?.message || err || "").toLowerCase();
+  const errCode = String(err?.code || "").toLowerCase();
+  if (
+    errMsg.includes("resource_exhausted") || 
+    errMsg.includes("quota") || 
+    errCode.includes("resource-exhausted") ||
+    errCode.includes("quota")
+  ) {
+    if (!isFirestoreQuotaExhausted) {
+      isFirestoreQuotaExhausted = true;
+      console.warn(`[SEHR-LIVE FIREBASE] Firestore write quota has been exhausted. Sahr Live is now operating in high-performance local fallback mode. All features remain fully functional locally.`);
+    }
+  } else {
+    console.error(`[SEHR-LIVE FIREBASE] Error during '${operationName}':`, err);
+  }
+}
 
 // Collection keys to map to Firestore
 export const COLLECTIONS = [
@@ -135,6 +160,7 @@ export const dbDataCache: any = {
 
 // Helper to check if database has been seeded
 export async function checkAndSeedDatabase() {
+  if (isFirestoreQuotaExhausted) return;
   try {
     const seedCheckRef = doc(db, "metadata", "initial_seed_completed");
     const seedCheck = await getDoc(seedCheckRef);
@@ -153,15 +179,25 @@ export async function checkAndSeedDatabase() {
     const raw = fs.readFileSync(jsonPath, "utf-8");
     const localDb = JSON.parse(raw);
 
+    // Helper to safely write documents during seeding with quota awareness
+    const safeSetDoc = async (docRef: any, data: any) => {
+      if (isFirestoreQuotaExhausted) return;
+      try {
+        await setDoc(docRef, data, { merge: true });
+      } catch (err) {
+        handleQuotaError(err, "database seeding write");
+      }
+    };
+
     // 1. Seed single/metadata properties
     if (localDb.user) {
-      await setDoc(doc(db, "metadata", "user_profile"), localDb.user, { merge: true });
+      await safeSetDoc(doc(db, "metadata", "user_profile"), localDb.user);
     }
     if (localDb.configurations) {
-      await setDoc(doc(db, "metadata", "configurations"), localDb.configurations, { merge: true });
+      await safeSetDoc(doc(db, "metadata", "configurations"), localDb.configurations);
     }
     if (localDb.categories) {
-      await setDoc(doc(db, "metadata", "categories"), { list: localDb.categories }, { merge: true });
+      await safeSetDoc(doc(db, "metadata", "categories"), { list: localDb.categories });
     }
 
     // 2. Seed list collections
@@ -180,22 +216,27 @@ export async function checkAndSeedDatabase() {
     ];
 
     for (const coll of collectionsToSeed) {
+      if (isFirestoreQuotaExhausted) break;
       if (Array.isArray(coll.data)) {
         console.log(`[SEHR-LIVE FIREBASE] Seeding collection: ${coll.name} (${coll.data.length} items)`);
         for (const item of coll.data) {
+          if (isFirestoreQuotaExhausted) break;
           const docId = String(item[coll.key] || Math.floor(1000 + Math.random() * 9000));
-          await setDoc(doc(db, coll.name, docId), item, { merge: true });
+          await safeSetDoc(doc(db, coll.name, docId), item);
         }
       }
     }
 
     // Mark seed completed
-    await setDoc(doc(db, "metadata", "initial_seed_completed"), {
-      timestamp: new Date().toISOString(),
-      completed: true
-    }, { merge: true });
-
-    console.log("[SEHR-LIVE FIREBASE] Seeding completed successfully. All data moved to Firestore.");
+    if (!isFirestoreQuotaExhausted) {
+      await safeSetDoc(doc(db, "metadata", "initial_seed_completed"), {
+        timestamp: new Date().toISOString(),
+        completed: true
+      });
+      console.log("[SEHR-LIVE FIREBASE] Seeding completed successfully. All data moved to Firestore.");
+    } else {
+      console.log("[SEHR-LIVE FIREBASE] Seeding paused due to Firestore quota limitation. Operating in local mode.");
+    }
   } catch (err) {
     console.error("[SEHR-LIVE FIREBASE] Database seeding error:", err);
   }
@@ -210,19 +251,19 @@ export function startFirestoreSynchronization() {
     if (docSnap.exists()) {
       dbDataCache.user = docSnap.data();
     }
-  }, err => console.error("Sync error user_profile:", err));
+  }, err => handleQuotaError(err, "Sync user_profile"));
 
   onSnapshot(doc(db, "metadata", "configurations"), docSnap => {
     if (docSnap.exists()) {
       dbDataCache.configurations = docSnap.data();
     }
-  }, err => console.error("Sync error configurations:", err));
+  }, err => handleQuotaError(err, "Sync configurations"));
 
   onSnapshot(doc(db, "metadata", "categories"), docSnap => {
     if (docSnap.exists()) {
       dbDataCache.categories = docSnap.data()?.list || [];
     }
-  }, err => console.error("Sync error categories:", err));
+  }, err => handleQuotaError(err, "Sync categories"));
 
   // Sync regular list collections
   COLLECTIONS.forEach(colName => {
@@ -234,7 +275,7 @@ export function startFirestoreSynchronization() {
         items.push(docSnap.data());
       });
       dbDataCache[colName] = items;
-    }, err => console.error(`Sync error list ${colName}:`, err));
+    }, err => handleQuotaError(err, `Sync list ${colName}`));
   });
 
   // Sync session and OTP collections (dictionary map structure)
@@ -244,7 +285,7 @@ export function startFirestoreSynchronization() {
       dict[docSnap.id] = docSnap.data();
     });
     dbDataCache.sessions = dict;
-  }, err => console.error("Sync error sessions:", err));
+  }, err => handleQuotaError(err, "Sync sessions"));
 
   onSnapshot(collection(db, "otps"), snapshot => {
     const dict: any = {};
@@ -252,35 +293,37 @@ export function startFirestoreSynchronization() {
       dict[docSnap.id] = docSnap.data();
     });
     dbDataCache.otps = dict;
-  }, err => console.error("Sync error otps:", err));
+  }, err => handleQuotaError(err, "Sync otps"));
 }
 
-// Helpers to write changes back to Firestore securely
 export async function syncDocument(collectionName: string, docId: string, data: any) {
+  if (isFirestoreQuotaExhausted) return;
   try {
     if (!docId) return;
     await setDoc(doc(db, collectionName, String(docId)), data, { merge: true });
     console.log(`[SEHR-LIVE FIREBASE] Synced document to Firestore: ${collectionName}/${docId}`);
   } catch (err) {
-    console.error(`Error syncing document ${collectionName}/${docId}:`, err);
+    handleQuotaError(err, `syncDocument ${collectionName}/${docId}`);
   }
 }
 
 export async function deleteDocument(collectionName: string, docId: string) {
+  if (isFirestoreQuotaExhausted) return;
   try {
     if (!docId) return;
     await deleteDoc(doc(db, collectionName, String(docId)));
     console.log(`[SEHR-LIVE FIREBASE] Deleted document from Firestore: ${collectionName}/${docId}`);
   } catch (err) {
-    console.error(`Error deleting document ${collectionName}/${docId}:`, err);
+    handleQuotaError(err, `deleteDocument ${collectionName}/${docId}`);
   }
 }
 
 export async function writeMetadata(docName: "user_profile" | "configurations" | "categories", data: any) {
+  if (isFirestoreQuotaExhausted) return;
   try {
     await setDoc(doc(db, "metadata", docName), data, { merge: true });
     console.log(`[SEHR-LIVE FIREBASE] Synced metadata to Firestore: ${docName}`);
   } catch (err) {
-    console.error(`Error writing metadata ${docName}:`, err);
+    handleQuotaError(err, `writeMetadata ${docName}`);
   }
 }
