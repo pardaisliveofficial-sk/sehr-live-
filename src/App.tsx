@@ -105,6 +105,8 @@ import {
   setDoc, 
   deleteDoc, 
   getDocFromServer,
+  getDoc,
+  where,
   setLogLevel
 } from "firebase/firestore";
 import { 
@@ -2243,6 +2245,191 @@ export default function App() {
   } | null>(null);
   const [activeChatOptionsOpen, setActiveChatOptionsOpen] = useState<boolean>(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState<boolean>(false);
+
+  // --- REAL-TIME FIREBASE CHAT SYSTEM STATES & LISTENERS ---
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [conversationsLoading, setConversationsLoading] = useState<boolean>(true);
+  const [activeChatMessages, setActiveChatMessages] = useState<any[]>([]);
+  const [allRegisteredUsers, setAllRegisteredUsers] = useState<any[]>([]);
+  const [searchedUsers, setSearchedUsers] = useState<any[]>([]);
+  const [searchLoading, setSearchLoading] = useState<boolean>(false);
+
+  // 1. Sync all registered users from Firestore to resolve profiles in real time
+  useEffect(() => {
+    if (!isLoggedIn || !user?.username) return;
+    const q = collection(db, "users");
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      const seenUsernames = new Set();
+      snapshot.forEach(docSnap => {
+        const u = docSnap.data();
+        if (u && u.username) {
+          const lowerUsername = u.username.toLowerCase();
+          if (!seenUsernames.has(lowerUsername)) {
+            seenUsernames.add(lowerUsername);
+            list.push(u);
+          }
+        }
+      });
+      setAllRegisteredUsers(list);
+    }, err => {
+      console.error("Error syncing users list from Firestore:", err);
+    });
+    return () => unsubscribe();
+  }, [isLoggedIn, user?.username]);
+
+  // 2. Real-time active conversations list for current user
+  useEffect(() => {
+    if (!isLoggedIn || !user?.username) {
+      setConversations([]);
+      setConversationsLoading(false);
+      return;
+    }
+
+    setConversationsLoading(true);
+    const q = query(
+      collection(db, "conversations"),
+      where("participants", "array-contains", user.username)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+
+      // Sort client-side by updatedAt descending in real-time
+      list.sort((a, b) => {
+        const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return timeB - timeA;
+      });
+
+      setConversations(list);
+      setConversationsLoading(false);
+    }, (err) => {
+      console.error("Error listening to conversations:", err);
+      setConversationsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [isLoggedIn, user?.username]);
+
+  // 3. Real-time active chat message list for currently selected conversation
+  useEffect(() => {
+    if (!isLoggedIn || !user?.username || !activeChatContact) {
+      setActiveChatMessages([]);
+      return;
+    }
+
+    const otherUsername = activeChatContact.username || activeChatContact.name;
+    const conversationId = [user.username, otherUsername].sort().join("_");
+
+    const messagesRef = collection(db, "conversations", conversationId, "messages");
+    const q = query(messagesRef, orderBy("createdAt", "asc"));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs: any[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const isMe = data.senderId === user.username;
+        const msgTime = data.createdAt
+          ? new Date(data.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+        msgs.push({
+          id: docSnap.id,
+          sender: isMe ? "You" : (activeChatContact.fullName || activeChatContact.name),
+          text: data.text || "",
+          timestamp: msgTime,
+          isVoice: data.type === "voice",
+          voiceDuration: data.voiceDuration || 0,
+          isImage: data.type === "image",
+          imageUrl: data.mediaUrl || "",
+          isSticker: data.type === "sticker",
+          senderId: data.senderId,
+          receiverId: data.receiverId,
+          deletedForSelf: data.deletedForSelfUsers?.[user.username] || false,
+          deletedForEveryone: data.deletedForEveryone || false,
+          createdAt: data.createdAt,
+          status: data.status
+        });
+      });
+      setActiveChatMessages(msgs);
+
+      // Mark incoming messages as read and update read receipts
+      const unreadMsgs = snapshot.docs.filter(d => {
+        const dData = d.data();
+        return dData.senderId !== user.username && dData.status !== "read";
+      });
+
+      if (unreadMsgs.length > 0) {
+        unreadMsgs.forEach(async (d) => {
+          try {
+            await updateDoc(d.ref, { status: "read", readAt: new Date().toISOString() });
+          } catch (err) {
+            console.error("Error marking msg as read:", err);
+          }
+        });
+
+        // Reset parent conversation's unread count for current user
+        const convRef = doc(db, "conversations", conversationId);
+        updateDoc(convRef, {
+          [`unreadCounts.${user.username}`]: 0
+        }).catch(err => console.error("Error resetting conversation unread count:", err));
+      }
+    }, (err) => {
+      console.error("Error listening to chat messages:", err);
+    });
+
+    return () => unsubscribe();
+  }, [isLoggedIn, user?.username, activeChatContact]);
+
+  // 4. Case-insensitive substring search for registered users in Firestore
+  const handleSearchUsers = async (searchTerm: string) => {
+    if (!searchTerm.trim()) {
+      setSearchedUsers([]);
+      return;
+    }
+    setSearchLoading(true);
+    try {
+      const q = query(collection(db, "users"));
+      const querySnapshot = await getDocs(q);
+      const list: any[] = [];
+      const seenUsernames = new Set();
+      querySnapshot.forEach(docSnap => {
+        const u = docSnap.data();
+        if (u.username === user.username) return;
+
+        const matchUsername = u.username?.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchFullName = u.fullName?.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchUniqueId = u.uniqueId?.toLowerCase().includes(searchTerm.toLowerCase());
+
+        if (matchUsername || matchFullName || matchUniqueId) {
+          if (u.username) {
+            const lowerUsername = u.username.toLowerCase();
+            if (!seenUsernames.has(lowerUsername)) {
+              seenUsernames.add(lowerUsername);
+              list.push(u);
+            }
+          }
+        }
+      });
+      setSearchedUsers(list);
+    } catch (err) {
+      console.error("Error searching registered users in Firestore:", err);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  // 5. Search debounce trigger
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      handleSearchUsers(chatSearchQuery);
+    }, 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [chatSearchQuery]);
 
   const [whatsappContacts, setWhatsappContacts] = useState<Array<{
     name: string;
@@ -4427,8 +4614,8 @@ export default function App() {
     }
   };
 
-  // Send Direct Message (Private Chat View)
-  const handleSendDirectMessage = (
+  // Send Direct Message (Private Chat View via real-time Firestore)
+  const handleSendDirectMessage = async (
     e?: React.FormEvent,
     isSticker = false,
     stickerChar = "",
@@ -4439,6 +4626,13 @@ export default function App() {
     customTextOverride = ""
   ) => {
     if (e) e.preventDefault();
+    
+    const otherUsername = activeChatContact?.username || activeChatContact?.name;
+    if (!otherUsername || !user?.username) {
+      console.warn("[SEHR-LIVE CHAT] Cannot send DM: Active contact or logged-in user not identified.");
+      return;
+    }
+
     if (!directChatInput.trim() && !isSticker && !isVoice && !isImage && !customTextOverride) return;
 
     let text = "";
@@ -4458,83 +4652,60 @@ export default function App() {
       setDirectChatInput("");
     }
 
-    const uniqueId = "dm-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
-    const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const conversationId = [user.username, otherUsername].sort().join("_");
+    const messageId = `msg-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    const newMsg = {
-      id: uniqueId,
-      sender: "You",
+    const messageData = {
+      messageId,
+      senderId: user.username,
+      receiverId: otherUsername,
+      type: isVoice ? "voice" : isImage ? "image" : isSticker ? "sticker" : "text",
       text,
-      timestamp,
-      isSticker,
-      isVoice,
-      voiceDuration,
-      isImage,
-      imageUrl
+      mediaUrl: isImage ? imageUrl : "",
+      voiceDuration: isVoice ? voiceDuration : 0,
+      createdAt: new Date().toISOString(),
+      status: "sent"
     };
 
-    const targetContactName = activeChatContact ? activeChatContact.name : activeHost.name;
-
-    // Save in WhatsApp conversations mapping
-    setWhatsappConversations(prev => {
-      const existing = prev[targetContactName] || [];
-      return {
-        ...prev,
-        [targetContactName]: [...existing, newMsg]
-      };
-    });
-
-    // Fallback sync to directMessages state
-    setDirectMessages(prev => [...prev, newMsg]);
-
-    // Simulate response from the contact
-    setTimeout(() => {
-      let replyText = `Thanks for messaging! Let's catch up on my next stream soon! 🌟🎙️`;
-      if (targetContactName.includes("Sahar")) {
-        replyText = "Thank you Prince! Live stream pe milte hain thodi der mein! ✨🎙️";
-      } else if (targetContactName.includes("Alina")) {
-        replyText = "Aww Prince! Supporting me is the best thing. Let's win today's PK match together! 🔥❤️";
-      } else if (targetContactName.includes("Zain")) {
-        replyText = "Bilkul bhai, direct PK battle will be massive! Tayyar raho! ⚔️💪";
-      } else if (targetContactName.includes("Sana")) {
-        replyText = "Asalam-o-Alaikum! Shukurya for your sweet message. Keep supporting! 🌹✨";
-      } else if (targetContactName.includes("Alpha")) {
-        replyText = "Hey sweetheart! Join my VIP room tonight, we have some special activities! 👑💎";
-      } else if (targetContactName.includes("Siddique")) {
-        replyText = "Walaikum Assalam bhai! Sahr Kings agency is the strongest. Salary ledger check kar lo. 🛡️";
+    try {
+      const convRef = doc(db, "conversations", conversationId);
+      
+      // Get current unread count for the other participant
+      let currentUnread = 0;
+      try {
+        const convSnap = await getDoc(convRef);
+        if (convSnap.exists()) {
+          const cData = convSnap.data();
+          currentUnread = cData?.unreadCounts?.[otherUsername] || 0;
+        }
+      } catch (err) {
+        console.error("Error reading conversation unread count:", err);
       }
 
-      if (isVoice) {
-        replyText = "MashaAllah, bohot pyaari aawaaz hai aapki! ❤️🎙️ Sun kar bohot accha laga!";
-      } else if (isImage) {
-        replyText = "Wow! Shukurya share karne ka! Bohot hi kamaal ki photo hai! 😍📸";
-      } else if (isSticker) {
-        replyText = "Aww! So cute emoji sticker! ❤️😍 Thank you so much!";
-      } else if (customTextOverride && customTextOverride.includes("📍")) {
-        replyText = "Oh, Lahore Node! Main bhi Lahore se hoon, bohot pyaari jagah hai! 🌸🇵🇰";
-      } else if (customTextOverride && customTextOverride.includes("📄")) {
-        replyText = "Document received! Main checks kar ke bataati hoon. 📝";
-      } else if (customTextOverride && customTextOverride.includes("📇")) {
-        replyText = "Contact card save kar liya hai, shukurya! 📞";
-      }
-
-      const replyMsg = {
-        id: "dm-reply-" + Date.now(),
-        sender: targetContactName,
-        text: replyText,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      // 1. Save/Update parent conversation document
+      const convData = {
+        id: conversationId,
+        participants: [user.username, otherUsername],
+        lastMessage: text,
+        lastMessageType: isVoice ? "voice" : isImage ? "image" : isSticker ? "sticker" : "text",
+        lastMessageAt: new Date().toISOString(),
+        lastSenderId: user.username,
+        updatedAt: new Date().toISOString(),
+        unreadCounts: {
+          [user.username]: 0, // sender unread count is always 0
+          [otherUsername]: currentUnread + 1 // increment recipient's unread count
+        }
       };
+      await setDoc(convRef, convData, { merge: true });
 
-      setWhatsappConversations(prev => {
-        const existing = prev[targetContactName] || [];
-        return {
-          ...prev,
-          [targetContactName]: [...existing, replyMsg]
-        };
-      });
+      // 2. Save individual message document in subcollection
+      const msgRef = doc(db, "conversations", conversationId, "messages", messageId);
+      await setDoc(msgRef, messageData);
 
-      setDirectMessages(prev => [...prev, replyMsg]);
-    }, 2000);
+      console.log("[SEHR-LIVE CHAT] Message synced to Firestore:", messageId);
+    } catch (err) {
+      console.error("Error sending message to Firestore:", err);
+    }
   };
 
   // Gift Queue Processor
@@ -15496,56 +15667,166 @@ export default function App() {
 
                             {/* Contacts list */}
                             <div className="flex-1 overflow-y-auto divide-y divide-[#1e1e2d] space-y-1">
-                              {/* Existing Chats */}
-                              {whatsappContacts
-                                .filter(contact => {
-                                  const lastMsg = (whatsappConversations[contact.name] || []).slice(-1)[0]?.text || contact.bio || "";
-                                  return contact.name.toLowerCase().includes(chatSearchQuery.toLowerCase()) ||
+                              {/* Search Results from Real Registered Users on App */}
+                              {chatSearchQuery && searchedUsers.length > 0 && (
+                                <div className="p-3 bg-[#171724]/60 border-b border-[#303040] space-y-2">
+                                  <h4 className="text-[9px] text-[#ff007f] font-mono font-black uppercase tracking-wider mb-2">
+                                    Search Results: Registered Users
+                                  </h4>
+                                  <div className="space-y-1.5">
+                                    {searchedUsers.map((u, idx) => (
+                                      <div
+                                        key={`${u.username}-${idx}`}
+                                        onClick={async () => {
+                                          const contact = {
+                                            name: u.fullName || u.username,
+                                            username: u.username,
+                                            avatar: u.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=" + u.username,
+                                            bio: u.bio || "Official Sehr Live member 🌟",
+                                            followersCount: u.followersCount || 0,
+                                            followingCount: u.followingCount || 0,
+                                            totalLikesCount: u.totalLikesCount || 0,
+                                            isOnline: u.isOnline || false
+                                          };
+                                          
+                                          // Initialize conversation document in Firestore deterministically
+                                          const conversationId = [user.username, u.username].sort().join("_");
+                                          const convRef = doc(db, "conversations", conversationId);
+                                          
+                                          try {
+                                            const convSnap = await getDoc(convRef);
+                                            if (!convSnap.exists()) {
+                                              await setDoc(convRef, {
+                                                id: conversationId,
+                                                participants: [user.username, u.username],
+                                                createdAt: new Date().toISOString(),
+                                                updatedAt: new Date().toISOString(),
+                                                lastMessage: "",
+                                                lastMessageType: "text",
+                                                lastMessageAt: new Date().toISOString(),
+                                                lastSenderId: "",
+                                                unreadCounts: {
+                                                  [user.username]: 0,
+                                                  [u.username]: 0
+                                                }
+                                              });
+                                            }
+                                          } catch (err) {
+                                            console.error("Error creating DM conversation:", err);
+                                          }
+
+                                          setActiveChatContact(contact);
+                                          setChatSearchQuery("");
+                                        }}
+                                        className="flex items-center space-x-2.5 p-2 rounded-xl bg-[#12121a] hover:bg-[#ff007f]/10 border border-[#303040]/50 hover:border-[#ff007f]/30 cursor-pointer transition-all active:scale-95 group"
+                                      >
+                                        <div className="relative">
+                                          <img src={u.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=" + u.username} className="w-8 h-8 rounded-full object-cover border border-[#ff007f]/30 shrink-0" alt="" referrerPolicy="no-referrer" />
+                                          {u.isOnline && (
+                                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border border-[#12121a]" />
+                                          )}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <p className="text-[10px] font-bold text-white truncate group-hover:text-[#ff007f] transition-colors">{u.fullName || u.username}</p>
+                                          <p className="text-[8.5px] text-gray-400 truncate">@{u.username} • ID: {u.uniqueId || "User"}</p>
+                                        </div>
+                                        <span className="text-[8.5px] bg-[#ff007f] hover:bg-[#ff007f]/90 text-white font-black px-2 py-1 rounded-lg shrink-0 transition-all shadow-md">
+                                          💬 CHAT
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Search Loading Indicator */}
+                              {chatSearchQuery && searchLoading && (
+                                <div className="p-4 text-center">
+                                  <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-[#ff007f]"></div>
+                                  <p className="text-gray-500 text-[9px] font-mono mt-1">Searching Sehr Live users...</p>
+                                </div>
+                              )}
+
+                              {/* Existing Chats mapped from real-time conversations list */}
+                              {conversations.length > 0 && conversations
+                                .filter(conv => {
+                                  const otherUsername = conv.participants.find(p => p !== user.username) || "";
+                                  const otherUser = allRegisteredUsers.find(u => u.username === otherUsername) || {};
+                                  const dispName = otherUser.fullName || otherUser.username || otherUsername;
+                                  const lastMsg = conv.lastMessage || "";
+                                  return dispName.toLowerCase().includes(chatSearchQuery.toLowerCase()) ||
                                          lastMsg.toLowerCase().includes(chatSearchQuery.toLowerCase());
                                 })
-                                .map(contact => {
-                                  const conversation = whatsappConversations[contact.name] || [];
-                                  const lastMsgObj = conversation.slice(-1)[0];
-                                  const hasUnread = conversation.length > 0 && lastMsgObj?.sender !== "You";
+                                .map(conv => {
+                                  const otherUsername = conv.participants.find(p => p !== user.username) || "";
+                                  const otherUser = allRegisteredUsers.find(u => u.username === otherUsername) || {
+                                    username: otherUsername,
+                                    fullName: otherUsername,
+                                    avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=" + otherUsername,
+                                    bio: "Sehr Live member 🇵🇰",
+                                    followersCount: 0,
+                                    followingCount: 0,
+                                    totalLikesCount: 0,
+                                    isOnline: false
+                                  };
                                   
+                                  const lastMsgText = conv.lastMessage;
+                                  const lastSenderIsMe = conv.lastSenderId === user.username;
+                                  const unreadCount = conv.unreadCounts?.[user.username] || 0;
+                                  const hasUnread = unreadCount > 0;
+                                  
+                                  // format time
+                                  const lastTime = conv.lastMessageAt 
+                                    ? new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                                    : "";
+
                                   return (
                                     <div
-                                      key={contact.name}
+                                      key={conv.id}
                                       className="flex items-center justify-between p-3 hover:bg-white/5 active:bg-white/10 transition-all cursor-pointer group"
                                       onClick={() => {
-                                        setActiveChatContact(contact);
-                                        setDirectMessages(conversation);
+                                        setActiveChatContact({
+                                          name: otherUser.fullName || otherUser.username,
+                                          username: otherUser.username,
+                                          avatar: otherUser.avatar,
+                                          bio: otherUser.bio || "Sehr Live member 🇵🇰",
+                                          followersCount: otherUser.followersCount || 0,
+                                          followingCount: otherUser.followingCount || 0,
+                                          totalLikesCount: otherUser.totalLikesCount || 0,
+                                          isOnline: otherUser.isOnline || false
+                                        });
                                         setMessageSearchQuery("");
                                       }}
                                     >
                                       <div className="flex items-center space-x-3 min-w-0 flex-1">
-                                        {/* Avatar image - tapping DP opens image modal */}
                                         <div
                                           className="w-10 h-10 rounded-full overflow-hidden border border-[#ff007f] shrink-0 relative hover:scale-105 active:scale-95 transition-transform"
                                           onClick={(e) => {
-                                            e.stopPropagation(); // Avoid selecting chat
-                                            setShowActiveChatDPModal({ name: contact.name, avatar: contact.avatar });
+                                            e.stopPropagation();
+                                            setShowActiveChatDPModal({ name: otherUser.fullName || otherUser.username, avatar: otherUser.avatar });
                                           }}
                                           title="View profile photo"
                                         >
-                                          <img src={contact.avatar} className="w-full h-full object-cover" alt="avatar" referrerPolicy="no-referrer" />
-                                          {contact.isOnline && (
+                                          <img src={otherUser.avatar} className="w-full h-full object-cover" alt="avatar" referrerPolicy="no-referrer" />
+                                          {otherUser.isOnline && (
                                             <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border border-[#12121a]" />
                                           )}
                                         </div>
 
                                         <div className="min-w-0 flex-1">
                                           <div className="flex items-center space-x-1">
-                                            <span className="text-xs font-bold text-white group-hover:text-[#ff007f] transition-colors">{contact.name}</span>
-                                            {contact.name.includes("Sahar") && <span className="text-[9px]" title="Official Artist">⭐</span>}
+                                            <span className="text-xs font-bold text-white group-hover:text-[#ff007f] transition-colors">
+                                              {otherUser.fullName || otherUser.username}
+                                            </span>
+                                            {(otherUser.fullName || otherUser.username).includes("Sahar") && <span className="text-[9px]" title="Official Artist">⭐</span>}
                                           </div>
                                           <p className="text-[9.5px] text-gray-400 truncate mt-0.5">
-                                            {lastMsgObj ? (
-                                              <span className={hasUnread ? "text-[#ff007f] font-bold" : ""}>
-                                                {lastMsgObj.sender === "You" ? "You: " : ""}{lastMsgObj.text}
+                                            {lastMsgText ? (
+                                              <span className={hasUnread ? "text-[#ff007f] font-bold animate-pulse" : ""}>
+                                                {lastSenderIsMe ? "You: " : ""}{lastMsgText}
                                               </span>
                                             ) : (
-                                              <span className="italic text-gray-500">{contact.bio}</span>
+                                              <span className="italic text-gray-500">{otherUser.bio}</span>
                                             )}
                                           </p>
                                         </div>
@@ -15553,11 +15834,11 @@ export default function App() {
 
                                       <div className="flex flex-col items-end shrink-0 pl-2 space-y-1">
                                         <span className="text-[8.5px] text-gray-500">
-                                          {lastMsgObj ? lastMsgObj.timestamp : contact.isOnline ? "Online" : "Offline"}
+                                          {lastTime || (otherUser.isOnline ? "Online" : "Offline")}
                                         </span>
                                         {hasUnread && (
                                           <span className="bg-[#ff007f] text-white text-[7.5px] font-extrabold rounded-full w-4 h-4 flex items-center justify-center animate-pulse">
-                                            1
+                                            {unreadCount}
                                           </span>
                                         )}
                                       </div>
@@ -15565,84 +15846,76 @@ export default function App() {
                                   );
                                 })}
 
-                              {/* Search Results from Live Hosts / Real Users on App */}
-                              {(() => {
-                                const matchedLiveHosts = liveStreamsList.filter(host => {
-                                  const nameMatch = host.name.toLowerCase().includes(chatSearchQuery.toLowerCase());
-                                  const notInContacts = !whatsappContacts.some(c => c.name === host.name);
-                                  return nameMatch && notInContacts;
-                                });
-
-                                if (matchedLiveHosts.length > 0) {
-                                  return (
-                                    <div className="mt-2 p-3 bg-[#171724] border-t border-[#303040] space-y-2">
-                                      <h4 className="text-[9px] text-[#ff007f] font-mono font-black uppercase tracking-wider mb-2">
-                                        {chatSearchQuery ? "Search Results: Active Users / Hosts" : "Start Chat with Active Users / Hosts"}
-                                      </h4>
+                              {/* Proper Empty State and Suggested active users to chat with */}
+                              {(!chatSearchQuery || searchedUsers.length === 0) && conversations.length === 0 && (
+                                <div className="p-6 text-center space-y-4">
+                                  <div className="text-4xl text-[#ff007f]/30 font-mono animate-bounce mt-4">💬</div>
+                                  <p className="text-gray-400 text-xs font-mono">No active conversations yet.</p>
+                                  <p className="text-gray-500 text-[10px] max-w-[200px] mx-auto leading-relaxed">Search for any registered user above by name or username to start real-time messaging!</p>
+                                  
+                                  {allRegisteredUsers.filter(u => u.username !== user.username).length > 0 && (
+                                    <div className="mt-6 text-left space-y-2 max-w-sm mx-auto">
+                                      <h4 className="text-[9px] text-[#ff007f] font-mono font-black uppercase tracking-wider">Suggested Users</h4>
                                       <div className="space-y-1.5">
-                                        {matchedLiveHosts.map(host => (
-                                          <div
-                                            key={host.id}
-                                            onClick={() => {
-                                              const newContact = {
-                                                name: host.name,
-                                                avatar: host.avatar,
-                                                bio: host.bio || `Official Sahr Live Stream Host 🌟`,
-                                                followersCount: host.followersCount || 10000,
-                                                followingCount: 150,
-                                                totalLikesCount: host.totalLikes || 50000,
-                                                isOnline: host.isLive || true
-                                              };
-                                              setWhatsappContacts(prev => {
-                                                if (prev.some(c => c.name === host.name)) return prev;
-                                                return [...prev, newContact];
-                                              });
-                                              setActiveChatContact(newContact);
-                                              setDirectMessages(whatsappConversations[host.name] || []);
-                                            }}
-                                            className="flex items-center space-x-2.5 p-2 rounded-xl bg-[#12121a]/80 hover:bg-[#ff007f]/10 border border-[#303040]/50 hover:border-[#ff007f]/30 cursor-pointer transition-all active:scale-95 group"
-                                          >
-                                            <div className="relative">
-                                              <img src={host.avatar} className="w-8 h-8 rounded-full object-cover border border-[#ff007f]/30 shrink-0" alt="" referrerPolicy="no-referrer" />
-                                              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border border-[#12121a]" />
+                                        {allRegisteredUsers
+                                          .filter(u => u.username !== user.username)
+                                          .slice(0, 3)
+                                          .map((u, idx) => (
+                                            <div
+                                              key={`${u.username}-${idx}`}
+                                              onClick={async () => {
+                                                const contact = {
+                                                  name: u.fullName || u.username,
+                                                  username: u.username,
+                                                  avatar: u.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=" + u.username,
+                                                  bio: u.bio || "Sehr Live member 🇵🇰",
+                                                  followersCount: u.followersCount || 0,
+                                                  followingCount: u.followingCount || 0,
+                                                  totalLikesCount: u.totalLikesCount || 0,
+                                                  isOnline: u.isOnline || false
+                                                };
+                                                
+                                                const conversationId = [user.username, u.username].sort().join("_");
+                                                const convRef = doc(db, "conversations", conversationId);
+                                                
+                                                try {
+                                                  const convSnap = await getDoc(convRef);
+                                                  if (!convSnap.exists()) {
+                                                    await setDoc(convRef, {
+                                                      id: conversationId,
+                                                      participants: [user.username, u.username],
+                                                      createdAt: new Date().toISOString(),
+                                                      updatedAt: new Date().toISOString(),
+                                                      lastMessage: "",
+                                                      lastMessageType: "text",
+                                                      lastMessageAt: new Date().toISOString(),
+                                                      lastSenderId: "",
+                                                      unreadCounts: {
+                                                        [user.username]: 0,
+                                                        [u.username]: 0
+                                                      }
+                                                    });
+                                                  }
+                                                } catch (err) {
+                                                  console.error(err);
+                                                }
+
+                                                setActiveChatContact(contact);
+                                              }}
+                                              className="flex items-center justify-between p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-all border border-white/5 cursor-pointer text-xs"
+                                            >
+                                              <div className="flex items-center space-x-2 min-w-0">
+                                                <img src={u.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=" + u.username} className="w-7 h-7 rounded-full object-cover" alt="" referrerPolicy="no-referrer" />
+                                                <div className="min-w-0">
+                                                  <p className="font-bold text-white text-[11px] truncate">{u.fullName || u.username}</p>
+                                                  <p className="text-[8.5px] text-gray-400 truncate">@{u.username}</p>
+                                                </div>
+                                              </div>
+                                              <span className="text-[9px] bg-[#ff007f]/20 hover:bg-[#ff007f]/30 border border-[#ff007f]/30 text-[#ff007f] px-2 py-0.5 rounded-lg transition-all">Chat</span>
                                             </div>
-                                            <div className="min-w-0 flex-1">
-                                              <p className="text-[10px] font-bold text-white truncate group-hover:text-[#ff007f] transition-colors">{host.name}</p>
-                                              <p className="text-[8.5px] text-gray-400 truncate">{host.statusText || "Available to chat on Sahr Live"}</p>
-                                            </div>
-                                            <span className="text-[8.5px] bg-[#ff007f] hover:bg-[#ff007f]/90 text-white font-black px-2 py-1 rounded-lg shrink-0 transition-all shadow-md">
-                                              💬 CHAT
-                                            </span>
-                                          </div>
-                                        ))}
+                                          ))}
                                       </div>
                                     </div>
-                                  );
-                                }
-                                return null;
-                              })()}
-
-                              {/* Empty State */}
-                              {whatsappContacts.filter(contact => {
-                                const lastMsg = (whatsappConversations[contact.name] || []).slice(-1)[0]?.text || contact.bio || "";
-                                return contact.name.toLowerCase().includes(chatSearchQuery.toLowerCase()) ||
-                                       lastMsg.toLowerCase().includes(chatSearchQuery.toLowerCase());
-                              }).length === 0 && 
-                              liveStreamsList.filter(host => {
-                                const nameMatch = host.name.toLowerCase().includes(chatSearchQuery.toLowerCase());
-                                const notInContacts = !whatsappContacts.some(c => c.name === host.name);
-                                return nameMatch && notInContacts;
-                              }).length === 0 && (
-                                <div className="text-center py-10 px-4 space-y-2">
-                                  <p className="text-gray-500 text-xs font-mono">No matching contacts or active users found.</p>
-                                  {chatSearchQuery && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setChatSearchQuery("")}
-                                      className="text-[10px] bg-white/5 border border-white/10 text-[#ff007f] hover:bg-white/10 px-3 py-1 rounded-full font-bold"
-                                    >
-                                      Reset Search
-                                    </button>
                                   )}
                                 </div>
                               )}
@@ -15779,14 +16052,14 @@ export default function App() {
 
                             {/* Chat history list with message filter */}
                             <div className="flex-1 scroll-view-y p-3 pb-4 space-y-2.5">
-                              {(whatsappConversations[activeChatContact.name] || [])
+                              {activeChatMessages
                                 .filter(msg => !msg.deletedForSelf)
                                 .filter(msg => {
                                   if (!messageSearchQuery) return true;
                                   return msg.text.toLowerCase().includes(messageSearchQuery.toLowerCase());
                                 })
                                 .map((msg) => {
-                                  const isUser = msg.sender === "You";
+                                  const isUser = msg.senderId === user.username;
                                   const isMatch = messageSearchQuery && msg.text.toLowerCase().includes(messageSearchQuery.toLowerCase());
                                   
                                   return (
@@ -15851,16 +16124,18 @@ export default function App() {
                                             <div className="absolute right-0 top-full mt-1 bg-[#1a1a24] border border-[#ff007f]/30 rounded-lg p-1 z-30 shadow-2xl space-y-0.5 w-24">
                                               <button
                                                 type="button"
-                                                onClick={() => {
-                                                  setWhatsappConversations(prev => {
-                                                    const list = prev[activeChatContact.name] || [];
-                                                    return {
-                                                      ...prev,
-                                                      [activeChatContact.name]: list.map(m => m.id === msg.id ? { ...m, deletedForSelf: true } : m)
-                                                    };
-                                                  });
-                                                  setDirectMessages(prev => prev.map(m => m.id === msg.id ? { ...m, deletedForSelf: true } : m));
-                                                  setChatSelectedMessageId(null);
+                                                onClick={async () => {
+                                                  try {
+                                                    const otherUsername = activeChatContact.username || activeChatContact.name;
+                                                    const conversationId = [user.username, otherUsername].sort().join("_");
+                                                    const msgRef = doc(db, "conversations", conversationId, "messages", msg.id);
+                                                    await updateDoc(msgRef, {
+                                                      [`deletedForSelfUsers.${user.username}`]: true
+                                                    });
+                                                    setChatSelectedMessageId(null);
+                                                  } catch (err) {
+                                                    console.error("Error deleting message for self:", err);
+                                                  }
                                                 }}
                                                 className="w-full text-left text-[8px] hover:bg-white/5 p-1 rounded text-amber-400 font-mono font-bold flex items-center space-x-1"
                                               >
@@ -15869,16 +16144,18 @@ export default function App() {
                                               {isUser && (
                                                 <button
                                                   type="button"
-                                                  onClick={() => {
-                                                    setWhatsappConversations(prev => {
-                                                      const list = prev[activeChatContact.name] || [];
-                                                      return {
-                                                        ...prev,
-                                                        [activeChatContact.name]: list.map(m => m.id === msg.id ? { ...m, deletedForEveryone: true } : m)
-                                                      };
-                                                    });
-                                                    setDirectMessages(prev => prev.map(m => m.id === msg.id ? { ...m, deletedForEveryone: true } : m));
-                                                    setChatSelectedMessageId(null);
+                                                  onClick={async () => {
+                                                    try {
+                                                      const otherUsername = activeChatContact.username || activeChatContact.name;
+                                                      const conversationId = [user.username, otherUsername].sort().join("_");
+                                                      const msgRef = doc(db, "conversations", conversationId, "messages", msg.id);
+                                                      await updateDoc(msgRef, {
+                                                        deletedForEveryone: true
+                                                      });
+                                                      setChatSelectedMessageId(null);
+                                                    } catch (err) {
+                                                      console.error("Error deleting message for everyone:", err);
+                                                    }
                                                   }}
                                                   className="w-full text-left text-[8px] hover:bg-red-500/10 p-1 rounded text-red-400 font-mono font-bold flex items-center space-x-1"
                                                 >
@@ -15904,7 +16181,7 @@ export default function App() {
                                   );
                                 })}
 
-                              {(whatsappConversations[activeChatContact.name] || []).length === 0 && (
+                              {activeChatMessages.length === 0 && (
                                 <div className="text-center py-16 px-4 space-y-2">
                                   <p className="text-gray-500 text-xs font-medium font-mono">Say Salaam to start conversation! 👋🇵🇰</p>
                                   <div className="flex justify-center space-x-2 pt-2">

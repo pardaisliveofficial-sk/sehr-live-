@@ -57,12 +57,52 @@
         }
       },
       "required": ["creator", "videoUrl", "createdAt"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "A private chat conversation between two users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "lastMessage": { "type": "string" },
+        "lastMessageType": { "type": "string" },
+        "lastMessageAt": { "type": "string", "format": "date-time" },
+        "lastSenderId": { "type": "string" },
+        "unreadCounts": { "type": "object" }
+      }
+    },
+    "Message": {
+      "title": "Message",
+      "description": "An individual private chat message inside a conversation",
+      "type": "object",
+      "properties": {
+        "messageId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "type": { "type": "string" },
+        "text": { "type": "string" },
+        "mediaUrl": { "type": "string" },
+        "voiceDuration": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string" }
+      }
     }
   },
   "firestore": {
     "/reels/{reelId}": {
       "schema": "Reel",
       "description": "Collection of all uploaded video reels"
+    },
+    "/conversations/{conversationId}": {
+      "schema": "Conversation",
+      "description": "Collection of direct messaging channels between users"
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Subcollection of all message records in a conversation thread"
     }
   }
 }
