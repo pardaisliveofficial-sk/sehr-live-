@@ -1490,21 +1490,35 @@ const s3MulterUpload = multer({
 
 // Production video upload endpoint to Cloudflare R2
 app.post("/api/v1/reels/upload-video", s3MulterUpload.single("video"), async (req, res) => {
-  console.log("[SEHR-LIVE R2] [UPLOAD-VIDEO] Upload request received on backend");
+  console.log("[SEHR-LIVE R2] [UPLOAD-VIDEO] ====== UPLOAD TRANSACTION STARTED ======");
 
   try {
     const file = req.file;
     if (!file) {
-      console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] No file found in multipart request data");
-      return res.status(400).json({ error: "No video file uploaded" });
+      console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] FAILED: No file chunk found in multipart request data");
+      return res.status(400).json({ success: false, error: "No video file uploaded" });
     }
 
     const userId = req.body.userId || "anonymous";
     const fileName = file.originalname || "unnamed_reel.mp4";
     const fileSize = file.size;
-    const mimeType = file.mimetype || "video/mp4";
+    let mimeType = file.mimetype || "video/mp4";
 
-    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] Input File Info: Name="${fileName}", Size=${fileSize} bytes, MIME="${mimeType}", User="${userId}"`);
+    // Enforce valid video content type for streaming support
+    if (mimeType === "application/octet-stream" || !mimeType.includes("video/")) {
+      mimeType = "video/mp4";
+    }
+
+    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] METADATA RECEIVED:
+      - File Name: "${fileName}"
+      - Received Size: ${fileSize} bytes (${(fileSize / (1024 * 1024)).toFixed(2)} MB)
+      - Detected MIME: "${mimeType}"
+      - Uploader User ID: "${userId}"`);
+
+    if (fileSize <= 0) {
+      console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] FAILED: Received file size is 0 bytes");
+      return res.status(400).json({ success: false, error: "Uploaded video file is empty (0 bytes)" });
+    }
 
     // Generate production-safe unique object key: reels/{userId}/{timestamp}-{uniqueId}.mp4
     const uniqueId = Math.random().toString(36).substring(2, 10);
@@ -1512,7 +1526,9 @@ app.post("/api/v1/reels/upload-video", s3MulterUpload.single("video"), async (re
     const ext = path.extname(fileName) || ".mp4";
     const objectKey = `reels/${userId}/${timestamp}-${uniqueId}${ext}`;
 
-    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] R2 upload started. Object Key: "${objectKey}"`);
+    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] PREPARING UPLOAD:
+      - R2 Object Key: "${objectKey}"
+      - Target Bucket: "sehrlive-reels"`);
 
     let finalVideoUrl = "";
     
@@ -1527,52 +1543,92 @@ app.post("/api/v1/reels/upload-video", s3MulterUpload.single("video"), async (re
         ContentType: mimeType,
       });
 
+      console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] Transmitting binary buffer to Cloudflare R2 S3 API...`);
       await client.send(putCommand);
-      console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] R2 object upload succeeded. Object Key: "${objectKey}"`);
+      console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] SUCCESS: Binary written to R2 storage bucket "${bucketName}"`);
 
-      // Generate public/custom delivery domain URL
-      const publicBaseUrl = process.env.R2_PUBLIC_URL || "";
-      if (publicBaseUrl) {
-        const cleanBase = publicBaseUrl.endsWith("/") ? publicBaseUrl.slice(0, -1) : publicBaseUrl;
-        finalVideoUrl = `${cleanBase}/${objectKey}`;
-      } else {
-        const endpoint = process.env.R2_ENDPOINT || "";
-        const cleanEndpoint = endpoint.endsWith("/") ? endpoint.slice(0, -1) : endpoint;
-        finalVideoUrl = `${cleanEndpoint}/${bucketName}/${objectKey}`;
-        console.warn(`[SEHR-LIVE R2] [UPLOAD-VIDEO] Warning: R2_PUBLIC_URL is empty! Falling back to S3 endpoint format: ${finalVideoUrl}`);
-      }
+      // Generate public CDN Delivery Domain URL
+      const publicBaseUrl = process.env.R2_PUBLIC_URL || "https://media.sehrlive.soulverseapps.com";
+      const cleanBase = publicBaseUrl.endsWith("/") ? publicBaseUrl.slice(0, -1) : publicBaseUrl;
+      finalVideoUrl = `${cleanBase}/${objectKey}`;
+
+      console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] PUBLIC CDN DISTRIBUTION LINK GENERATED: "${finalVideoUrl}"`);
     } catch (r2Error: any) {
-      console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] Cloudflare R2 Upload failed! Falling back to local server storage:", r2Error.message);
+      console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] FATAL ERROR: Cloudflare R2 Upload failed!", r2Error);
       
-      // Fallback: Write file locally to process.cwd()/public/uploads
-      const uploadsDir = path.join(process.cwd(), "public", "uploads");
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-      const cleanFileName = `${timestamp}_fallback_${fileName}`;
-      const localFilePath = path.join(uploadsDir, cleanFileName);
-      fs.writeFileSync(localFilePath, file.buffer);
-
-      // Construct server relative URL
-      finalVideoUrl = `/uploads/${cleanFileName}`;
-      console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] Fallback upload successfully saved locally: ${finalVideoUrl}`);
+      // Strict Mode: Do not fall back to local storage and do not publish a broken Reel!
+      return res.status(500).json({
+        success: false,
+        error: `Cloudflare R2 Storage Upload Failed: ${r2Error.message || r2Error}`
+      });
     }
 
-    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] File upload transaction completed. Playable URL: "${finalVideoUrl}"`);
+    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] ====== UPLOAD TRANSACTION COMPLETED SUCCESSFULLY ======\n`);
     return res.json({
       success: true,
       url: finalVideoUrl,
       key: objectKey,
+      objectKey: objectKey,
+      publicUrl: finalVideoUrl,
+      mediaUrl: finalVideoUrl,
       size: fileSize,
       mimeType: mimeType
     });
 
   } catch (error: any) {
-    console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] Fatal route processing error:", error);
+    console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] FATAL UNHANDLED TRANSACTION ERROR:", error);
     return res.status(500).json({
       success: false,
-      error: error.message || "An unexpected error occurred during video upload"
+      error: error.message || "An unexpected error occurred during video upload handling"
     });
+  }
+});
+
+// ------------------------------------------------------------------
+// RANGE-REQUEST VIDEO STREAMER (FOR ANDROID MEDIA PLAYER RANGE COMPATIBILITY)
+// ------------------------------------------------------------------
+app.get("/uploads/:filename", (req, res) => {
+  const filePath = path.join(process.cwd(), "public", "uploads", req.params.filename);
+  if (!fs.existsSync(filePath)) {
+    console.error(`[SEHR-LIVE STREAMER] Local file not found: ${filePath}`);
+    return res.status(404).send("File not found");
+  }
+
+  const stat = fs.statSync(filePath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+
+  console.log(`[SEHR-LIVE STREAMER] Serving local file "${req.params.filename}" (Size: ${fileSize} bytes). Requested Range: "${range || "None"}"`);
+
+  if (range) {
+    const parts = range.replace(/bytes=/, "").split("-");
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+    if (start >= fileSize) {
+      res.status(416).send('Requested range not satisfiable\n' + start + ' >= ' + fileSize);
+      return;
+    }
+
+    const chunksize = (end - start) + 1;
+    const file = fs.createReadStream(filePath, { start, end });
+    const head = {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunksize,
+      'Content-Type': 'video/mp4',
+    };
+
+    res.writeHead(206, head);
+    file.pipe(res);
+  } else {
+    const head = {
+      'Content-Length': fileSize,
+      'Content-Type': 'video/mp4',
+      'Accept-Ranges': 'bytes',
+    };
+    res.writeHead(200, head);
+    fs.createReadStream(filePath).pipe(res);
   }
 });
 

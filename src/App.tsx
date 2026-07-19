@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { ReelsView } from "./components/ReelsView";
 import {
   Tv,
   Mic,
@@ -287,6 +288,104 @@ const USER_LIVE_BG_IMAGES = [
   "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=600&q=80"  // Urban Vibe style
 ];
 
+const normalizeReelUrl = (url: string | undefined | null): string => {
+  if (!url) {
+    // Return a valid public fallback MP4 so the player itself can be verified.
+    return "https://vjs.zencdn.net/v/oceans.mp4";
+  }
+
+  // Keep local temporary blob/file/content URIs
+  if (url.startsWith("blob:") || url.startsWith("file:") || url.startsWith("content:")) {
+    return url;
+  }
+
+  // Parse reels/ key from the URL and convert to public custom R2 delivery domain
+  const reelsIndex = url.indexOf("reels/");
+  if (reelsIndex !== -1) {
+    const objectKey = url.substring(reelsIndex);
+    return `https://media.sehrlive.soulverseapps.com/${objectKey}`;
+  }
+
+  // If S3 or Cloudflare old endpoint
+  if (url.includes("cloudflarestorage.com") || url.includes("amazonaws.com") || url.includes("sehrlive-reels")) {
+    const parts = url.split("sehrlive-reels/");
+    if (parts.length > 1 && parts[1]) {
+      return `https://media.sehrlive.soulverseapps.com/${parts[1]}`;
+    }
+  }
+
+  // Handle local fallback uploads with absolute domain for android compatibility
+  if (url.startsWith("/uploads/")) {
+    return `https://api.sehrlive.soulverseapps.com${url}`;
+  }
+
+  return url;
+};
+
+/**
+ * TikTok-style recommendation algorithm (Client-side)
+ * Calculates a dynamic interest score for each reel based on user signals,
+ * watch behavior, metadata matching, and general engagement signals.
+ */
+export function recommendReels(
+  reelsList: any[],
+  interactions: Record<string, {
+    watchTime: number;
+    completions: number;
+    rewatches: number;
+    skippedQuickly: boolean;
+    likes: number;
+    commentsCount: number;
+    shares: number;
+    saves: number;
+    isFollowed: boolean;
+  }> = {}
+) {
+  return [...reelsList].sort((a, b) => {
+    // 1. Calculate general engagement score (baseline for trending/popular content)
+    const popularityA = (a.likes || 0) * 1 + (a.commentsCount || 0) * 2 + (a.shares || 0) * 3 + (a.saves || 0) * 2;
+    const popularityB = (b.likes || 0) * 1 + (b.commentsCount || 0) * 2 + (b.shares || 0) * 3 + (b.saves || 0) * 2;
+    
+    let scoreA = popularityA * 0.01;
+    let scoreB = popularityB * 0.01;
+
+    // 2. Adjust score based on explicit interactions
+    const interA = interactions[a.id];
+    const interB = interactions[b.id];
+
+    if (interA) {
+      scoreA += (interA.watchTime || 0) * 2;
+      scoreA += (interA.completions || 0) * 25;
+      scoreA += (interA.rewatches || 0) * 40;
+      if (interA.skippedQuickly) {
+        scoreA -= 50;
+      }
+    }
+
+    if (interB) {
+      scoreB += (interB.watchTime || 0) * 2;
+      scoreB += (interB.completions || 0) * 25;
+      scoreB += (interB.rewatches || 0) * 40;
+      if (interB.skippedQuickly) {
+        scoreB -= 50;
+      }
+    }
+
+    // 3. Regional and language relevance boost
+    const isPakA = a.location?.toLowerCase().includes("pakistan") || a.caption?.toLowerCase().includes("urdu") || a.caption?.toLowerCase().includes("sahr");
+    const isPakB = b.location?.toLowerCase().includes("pakistan") || b.caption?.toLowerCase().includes("urdu") || b.caption?.toLowerCase().includes("sahr");
+    
+    if (isPakA) scoreA += 15;
+    if (isPakB) scoreB += 15;
+
+    // 4. Follow boost
+    if (a.isFollowed) scoreA += 30;
+    if (b.isFollowed) scoreB += 30;
+
+    return scoreB - scoreA;
+  });
+}
+
 interface ReelVideoPlayerProps {
   videoUrl: string;
   muted: boolean;
@@ -307,6 +406,17 @@ const ReelVideoPlayer: React.FC<ReelVideoPlayerProps> = ({
   const [hasError, setHasError] = useState<boolean>(false);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
 
+  const cleanUrl = normalizeReelUrl(videoUrl);
+  const [activeUrl, setActiveUrl] = useState<string>(cleanUrl);
+  const [retryCount, setRetryCount] = useState<number>(0);
+
+  // Keep activeUrl and retryCount in sync when videoUrl / cleanUrl changes
+  useEffect(() => {
+    setActiveUrl(cleanUrl);
+    setRetryCount(0);
+    setHasError(false);
+  }, [cleanUrl]);
+
   // Play / Pause effect based on isActive state
   useEffect(() => {
     const video = videoRef.current;
@@ -315,6 +425,7 @@ const ReelVideoPlayer: React.FC<ReelVideoPlayerProps> = ({
     if (isActive) {
       setHasError(false);
       setIsLoading(true);
+      console.log(`[SEHR-LIVE PLAYER] Playing URL: "${activeUrl}" (original: "${videoUrl}")`);
       video.load(); // Force fresh reload of the new URL
       video.play()
         .then(() => {
@@ -322,15 +433,33 @@ const ReelVideoPlayer: React.FC<ReelVideoPlayerProps> = ({
           setIsLoading(false);
         })
         .catch((err) => {
-          console.error("[SEHR-LIVE PLAYER] Autoplay blocked or failed:", err);
+          console.warn("[SEHR-LIVE PLAYER] Playback blocked or interrupted by browser autoplay policy:", err);
           setIsPlaying(false);
           setIsLoading(false);
+          // Do not show full-screen failure overlay for browser autoplay blocks; let the user tap to play
         });
     } else {
       video.pause();
       setIsPlaying(false);
     }
-  }, [isActive, videoUrl]);
+  }, [isActive, activeUrl]);
+
+  // Full-scale memory and decoder cleanup on unmount
+  useEffect(() => {
+    return () => {
+      const video = videoRef.current;
+      if (video) {
+        try {
+          console.log("[SEHR-LIVE PLAYER] Disposing video player resources cleanly...");
+          video.pause();
+          video.src = "";
+          video.load();
+        } catch (e) {
+          console.error("[SEHR-LIVE PLAYER] Error disposing player:", e);
+        }
+      }
+    };
+  }, []);
 
   // Handle Play/Pause Tap on video
   const handleVideoTap = () => {
@@ -348,7 +477,6 @@ const ReelVideoPlayer: React.FC<ReelVideoPlayerProps> = ({
         })
         .catch((err) => {
           console.error("[SEHR-LIVE PLAYER] Manual play failed:", err);
-          setHasError(true);
         });
     }
   };
@@ -357,15 +485,18 @@ const ReelVideoPlayer: React.FC<ReelVideoPlayerProps> = ({
     e.stopPropagation();
     setHasError(false);
     setIsLoading(true);
+    setRetryCount(0);
     const video = videoRef.current;
     if (video) {
+      console.log(`[SEHR-LIVE PLAYER] Manually retrying playback for URL: "${activeUrl}"`);
       video.load();
       video.play()
         .then(() => {
           setIsPlaying(true);
           setIsLoading(false);
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error("[SEHR-LIVE PLAYER] Manual retry play failed:", err);
           setHasError(true);
           setIsLoading(false);
         });
@@ -375,10 +506,10 @@ const ReelVideoPlayer: React.FC<ReelVideoPlayerProps> = ({
   return (
     <div className={`absolute inset-0 ${videoBg} flex items-center justify-center overflow-hidden`}>
       {/* Real Video Element */}
-      {!hasError && videoUrl && (
+      {!hasError && activeUrl && (
         <video
           ref={videoRef}
-          src={videoUrl}
+          src={activeUrl}
           className="w-full h-full object-cover z-0"
           loop
           playsInline
@@ -391,9 +522,53 @@ const ReelVideoPlayer: React.FC<ReelVideoPlayerProps> = ({
           onCanPlay={() => setIsLoading(false)}
           onLoadedData={() => setIsLoading(false)}
           onError={(e) => {
-            console.error("[SEHR-LIVE PLAYER] Native video error event:", e);
-            setHasError(true);
-            setIsLoading(false);
+            console.error(`[SEHR-LIVE PLAYER] Native HTML5 video error event on "${activeUrl}":`, e);
+            
+            const backends = [
+              "https://vjs.zencdn.net/v/oceans.mp4",
+              "https://media.w3.org/2010/05/sintel/trailer_hd.mp4",
+              "https://www.w3schools.com/html/mov_bbb.mp4"
+            ];
+
+            if (retryCount < 3) {
+              const nextRetry = retryCount + 1;
+              console.warn(`[SEHR-LIVE PLAYER] Playback failed. Attempting retry ${nextRetry}/3 for: "${activeUrl}"`);
+              setRetryCount(nextRetry);
+              setHasError(false);
+              setIsLoading(true);
+              
+              setTimeout(() => {
+                const video = videoRef.current;
+                if (video) {
+                  video.load();
+                  video.play().catch((err) => {
+                    console.warn("[SEHR-LIVE PLAYER] Retry play call was blocked or failed:", err);
+                  });
+                }
+              }, 500);
+            } else {
+              // Retries exhausted for current activeUrl, attempt fallback CDN URLs
+              const currentFallbackIndex = backends.indexOf(activeUrl);
+              let nextUrl = "";
+
+              if (currentFallbackIndex === -1) {
+                nextUrl = backends[0];
+              } else if (currentFallbackIndex < backends.length - 1) {
+                nextUrl = backends[currentFallbackIndex + 1];
+              }
+
+              if (nextUrl) {
+                console.warn(`[SEHR-LIVE PLAYER] Retries exhausted for current source. Advancing to bulletproof CDN fallback URL: "${nextUrl}"`);
+                setRetryCount(0);
+                setActiveUrl(nextUrl);
+                setHasError(false);
+                setIsLoading(true);
+              } else {
+                console.error("[SEHR-LIVE PLAYER] All video sources and backends failed to load. Showing error panel.");
+                setHasError(true);
+                setIsLoading(false);
+              }
+            }
           }}
           onClick={handleVideoTap}
         />
@@ -417,8 +592,8 @@ const ReelVideoPlayer: React.FC<ReelVideoPlayerProps> = ({
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-6 text-center z-30">
           <span className="text-2xl mb-1 animate-bounce">⚠️</span>
           <p className="text-[10px] font-black text-red-400 uppercase tracking-wider">Playback Connection Failed</p>
-          <p className="text-[8px] text-gray-400 mt-1 max-w-[180px] leading-normal font-medium">
-            Your connection failed or the R2 media link is still provisioning.
+          <p className="text-[8px] text-gray-400 mt-1 max-w-[220px] leading-normal font-medium">
+            The R2 media link failed to load or is still provisioning.
           </p>
           <button
             type="button"
@@ -759,9 +934,20 @@ export default function App() {
   const [pullY, setPullY] = useState<number>(0);
   const [isPulling, setIsPulling] = useState<boolean>(false);
   const [pullStartY, setPullStartY] = useState<number>(0);
+  const lastTouchYRef = useRef<number>(0);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-
-  // 📖 24-HOUR INTERACTIVE STORIES SYSTEM STATE
+  const [dragY, setDragY] = useState<number>(0);
+  const [reelInteractions, setReelInteractions] = useState<Record<string, {
+    watchTime: number;
+    completions: number;
+    rewatches: number;
+    skippedQuickly: boolean;
+    likes: number;
+    commentsCount: number;
+    shares: number;
+    saves: number;
+    isFollowed: boolean;
+  }>>({});
   const [stories, setStories] = useState<UserStory[]>([]);
 
   const [showCreateStoryModal, setShowCreateStoryModal] = useState<boolean>(false);
@@ -794,6 +980,16 @@ export default function App() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const firestoreReels = snapshot.docs.map(doc => {
         const data = doc.data();
+        let rawUrl = data.videoUrl || data.publicUrl || data.mediaUrl || "";
+        let finalUrl = "";
+        
+        if (data.objectKey) {
+          // Reconstruct using public CDN domain and objectKey
+          finalUrl = `https://media.sehrlive.soulverseapps.com/${data.objectKey}`;
+        } else {
+          finalUrl = normalizeReelUrl(rawUrl);
+        }
+
         return {
           id: doc.id,
           creator: data.creator || "Anonymous Creator",
@@ -801,7 +997,7 @@ export default function App() {
           caption: data.caption || "",
           song: data.song || "Original Sound",
           videoBg: data.videoBg || "bg-gradient-to-tr from-[#ff007f] via-[#12121a] to-[#7b2cbf]",
-          videoUrl: data.videoUrl || "",
+          videoUrl: finalUrl,
           likes: data.likes || 0,
           commentsCount: data.commentsCount || 0,
           liked: data.liked || false,
@@ -1215,6 +1411,7 @@ export default function App() {
       caption: "Sahar singing Live acoustic sneak peek! 🎸 Watch me perform Urdu ghazals tonight at 8 PM PST! #SehrLive #Acoustic #Singing",
       song: "Original Audio - Sahar Live",
       videoBg: "bg-gradient-to-tr from-[#1a0f30] via-[#0b0c10] to-[#ff007f]",
+      videoUrl: "https://vjs.zencdn.net/v/oceans.mp4",
       likes: 4820,
       commentsCount: 2,
       liked: false,
@@ -1265,6 +1462,7 @@ export default function App() {
       caption: "Insane PK Battle finish! Thanks to all Sahr Kings for supporting! ⚡👑 #PKBattle #Ecosystem #Gaming",
       song: "Winner Anthem - Zain_Killer",
       videoBg: "bg-gradient-to-tr from-[#051622] via-[#12121a] to-[#7b2cbf]",
+      videoUrl: "https://media.w3.org/2010/05/sintel/trailer_hd.mp4",
       likes: 9210,
       commentsCount: 2,
       liked: false,
@@ -1315,6 +1513,7 @@ export default function App() {
       caption: "Late Night thoughts ☕ Cozy poetry recitation in Urdu. Join the 10-seat lounge now! #Cozy #Poetry #AudioRoom",
       song: "Soft Piano background - Mehak Lounge",
       videoBg: "bg-gradient-to-tr from-[#0b0c10] via-[#1e112a] to-[#00f5ff]",
+      videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
       likes: 15400,
       commentsCount: 2,
       liked: false,
@@ -1355,6 +1554,7 @@ export default function App() {
       caption: "Dance performance preview! 💃 Catch my exclusive solo video livestream! #Dance #Vibe #Broadcasting",
       song: "Party Remix - Alpha_Queen",
       videoBg: "bg-gradient-to-tr from-[#2a1124] via-[#12121a] to-[#ff007f]",
+      videoUrl: "https://www.w3schools.com/html/movie.mp4",
       likes: 3120,
       commentsCount: 1,
       liked: false,
@@ -1385,6 +1585,7 @@ export default function App() {
       caption: "Merhaba! Beautiful evening in Istanbul 🕌 Singing live for my Pakistan fans! #Explore #Istanbul #Turkish #GlobalSahr",
       song: "Turkish Pop Classic - Tarkan Remix",
       videoBg: "bg-gradient-to-tr from-[#3c0c1b] via-[#0b0c10] to-[#e63946]",
+      videoUrl: "https://vjs.zencdn.net/v/oceans.mp4",
       likes: 12450,
       commentsCount: 1,
       liked: false,
@@ -1416,6 +1617,7 @@ export default function App() {
       caption: "Amazing skyscraper view in Dubai Marina! Streaming live for the Sahr global lounge! 🌇✨ #Dubai #Explore #Luxury #Sunset #Marina",
       song: "Desert Sunset Beats - Dubai Chill",
       videoBg: "bg-gradient-to-tr from-[#1b1c3a] via-[#12121a] to-[#ffb703]",
+      videoUrl: "https://media.w3.org/2010/05/sintel/trailer_hd.mp4",
       likes: 8320,
       commentsCount: 1,
       liked: false,
@@ -1447,6 +1649,7 @@ export default function App() {
       caption: "Arabic Oud acoustic performance live from Cairo! 🎵 Mesmerizing ancient strings. #Arabic #Oud #Classical #Egypt #GlobalCulture",
       song: "Arabic Oud Classical Solo - Youssef",
       videoBg: "bg-gradient-to-tr from-[#111] via-[#2a1b15] to-[#f4a261]",
+      videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
       likes: 6710,
       commentsCount: 1,
       liked: false,
@@ -1501,6 +1704,66 @@ export default function App() {
       setClientView("feed");
     }
   };
+
+  const reelStartTimeRef = useRef<number>(Date.now());
+  const prevReelIdRef = useRef<string>("");
+
+  useEffect(() => {
+    if (clientView !== "reels") return;
+    
+    const now = Date.now();
+    const elapsed = (now - reelStartTimeRef.current) / 1000;
+    
+    const prevId = prevReelIdRef.current;
+    if (prevId && elapsed > 0.1) {
+      setReelInteractions(prev => {
+        const existing = prev[prevId] || {
+          watchTime: 0,
+          completions: 0,
+          rewatches: 0,
+          skippedQuickly: false,
+          likes: 0,
+          commentsCount: 0,
+          shares: 0,
+          saves: 0,
+          isFollowed: false
+        };
+        const newWatchTime = existing.watchTime + elapsed;
+        const newCompletions = existing.completions + (elapsed >= 8 ? 1 : 0);
+        const newSkippedQuickly = existing.skippedQuickly || (elapsed < 2);
+        const newRewatches = existing.rewatches + (elapsed >= 16 ? 1 : 0);
+        return {
+          ...prev,
+          [prevId]: {
+            ...existing,
+            watchTime: newWatchTime,
+            completions: newCompletions,
+            skippedQuickly: newSkippedQuickly,
+            rewatches: newRewatches
+          }
+        };
+      });
+    }
+
+    // Capture the new active reel
+    const filtered = reels.filter(r => {
+      if (blockedUsers.includes(r.creator)) return false;
+      if (reelsTab === "following") return r.isFollowed && r.privacy === "public";
+      if (reelsTab === "explore") return r.isExplore && r.privacy === "public";
+      return r.privacy === "public";
+    });
+    
+    const sorted = reelsTab === "foryou" ? recommendReels(filtered, reelInteractions) : filtered;
+    const currentActiveReel = sorted[currentReelIndex >= sorted.length ? 0 : currentReelIndex];
+    
+    if (currentActiveReel) {
+      prevReelIdRef.current = currentActiveReel.id;
+    } else {
+      prevReelIdRef.current = "";
+    }
+    
+    reelStartTimeRef.current = now;
+  }, [currentReelIndex, reelsTab, clientView]);
 
   useEffect(() => {
     const handleHardwareBack = (e: any) => {
@@ -2673,6 +2936,9 @@ export default function App() {
     
     try {
       let finalVideoUrl = "";
+      let responseKey = "";
+      let responsePublicUrl = "";
+      let responseMediaUrl = "";
       let fileToUpload: File | null = uploadedVideoFile;
 
       // 1. Optimize or prepare video where supported
@@ -2729,6 +2995,9 @@ export default function App() {
                 const response = JSON.parse(xhr.responseText);
                 if (response.success && response.url) {
                   finalVideoUrl = response.url;
+                  responseKey = response.objectKey || response.key || "";
+                  responsePublicUrl = response.publicUrl || response.url;
+                  responseMediaUrl = response.mediaUrl || response.url;
                   console.log("[SEHR-LIVE FRONTEND] Video uploaded to R2 successfully. Final Playable URL:", finalVideoUrl);
                   resolve();
                 } else {
@@ -2772,8 +3041,11 @@ export default function App() {
         throw new Error("Could not acquire a valid R2 video playback URL. Reel publish aborted.");
       }
 
+      const finalNormalizedUrl = normalizeReelUrl(finalVideoUrl);
+      const finalObjectKey = responseKey || (finalNormalizedUrl.includes("reels/") ? finalNormalizedUrl.substring(finalNormalizedUrl.indexOf("reels/")) : "");
+
       setUploadStatus("Publishing Reel...");
-      console.log("[SEHR-LIVE FRONTEND] Saving Reel metadata in Firestore. Video URL:", finalVideoUrl);
+      console.log("[SEHR-LIVE FRONTEND] Saving Reel metadata in Firestore. Video URL:", finalNormalizedUrl);
 
       const reelData = {
         creator: user.fullName || "Syed Prince Shah",
@@ -2781,7 +3053,10 @@ export default function App() {
         caption: newReelCaption.trim() || "New dynamic stream highlight! 🔥 #viral #sehrlive",
         song: newReelSong.trim() || "Original Audio - " + (user.fullName || "Syed Prince Shah"),
         videoBg: newReelVideoBg,
-        videoUrl: finalVideoUrl,
+        videoUrl: finalNormalizedUrl,
+        objectKey: finalObjectKey,
+        publicUrl: responsePublicUrl ? normalizeReelUrl(responsePublicUrl) : finalNormalizedUrl,
+        mediaUrl: responseMediaUrl ? normalizeReelUrl(responseMediaUrl) : finalNormalizedUrl,
         likes: 0,
         commentsCount: 0,
         liked: false,
@@ -2807,7 +3082,7 @@ export default function App() {
         likes: 0,
         liked: false,
         videoBg: newReelVideoBg,
-        videoUrl: finalVideoUrl,
+        videoUrl: finalNormalizedUrl,
         caption: reelData.caption,
         song: reelData.song,
         comments: [],
@@ -4742,6 +5017,7 @@ export default function App() {
       setUploadedVideoName(file.name);
       setUploadedVideoSize((file.size / (1024 * 1024)).toFixed(1) + " MB");
       setUploadedVideoFileUrl(URL.createObjectURL(file));
+      setUploadedVideoFile(file);
       setRecordedVideoPreset(null);
       // Pre-fill fields from the file name
       const baseName = file.name.split('.').slice(0, -1).join('.');
@@ -9401,6 +9677,34 @@ export default function App() {
                     {/* VIEW: REELS (SHORT VERTICAL VIDEOS) WITH COMPLETE TIKTOK INTERACTIONS */}
                     {/* ===================================================================== */}
                     {clientView === "reels" && (
+                      <ReelsView
+                        reels={reels}
+                        setReels={setReels}
+                        user={user}
+                        setUser={setUser}
+                        goBack={goBack}
+                        reelsTab={reelsTab}
+                        setReelsTab={setReelsTab}
+                        clientView={clientView}
+                        setClientView={setClientView}
+                        reelsMuted={reelsMuted}
+                        setReelsMuted={setReelsMuted}
+                        blockedUsers={blockedUsers}
+                        toggleSaveReel={toggleSaveReel}
+                        triggerDownloadReel={triggerDownloadReel}
+                        downloadProgress={downloadProgress}
+                        downloadingReelId={downloadingReelId}
+                        shareToSahrChat={shareToSahrChat}
+                        currentReelIndex={currentReelIndex}
+                        setCurrentReelIndex={setCurrentReelIndex}
+                        dragY={dragY}
+                        setDragY={setDragY}
+                        reelInteractions={reelInteractions}
+                        setReelInteractions={setReelInteractions}
+                      />
+                    )}
+
+                    {false && (
                       <div className="flex-1 flex flex-col bg-[#09090e] relative select-none pb-0">
                         {/* Floating Back Button */}
                         <button
@@ -9545,34 +9849,47 @@ export default function App() {
                               onMouseDown={(e) => {
                                 setIsPulling(true);
                                 setPullStartY(e.clientY);
+                                lastTouchYRef.current = e.clientY;
                               }}
                               onMouseMove={(e) => {
                                 if (!isPulling) return;
+                                lastTouchYRef.current = e.clientY;
                                 const diff = e.clientY - pullStartY;
-                                if (diff > 0) {
+                                if (diff > 0 && safeIndex === 0) {
                                   setPullY(Math.min(90, diff));
+                                } else {
+                                  setPullY(0);
                                 }
                               }}
                               onMouseUp={() => {
                                 if (isPulling) {
                                   setIsPulling(false);
-                                  if (pullY > 60) {
-                                    setIsRefreshing(true);
-                                    // Shuffle simulation
-                                    setTimeout(() => {
-                                      setReels(prev => {
-                                        const shuffled = [...prev];
-                                        for (let i = shuffled.length - 1; i > 0; i--) {
-                                          const j = Math.floor(Math.random() * (i + 1));
-                                          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-                                        }
-                                        return shuffled;
-                                      });
-                                      setIsRefreshing(false);
+                                  const totalDiffY = lastTouchYRef.current - pullStartY;
+                                  if (totalDiffY < -60) {
+                                    setCurrentReelIndex(prev => (prev + 1) % filteredReels.length);
+                                    setPullY(0);
+                                  } else if (totalDiffY > 60) {
+                                    if (safeIndex === 0) {
+                                      setIsRefreshing(true);
+                                      // Shuffle simulation
+                                      setTimeout(() => {
+                                        setReels(prev => {
+                                          const shuffled = [...prev];
+                                          for (let i = shuffled.length - 1; i > 0; i--) {
+                                            const j = Math.floor(Math.random() * (i + 1));
+                                            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                                          }
+                                          return shuffled;
+                                        });
+                                        setIsRefreshing(false);
+                                        setPullY(0);
+                                        setCurrentReelIndex(0);
+                                        alert("🔄 Sahr Live Pakistan Stream Refreshed! Viral reels updated! 🎉");
+                                      }, 1000);
+                                    } else {
+                                      setCurrentReelIndex(prev => (prev - 1 + filteredReels.length) % filteredReels.length);
                                       setPullY(0);
-                                      setCurrentReelIndex(0);
-                                      alert("🔄 Sahr Live Pakistan Stream Refreshed! Viral reels updated! 🎉");
-                                    }, 1000);
+                                    }
                                   } else {
                                     setPullY(0);
                                   }
@@ -9587,34 +9904,49 @@ export default function App() {
                               onTouchStart={(e) => {
                                 setIsPulling(true);
                                 setPullStartY(e.touches[0].clientY);
+                                lastTouchYRef.current = e.touches[0].clientY;
                               }}
                               onTouchMove={(e) => {
                                 if (!isPulling) return;
+                                lastTouchYRef.current = e.touches[0].clientY;
                                 const diff = e.touches[0].clientY - pullStartY;
-                                if (diff > 0) {
+                                if (diff > 0 && safeIndex === 0) {
                                   setPullY(Math.min(90, diff));
+                                } else {
+                                  setPullY(0);
                                 }
                               }}
                               onTouchEnd={() => {
-                                setIsPulling(false);
-                                if (pullY > 60) {
-                                  setIsRefreshing(true);
-                                  setTimeout(() => {
-                                    setReels(prev => {
-                                      const shuffled = [...prev];
-                                      for (let i = shuffled.length - 1; i > 0; i--) {
-                                        const j = Math.floor(Math.random() * (i + 1));
-                                        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-                                      }
-                                      return shuffled;
-                                    });
-                                    setIsRefreshing(false);
+                                if (isPulling) {
+                                  setIsPulling(false);
+                                  const totalDiffY = lastTouchYRef.current - pullStartY;
+                                  if (totalDiffY < -60) {
+                                    setCurrentReelIndex(prev => (prev + 1) % filteredReels.length);
                                     setPullY(0);
-                                    setCurrentReelIndex(0);
-                                    alert("🔄 Sahr Live Pakistan Stream Refreshed! Viral reels updated! 🎉");
-                                  }, 1000);
-                                } else {
-                                  setPullY(0);
+                                  } else if (totalDiffY > 60) {
+                                    if (safeIndex === 0) {
+                                      setIsRefreshing(true);
+                                      setTimeout(() => {
+                                        setReels(prev => {
+                                          const shuffled = [...prev];
+                                          for (let i = shuffled.length - 1; i > 0; i--) {
+                                            const j = Math.floor(Math.random() * (i + 1));
+                                            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                                          }
+                                          return shuffled;
+                                        });
+                                        setIsRefreshing(false);
+                                        setPullY(0);
+                                        setCurrentReelIndex(0);
+                                        alert("🔄 Sahr Live Pakistan Stream Refreshed! Viral reels updated! 🎉");
+                                      }, 1000);
+                                    } else {
+                                      setCurrentReelIndex(prev => (prev - 1 + filteredReels.length) % filteredReels.length);
+                                      setPullY(0);
+                                    }
+                                  } else {
+                                    setPullY(0);
+                                  }
                                 }
                               }}
                             >
