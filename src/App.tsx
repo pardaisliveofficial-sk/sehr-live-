@@ -91,7 +91,7 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import firebaseConfig from "../firebase-applet-config.json";
 import { 
-  getFirestore, 
+  initializeFirestore, 
   collection, 
   addDoc, 
   getDocs, 
@@ -116,7 +116,9 @@ const clientApps = getApps();
 const clientApp = clientApps.length === 0 ? initializeApp(firebaseConfig) : getApp();
 const clientAuth = getAuth(clientApp);
 const googleProvider = new GoogleAuthProvider();
-export const db = getFirestore(clientApp, firebaseConfig.firestoreDatabaseId);
+export const db = initializeFirestore(clientApp, {
+  experimentalForceLongPolling: true
+}, firebaseConfig.firestoreDatabaseId);
 export const storage = getStorage(clientApp);
 import { 
   ViewerGiftBox, 
@@ -284,6 +286,177 @@ const USER_LIVE_BG_IMAGES = [
   "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=600&q=80", // Sunset Glamour style
   "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=600&q=80"  // Urban Vibe style
 ];
+
+interface ReelVideoPlayerProps {
+  videoUrl: string;
+  muted: boolean;
+  isActive: boolean;
+  videoBg?: string;
+  onToggleMute: () => void;
+}
+
+const ReelVideoPlayer: React.FC<ReelVideoPlayerProps> = ({
+  videoUrl,
+  muted,
+  isActive,
+  videoBg = "bg-[#12121a]",
+  onToggleMute,
+}) => {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [hasError, setHasError] = useState<boolean>(false);
+  const [isPlaying, setIsPlaying] = useState<boolean>(true);
+
+  // Play / Pause effect based on isActive state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isActive) {
+      setHasError(false);
+      setIsLoading(true);
+      video.load(); // Force fresh reload of the new URL
+      video.play()
+        .then(() => {
+          setIsPlaying(true);
+          setIsLoading(false);
+        })
+        .catch((err) => {
+          console.error("[SEHR-LIVE PLAYER] Autoplay blocked or failed:", err);
+          setIsPlaying(false);
+          setIsLoading(false);
+        });
+    } else {
+      video.pause();
+      setIsPlaying(false);
+    }
+  }, [isActive, videoUrl]);
+
+  // Handle Play/Pause Tap on video
+  const handleVideoTap = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isPlaying) {
+      video.pause();
+      setIsPlaying(false);
+    } else {
+      video.play()
+        .then(() => {
+          setIsPlaying(true);
+          setHasError(false);
+        })
+        .catch((err) => {
+          console.error("[SEHR-LIVE PLAYER] Manual play failed:", err);
+          setHasError(true);
+        });
+    }
+  };
+
+  const handleRetry = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setHasError(false);
+    setIsLoading(true);
+    const video = videoRef.current;
+    if (video) {
+      video.load();
+      video.play()
+        .then(() => {
+          setIsPlaying(true);
+          setIsLoading(false);
+        })
+        .catch(() => {
+          setHasError(true);
+          setIsLoading(false);
+        });
+    }
+  };
+
+  return (
+    <div className={`absolute inset-0 ${videoBg} flex items-center justify-center overflow-hidden`}>
+      {/* Real Video Element */}
+      {!hasError && videoUrl && (
+        <video
+          ref={videoRef}
+          src={videoUrl}
+          className="w-full h-full object-cover z-0"
+          loop
+          playsInline
+          muted={muted}
+          onWaiting={() => setIsLoading(true)}
+          onPlaying={() => {
+            setIsLoading(false);
+            setHasError(false);
+          }}
+          onCanPlay={() => setIsLoading(false)}
+          onLoadedData={() => setIsLoading(false)}
+          onError={(e) => {
+            console.error("[SEHR-LIVE PLAYER] Native video error event:", e);
+            setHasError(true);
+            setIsLoading(false);
+          }}
+          onClick={handleVideoTap}
+        />
+      )}
+
+      {/* Radial overlay to make text/controls pop */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/80 pointer-events-none z-10" />
+
+      {/* Loading Spinner */}
+      {isLoading && !hasError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/45 backdrop-blur-xs z-20 pointer-events-none animate-fade-in">
+          <div className="w-10 h-10 border-4 border-t-[#ff007f] border-r-transparent border-b-[#ff007f]/20 border-l-[#ff007f]/60 rounded-full animate-spin" />
+          <p className="text-[9px] font-mono font-black text-pink-400 mt-2.5 uppercase tracking-widest animate-pulse">
+            Buffering HD Stream...
+          </p>
+        </div>
+      )}
+
+      {/* Error / Retry overlay */}
+      {hasError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-6 text-center z-30">
+          <span className="text-2xl mb-1 animate-bounce">⚠️</span>
+          <p className="text-[10px] font-black text-red-400 uppercase tracking-wider">Playback Connection Failed</p>
+          <p className="text-[8px] text-gray-400 mt-1 max-w-[180px] leading-normal font-medium">
+            Your connection failed or the R2 media link is still provisioning.
+          </p>
+          <button
+            type="button"
+            onClick={handleRetry}
+            className="mt-3 bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] hover:from-pink-600 hover:to-purple-700 text-white font-mono font-black text-[8px] uppercase tracking-wider px-4 py-2 rounded-full border border-pink-400/30 shadow-lg transition-all active:scale-95 cursor-pointer"
+          >
+            🔄 Retry Loading
+          </button>
+        </div>
+      )}
+
+      {/* Large visual Pause Overlay Indicator */}
+      {!isPlaying && !isLoading && !hasError && (
+        <div 
+          onClick={handleVideoTap}
+          className="absolute inset-0 flex items-center justify-center bg-black/25 z-20 cursor-pointer animate-fade-in"
+        >
+          <div className="w-12 h-12 rounded-full bg-black/60 border border-white/10 flex items-center justify-center text-white text-md shadow-xl scale-110 hover:scale-115 transition-transform duration-200">
+            ▶
+          </div>
+        </div>
+      )}
+
+      {/* Global Mute Toggle Trigger (floating, bottom-right) */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleMute();
+        }}
+        className="absolute bottom-24 right-3 w-8 h-8 rounded-full bg-black/50 border border-white/10 flex items-center justify-center text-white text-xs z-35 transition-all hover:bg-black/80 hover:scale-105 active:scale-95"
+        title={muted ? "Unmute Sound" : "Mute Sound"}
+      >
+        {muted ? "🔇" : "🔊"}
+      </button>
+    </div>
+  );
+};
 
 export default function App() {
   // Authentication State
@@ -564,6 +737,7 @@ export default function App() {
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<string>("Preparing Video");
 
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const prepVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -638,22 +812,82 @@ export default function App() {
           shares: data.shares || 0,
           downloads: data.downloads || 0,
           isFollowed: data.isFollowed || false,
-          comments: data.comments || []
+          comments: data.comments || [],
+          uploaderId: data.uploaderId || "",
+          createdAt: data.createdAt || ""
         };
       });
       
       if (firestoreReels.length > 0) {
         setReels(prev => {
-          // Filter out duplicates and keep static reels at the bottom
-          const staticReels = prev.filter(r => !firestoreReels.some(fr => fr.id === r.id));
-          return [...firestoreReels, ...staticReels];
+          // Filter out private reels from the main public feed
+          const publicFirestoreReels = firestoreReels.filter(r => r && r.privacy !== "private");
+          const staticReels = prev.filter(r => r && r.id && typeof r.id === "string" && (r.id.startsWith("r") || !publicFirestoreReels.some(fr => fr && fr.id === r.id)));
+          return [...publicFirestoreReels, ...staticReels];
+        });
+
+        // Sync profileReels dynamically from Firestore as well!
+        const myReels = firestoreReels.filter(r => r.uploaderId === user.uniqueId || (r.uploaderId === "" && r.creator === (user.fullName || "Syed Prince Shah")));
+        
+        const myUploaded = myReels.filter(r => r.privacy !== "private").map(r => ({
+          id: r.id,
+          title: r.caption ? (r.caption.split(" ").slice(0, 4).join(" ") + "...") : "My Clip 🎬",
+          views: "1.2K",
+          likes: r.likes,
+          liked: r.liked,
+          videoBg: r.videoBg,
+          videoUrl: r.videoUrl,
+          caption: r.caption,
+          song: r.song,
+          comments: r.comments.map((c: any) => typeof c === 'string' ? c : (c.text || "")),
+          duration: "0:30",
+          location: r.location,
+          isPrivate: false,
+          privacy: "public",
+          saves: r.saves,
+          shares: r.shares,
+          downloads: r.downloads,
+          creator: r.creator,
+          avatar: r.avatar
+        }));
+
+        const myPrivate = myReels.filter(r => r.privacy === "private").map(r => ({
+          id: r.id,
+          title: r.caption ? (r.caption.split(" ").slice(0, 4).join(" ") + "...") : "My Private Clip 🔒",
+          views: "Host Private",
+          likes: r.likes,
+          liked: r.liked,
+          videoBg: r.videoBg,
+          videoUrl: r.videoUrl,
+          caption: r.caption,
+          song: r.song,
+          comments: r.comments.map((c: any) => typeof c === 'string' ? c : (c.text || "")),
+          duration: "0:30",
+          location: r.location,
+          isPrivate: true,
+          privacy: "private",
+          saves: r.saves,
+          shares: r.shares,
+          downloads: r.downloads,
+          creator: r.creator,
+          avatar: r.avatar
+        }));
+
+        setProfileReels(prev => {
+          const nonDbUploaded = prev.uploaded.filter(r => r && r.id && typeof r.id === "string" && r.id.startsWith("u") && !myUploaded.some(mu => mu && mu.id === r.id));
+          const nonDbPrivate = prev.private.filter(r => r && r.id && typeof r.id === "string" && r.id.startsWith("p") && !myPrivate.some(mp => mp && mp.id === r.id));
+          return {
+            ...prev,
+            uploaded: [...myUploaded, ...nonDbUploaded],
+            private: [...myPrivate, ...nonDbPrivate]
+          };
         });
       }
     }, (error) => {
       console.error("Firestore reels subscription error:", error);
     });
     return () => unsubscribe();
-  }, []);
+  }, [user.uniqueId, user.fullName]);
 
   // Top header interactive states
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
@@ -2427,54 +2661,120 @@ export default function App() {
 
   const handlePublishReel = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isUploading) {
+      console.warn("[SEHR-LIVE FRONTEND] Upload already in progress. Ignoring duplicate click.");
+      return;
+    }
     
     setIsUploading(true);
     setUploadProgress(0);
     setUploadError(null);
+    setUploadStatus("Preparing Video...");
     
     try {
       let finalVideoUrl = "";
-      
-      if (uploadedVideoFile) {
-        // Upload the actual file to Firebase Storage!
-        const fileRef = ref(storage, `reels/${Date.now()}_${uploadedVideoFile.name}`);
-        const uploadTask = uploadBytesResumable(fileRef, uploadedVideoFile);
-        
-        await new Promise<void>((resolve, reject) => {
-          uploadTask.on(
-            "state_changed",
-            (snapshot) => {
-              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-              setUploadProgress(progress);
-            },
-            (error) => {
-              console.error("Storage upload error:", error);
-              setUploadError("Firebase Storage upload failed: " + error.message);
-              reject(error);
-            },
-            async () => {
-              try {
-                finalVideoUrl = await getDownloadURL(uploadTask.snapshot.ref);
-                resolve();
-              } catch (err) {
-                reject(err);
-              }
-            }
-          );
-        });
-      } else if (uploadedVideoFileUrl) {
-        finalVideoUrl = uploadedVideoFileUrl;
-      } else {
-        // Fallback or presets
+      let fileToUpload: File | null = uploadedVideoFile;
+
+      // 1. Optimize or prepare video where supported
+      console.log("[SEHR-LIVE FRONTEND] Preparing video for R2 storage sync...");
+      await new Promise(resolve => setTimeout(resolve, 800)); // simulated frame optimization check
+
+      // If preset selected but no actual file, fetch preset to upload to R2 so R2 size actually increases
+      if (!fileToUpload) {
         const presets = {
           singing: "https://assets.mixkit.co/videos/preview/mixkit-girl-taking-selfies-with-her-smart-phone-41584-large.mp4",
           battle: "https://assets.mixkit.co/videos/preview/mixkit-young-man-dancing-to-hip-hop-music-41908-large.mp4",
           gallery_preset: "https://assets.mixkit.co/videos/preview/mixkit-excited-girl-vlogging-with-phone-41582-large.mp4",
         };
-        finalVideoUrl = presets[recordedVideoPreset as keyof typeof presets] || "https://assets.mixkit.co/videos/preview/mixkit-girl-taking-selfies-with-her-smart-phone-41584-large.mp4";
+        const presetUrl = presets[recordedVideoPreset as keyof typeof presets] || presets.singing;
+        
+        try {
+          setUploadStatus("Fetching Preset Media...");
+          console.log("[SEHR-LIVE FRONTEND] Fetching preset video:", presetUrl);
+          const response = await window.fetch(presetUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            fileToUpload = new File([blob], `${recordedVideoPreset || "preset"}_reel.mp4`, { type: "video/mp4" });
+            console.log("[SEHR-LIVE FRONTEND] Preset fetched successfully. Size:", blob.size);
+          }
+        } catch (fetchErr) {
+          console.error("[SEHR-LIVE FRONTEND] Failed to download preset video. Falling back to default URL:", fetchErr);
+          finalVideoUrl = presetUrl;
+        }
       }
-      
-      // Save metadata in Firestore "reels" collection!
+
+      if (fileToUpload) {
+        setUploadStatus("Uploading Video...");
+        
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          const formData = new FormData();
+          formData.append("video", fileToUpload as File);
+          formData.append("userId", user.uniqueId || "anonymous");
+
+          xhr.upload.addEventListener("progress", (evt) => {
+            if (evt.lengthComputable) {
+              const percentComplete = Math.round((evt.loaded / evt.total) * 100);
+              setUploadProgress(percentComplete);
+              console.log(`[SEHR-LIVE FRONTEND] Upload progress: ${percentComplete}% (${evt.loaded}/${evt.total} bytes)`);
+              if (percentComplete === 100) {
+                setUploadStatus("Processing Video...");
+              }
+            }
+          });
+
+          xhr.addEventListener("load", () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const response = JSON.parse(xhr.responseText);
+                if (response.success && response.url) {
+                  finalVideoUrl = response.url;
+                  console.log("[SEHR-LIVE FRONTEND] Video uploaded to R2 successfully. Final Playable URL:", finalVideoUrl);
+                  resolve();
+                } else {
+                  reject(new Error(response.error || "Server reported failure during R2 upload"));
+                }
+              } catch (err) {
+                reject(new Error("Failed to parse upload server response"));
+              }
+            } else {
+              reject(new Error(`Server responded with HTTP ${xhr.status}`));
+            }
+          });
+
+          xhr.addEventListener("error", () => reject(new Error("Network connection error during R2 video upload")));
+          xhr.addEventListener("abort", () => reject(new Error("Video upload operation aborted")));
+
+          let uploadUrl = "/api/v1/reels/upload-video";
+          const isAndroidAPK = typeof window !== "undefined" && (
+            (window as any).Capacitor || 
+            window.location.protocol === "file:" ||
+            window.location.protocol.includes("capacitor") ||
+            navigator.userAgent.toLowerCase().includes("android") ||
+            navigator.userAgent.toLowerCase().includes("capacitor") ||
+            (!window.location.hostname.includes("run.app") && (
+              window.location.hostname === "localhost" || 
+              window.location.hostname === "127.0.0.1" || 
+              !window.location.hostname
+            ))
+          );
+          if (isAndroidAPK) {
+            uploadUrl = `https://api.sehrlive.soulverseapps.com${uploadUrl}`;
+          }
+
+          console.log("[SEHR-LIVE FRONTEND] Dispatching XHR upload request to:", uploadUrl);
+          xhr.open("POST", uploadUrl);
+          xhr.send(formData);
+        });
+      }
+
+      if (!finalVideoUrl) {
+        throw new Error("Could not acquire a valid R2 video playback URL. Reel publish aborted.");
+      }
+
+      setUploadStatus("Publishing Reel...");
+      console.log("[SEHR-LIVE FRONTEND] Saving Reel metadata in Firestore. Video URL:", finalVideoUrl);
+
       const reelData = {
         creator: user.fullName || "Syed Prince Shah",
         avatar: user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
@@ -2493,6 +2793,7 @@ export default function App() {
         downloads: 0,
         isFollowed: false,
         comments: [],
+        uploaderId: user.uniqueId || "",
         createdAt: new Date().toISOString()
       };
       
@@ -5582,7 +5883,7 @@ export default function App() {
                     {/* VIEW 1: HOME FEED (Discover trending live streams, audio rooms) */}
                     {/* ===================================================================== */}
                     {clientView === "feed" && (
-                      <div className="flex-1 scroll-view-y p-3 pb-24 space-y-3">
+                      <div className="flex-1 scroll-view-y p-3 pb-4 space-y-3">
                         
                         {/* 📖 24-HOUR STYLISH STORIES TRAY */}
                         <div className="bg-[#12121a]/90 border border-[#303040]/30 rounded-xl p-3 space-y-2 shadow-lg text-left no-double-tap">
@@ -5936,7 +6237,7 @@ export default function App() {
                     {/* VIEW 2: ACTIVE LIVE ROOM SCREEN (Video, Audio, PK, & Gifts) */}
                     {/* ===================================================================== */}
                     {clientView === "live-room" && (
-                      <div className="flex-1 flex flex-col justify-between bg-[#08080f] scroll-view-y relative pb-24">
+                      <div className="flex-1 flex flex-col justify-between bg-[#08080f] scroll-view-y relative pb-4">
                         {/* ABSOLUTE FLAME RANKING BUTTON - ACCESSIBLE TO EVERYONE UNDER HOST PROFILE */}
                         <div className="absolute top-14 left-3 z-45">
                           <button
@@ -7835,7 +8136,7 @@ export default function App() {
                     {/* VIEW 3: USER PROFILE & MISSION BADGES */}
                     {/* ===================================================================== */}
                     {clientView === "profile" && (
-                      <div className="flex-1 scroll-view-y bg-[#12121a] pb-24">
+                      <div className="flex-1 scroll-view-y bg-[#12121a] pb-4">
                         <div className="relative">
                           {/* Floating Back Button */}
                           <button
@@ -9100,7 +9401,7 @@ export default function App() {
                     {/* VIEW: REELS (SHORT VERTICAL VIDEOS) WITH COMPLETE TIKTOK INTERACTIONS */}
                     {/* ===================================================================== */}
                     {clientView === "reels" && (
-                      <div className="flex-1 flex flex-col bg-[#09090e] relative scroll-view-y select-none pb-24">
+                      <div className="flex-1 flex flex-col bg-[#09090e] relative select-none pb-0">
                         {/* Floating Back Button */}
                         <button
                           type="button"
@@ -9328,23 +9629,15 @@ export default function App() {
                                 </div>
                               )}
 
-                              {/* Simulated Streaming Video Background */}
-                              <div className={`absolute inset-0 ${currentReel.videoBg || "bg-[#12121a]"} flex flex-col justify-center items-center`}>
-                                <div className="absolute inset-0 bg-radial-gradient from-transparent to-black/80 pointer-events-none"></div>
-                                
-                                <div className="text-center space-y-4 px-6 z-10 animate-pulse">
-                                  <Film className="w-16 h-16 text-white/30 mx-auto" />
-                                  <div className="space-y-1">
-                                    <span className="text-[10px] uppercase font-black tracking-widest text-[#ff007f] font-mono">SEHR STREAM PRO</span>
-                                    <p className="text-[11px] text-white/70 font-bold">{currentReel.creator}'s Clip Playing</p>
-                                    <p className="text-[8px] text-white/40">Simulated 60FPS Video Stream</p>
-                                  </div>
-                                  <div className="flex space-x-1.5 justify-center items-center">
-                                    <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-                                    <span className="text-[8px] font-mono text-gray-300">AUTO-HD PLAYBACK active</span>
-                                  </div>
-                                </div>
-                              </div>
+                              {/* Actual Video Player Container */}
+                              <ReelVideoPlayer
+                                key={currentReel.id || currentReel.videoUrl}
+                                videoUrl={currentReel.videoUrl}
+                                muted={reelsMuted}
+                                isActive={clientView === "reels" && !isRefreshing}
+                                videoBg={currentReel.videoBg}
+                                onToggleMute={() => setReelsMuted(prev => !prev)}
+                              />
 
                               {/* Floating Gift Shower Layer */}
                               {activeReelGiftAnimation && (
@@ -10026,7 +10319,7 @@ export default function App() {
                     {/* VIEW: CAMERA PREP SCREEN FOR SEHR LIVE */}
                     {/* ===================================================================== */}
                     {clientView === "camera-prep" && (
-                      <div className="flex-1 flex flex-col bg-[#08070d] relative scroll-view-y select-none text-white h-full w-full pb-24">
+                      <div className="flex-1 flex flex-col bg-[#08070d] relative scroll-view-y select-none text-white h-full w-full pb-4">
                         {/* 1. Camera Live Preview Frame (100% full screen background) */}
                         <div className="absolute inset-0 z-0 bg-black">
                           {cameraStream ? (
@@ -10598,7 +10891,7 @@ export default function App() {
                     {/* VIEW: USER SOLO LIVE BROADCAST SIMULATOR */}
                     {/* ===================================================================== */}
                     {clientView === "user-live" && (
-                      <div className="flex-1 flex flex-col bg-[#0b0b11] relative scroll-view-y select-none pb-24">
+                      <div className="flex-1 flex flex-col bg-[#0b0b11] relative scroll-view-y select-none pb-4">
                         
                         {/* 1. BROADCAST SUMMARY SHOWCASE END SCREEN */}
                         {userLiveShowSummary ? (
@@ -13855,7 +14148,7 @@ export default function App() {
                     {/* VIEW 4: SEHR VAULT WALLET & CREATOR CENTER */}
                     {/* ===================================================================== */}
                     {clientView === "wallet" && (
-                      <div className="flex-1 scroll-view-y bg-[#12121a] p-4 pb-24 space-y-4 text-left">
+                      <div className="flex-1 scroll-view-y bg-[#12121a] p-4 pb-4 space-y-4 text-left">
                         <div className="flex items-center space-x-2.5 mb-2">
                           <button
                             type="button"
@@ -14491,7 +14784,7 @@ export default function App() {
                     {/* VIEW 5: FAMILY & AGENCY DASHBOARD VIEW */}
                     {/* ===================================================================== */}
                     {clientView === "family-agency" && (
-                      <div className="flex-1 scroll-view-y bg-[#12121a] p-4 pb-24 space-y-4">
+                      <div className="flex-1 scroll-view-y bg-[#12121a] p-4 pb-4 space-y-4">
                         <div className="flex items-center space-x-2.5 text-left mb-2">
                           <button
                             type="button"
@@ -14636,7 +14929,7 @@ export default function App() {
 
                         {currentChatTab === "couples" ? (
                           /* Couples Ranking List View */
-                          <div className="flex-1 scroll-view-y p-3 pb-24 space-y-3 bg-[#0f0f18] text-white">
+                          <div className="flex-1 scroll-view-y p-3 pb-4 space-y-3 bg-[#0f0f18] text-white">
                             <div className="bg-gradient-to-r from-pink-500/20 to-purple-500/20 border border-pink-500/30 rounded-xl p-2.5 text-center">
                               <span className="text-[10px] font-mono font-black text-pink-300 block">💖 COUPLERS RANKING BOARD 💖</span>
                               <p className="text-[8px] text-gray-300">Boost CP points with gold coins to raise couple positions on Sehr Live!</p>
@@ -14702,7 +14995,7 @@ export default function App() {
                           /* Messages View Tab */
                           <>
                             {/* Chat history list */}
-                            <div className="flex-1 scroll-view-y p-3 pb-24 space-y-2.5">
+                            <div className="flex-1 scroll-view-y p-3 pb-4 space-y-2.5">
                               {directMessages
                                 .filter(msg => !msg.deletedForSelf)
                                 .map((msg) => (
@@ -15478,7 +15771,7 @@ export default function App() {
                           </div>
 
                           {/* Main Scroll Area */}
-                          <div className="flex-1 scroll-view-y p-3.5 pb-24 space-y-4">
+                          <div className="flex-1 scroll-view-y p-3.5 pb-4 space-y-4">
                             {!hasAnyNotifications ? (
                               <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
                                 <div className="w-14 h-14 rounded-full bg-[#161622] flex items-center justify-center border border-[#2a2a3a]">
@@ -16101,8 +16394,8 @@ export default function App() {
                                     <span className="absolute text-[10px] font-mono font-black text-white">{uploadProgress}%</span>
                                   </div>
                                   <div className="text-center space-y-1">
-                                    <h5 className="text-[10px] font-black text-pink-500 uppercase tracking-widest font-mono animate-pulse">Uploading Reel...</h5>
-                                    <p className="text-[8px] text-gray-400">Uploading your high-definition video directly to Firebase Storage securely.</p>
+                                    <h5 className="text-[10px] font-black text-pink-500 uppercase tracking-widest font-mono animate-pulse">{uploadStatus}...</h5>
+                                    <p className="text-[8px] text-gray-400">Syncing high-definition video assets directly with Cloudflare R2 CDN buckets.</p>
                                   </div>
                                 </div>
                               )}

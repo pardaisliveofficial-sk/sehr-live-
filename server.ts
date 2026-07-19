@@ -2,6 +2,8 @@ import express from "express";
 import path from "path";
 import dotenv from "dotenv";
 import fs from "fs";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import {
@@ -1446,6 +1448,130 @@ Do not wrap your answer in quotes or add metadata. Speak as the host directly.`;
       reply: "Thank you so much for the love and support! Let's rock Sehr Live! 🎉",
       speaker: hostName,
       type: "Sehr Live Host Fallback"
+    });
+  }
+});
+
+// ------------------------------------------------------------------
+// CLOUDFLARE R2 STORAGE CONFIGURATION & VIDEO UPLOAD
+// ------------------------------------------------------------------
+let s3ClientInstance: S3Client | null = null;
+
+function getS3Client(): S3Client {
+  if (!s3ClientInstance) {
+    const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+    const endpoint = process.env.R2_ENDPOINT;
+
+    if (!accessKeyId || !secretAccessKey || !endpoint) {
+      console.warn("[SEHR-LIVE R2] Missing environment credentials! Falling back to local storage for video uploads.");
+      throw new Error("Missing Cloudflare R2 credentials (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT). Set them on Railway!");
+    }
+
+    console.log("[SEHR-LIVE R2] Initializing Cloudflare R2 S3 Client with endpoint:", endpoint);
+    s3ClientInstance = new S3Client({
+      region: "auto",
+      endpoint: endpoint,
+      credentials: {
+        accessKeyId: accessKeyId,
+        secretAccessKey: secretAccessKey,
+      }
+    });
+  }
+  return s3ClientInstance;
+}
+
+const s3MulterUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100 MB Limit for high-definition video reels
+  }
+});
+
+// Production video upload endpoint to Cloudflare R2
+app.post("/api/v1/reels/upload-video", s3MulterUpload.single("video"), async (req, res) => {
+  console.log("[SEHR-LIVE R2] [UPLOAD-VIDEO] Upload request received on backend");
+
+  try {
+    const file = req.file;
+    if (!file) {
+      console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] No file found in multipart request data");
+      return res.status(400).json({ error: "No video file uploaded" });
+    }
+
+    const userId = req.body.userId || "anonymous";
+    const fileName = file.originalname || "unnamed_reel.mp4";
+    const fileSize = file.size;
+    const mimeType = file.mimetype || "video/mp4";
+
+    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] Input File Info: Name="${fileName}", Size=${fileSize} bytes, MIME="${mimeType}", User="${userId}"`);
+
+    // Generate production-safe unique object key: reels/{userId}/{timestamp}-{uniqueId}.mp4
+    const uniqueId = Math.random().toString(36).substring(2, 10);
+    const timestamp = Date.now();
+    const ext = path.extname(fileName) || ".mp4";
+    const objectKey = `reels/${userId}/${timestamp}-${uniqueId}${ext}`;
+
+    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] R2 upload started. Object Key: "${objectKey}"`);
+
+    let finalVideoUrl = "";
+    
+    try {
+      const client = getS3Client();
+      const bucketName = process.env.R2_BUCKET_NAME || "sehrlive-reels";
+
+      const putCommand = new PutObjectCommand({
+        Bucket: bucketName,
+        Key: objectKey,
+        Body: file.buffer,
+        ContentType: mimeType,
+      });
+
+      await client.send(putCommand);
+      console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] R2 object upload succeeded. Object Key: "${objectKey}"`);
+
+      // Generate public/custom delivery domain URL
+      const publicBaseUrl = process.env.R2_PUBLIC_URL || "";
+      if (publicBaseUrl) {
+        const cleanBase = publicBaseUrl.endsWith("/") ? publicBaseUrl.slice(0, -1) : publicBaseUrl;
+        finalVideoUrl = `${cleanBase}/${objectKey}`;
+      } else {
+        const endpoint = process.env.R2_ENDPOINT || "";
+        const cleanEndpoint = endpoint.endsWith("/") ? endpoint.slice(0, -1) : endpoint;
+        finalVideoUrl = `${cleanEndpoint}/${bucketName}/${objectKey}`;
+        console.warn(`[SEHR-LIVE R2] [UPLOAD-VIDEO] Warning: R2_PUBLIC_URL is empty! Falling back to S3 endpoint format: ${finalVideoUrl}`);
+      }
+    } catch (r2Error: any) {
+      console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] Cloudflare R2 Upload failed! Falling back to local server storage:", r2Error.message);
+      
+      // Fallback: Write file locally to process.cwd()/public/uploads
+      const uploadsDir = path.join(process.cwd(), "public", "uploads");
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      const cleanFileName = `${timestamp}_fallback_${fileName}`;
+      const localFilePath = path.join(uploadsDir, cleanFileName);
+      fs.writeFileSync(localFilePath, file.buffer);
+
+      // Construct server relative URL
+      finalVideoUrl = `/uploads/${cleanFileName}`;
+      console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] Fallback upload successfully saved locally: ${finalVideoUrl}`);
+    }
+
+    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] File upload transaction completed. Playable URL: "${finalVideoUrl}"`);
+    return res.json({
+      success: true,
+      url: finalVideoUrl,
+      key: objectKey,
+      size: fileSize,
+      mimeType: mimeType
+    });
+
+  } catch (error: any) {
+    console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] Fatal route processing error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "An unexpected error occurred during video upload"
     });
   }
 });

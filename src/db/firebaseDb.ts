@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
-  getFirestore, 
+  initializeFirestore, 
   doc, 
   getDoc, 
   setDoc, 
@@ -43,7 +43,9 @@ const app = apps.length === 0
 
 console.log("[SEHR-LIVE FIREBASE] Firebase Client SDK initialized successfully with projectId:", firebaseConfig.projectId);
 
-export const db = getFirestore(app, FIRESTORE_DB_ID);
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true
+}, FIRESTORE_DB_ID);
 
 // Collection keys to map to Firestore
 export const COLLECTIONS = [
