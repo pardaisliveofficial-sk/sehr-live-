@@ -8,6 +8,7 @@ import {
   Users,
   Smartphone,
   Shield,
+  Home as HomeIcon,
   Heart,
   Send,
   ChevronLeft,
@@ -1839,6 +1840,21 @@ export default function App() {
   const [feedCategory, setFeedCategory] = useState<string>("all");
   const [feedTab, setFeedTab] = useState<"explore" | "following">("explore");
   const [feedSearchQuery, setFeedSearchQuery] = useState<string>("");
+
+  // Party System states
+  const [partiesList, setPartiesList] = useState<any[]>([]);
+  const [activePartyId, setActivePartyId] = useState<string | null>(null);
+  const [showCreatePartyModal, setShowCreatePartyModal] = useState<boolean>(false);
+  const [showCreateActionSheet, setShowCreateActionSheet] = useState<boolean>(false);
+  const [partyCategory, setPartyCategory] = useState<string>("all");
+  
+  // Create Party Form states
+  const [partyFormName, setPartyFormName] = useState<string>("");
+  const [partyFormCategory, setPartyFormCategory] = useState<string>("Music");
+  const [partyFormIsPublic, setPartyFormIsPublic] = useState<boolean>(true);
+  const [partyFormPassword, setPartyFormPassword] = useState<string>("");
+  const [partyFormLanguage, setPartyFormLanguage] = useState<string>("Urdu");
+  const [partyFormDescription, setPartyFormDescription] = useState<string>("");
 
   // Selected Host & Live Session State
   const [activeHost, setActiveHost] = useState<HostProfile>(MOCK_HOSTS[0] || {
@@ -3786,12 +3802,27 @@ export default function App() {
           if (Array.isArray(data)) setAgencyRequests(data);
         })
         .catch(err => console.error("Error loading agency requests:", err));
+
+      // Fetch parties
+      fetch("/api/v1/parties")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setPartiesList(data);
+        })
+        .catch(err => console.error("Error loading parties:", err));
     };
 
     fetchInitial();
 
     // Polling interval for real-time synchronization with Admin dashboard actions (every 3 seconds)
     const pollInterval = setInterval(() => {
+      fetch("/api/v1/parties")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setPartiesList(data);
+        })
+        .catch(err => console.error("Error polling parties:", err));
+
       fetch("/api/v1/hosts")
         .then(res => res.json())
         .then(data => {
@@ -5276,6 +5307,180 @@ export default function App() {
     setTransactions(prev => [newTx, ...prev]);
   };
 
+  // Synchronized Party Hub Functions
+  const handleCreateParty = async () => {
+    if (!partyFormName.trim()) {
+      alert("Please enter a room name!");
+      return;
+    }
+    try {
+      const response = await fetch("/api/v1/parties", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: partyFormName,
+          hostUsername: user.username,
+          hostAvatar: user.avatar,
+          category: partyFormCategory,
+          isPublic: partyFormIsPublic,
+          password: partyFormPassword,
+          language: partyFormLanguage,
+          description: partyFormDescription
+        })
+      });
+      const data = await response.json();
+      if (data && data.id) {
+        setPartiesList(prev => [...prev, data]);
+        setActivePartyId(data.id);
+        setClientView("party-room");
+        setShowCreatePartyModal(false);
+        // reset form
+        setPartyFormName("");
+        setPartyFormDescription("");
+        setPartyFormPassword("");
+      }
+    } catch (e) {
+      console.error("Error creating party:", e);
+    }
+  };
+
+  const handleJoinParty = async (partyId: string) => {
+    try {
+      const response = await fetch(`/api/v1/parties/${partyId}/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: user.username, avatar: user.avatar })
+      });
+      const data = await response.json();
+      if (data && !data.error) {
+        setActivePartyId(partyId);
+        setClientView("party-room");
+      } else {
+        alert(data.error || "Failed to join party room");
+      }
+    } catch (e) {
+      console.error("Error joining party:", e);
+    }
+  };
+
+  const handleLeaveParty = async (partyId: string) => {
+    try {
+      await fetch(`/api/v1/parties/${partyId}/leave`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: user.username })
+      });
+      setActivePartyId(null);
+      setClientView("feed");
+    } catch (e) {
+      console.error("Error leaving party:", e);
+      setActivePartyId(null);
+      setClientView("feed");
+    }
+  };
+
+  const handlePartyJoinSeat = async (partyId: string, seatId: number) => {
+    try {
+      const response = await fetch(`/api/v1/parties/${partyId}/seats/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seatId, username: user.username, avatar: user.avatar })
+      });
+      const data = await response.json();
+      if (data && !data.error) {
+        setPartiesList(prev => prev.map(p => p.id === partyId ? data : p));
+      }
+    } catch (e) {
+      console.error("Error joining seat:", e);
+    }
+  };
+
+  const handlePartyLeaveSeat = async (partyId: string, seatId: number) => {
+    try {
+      const response = await fetch(`/api/v1/parties/${partyId}/seats/leave`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seatId })
+      });
+      const data = await response.json();
+      if (data && !data.error) {
+        setPartiesList(prev => prev.map(p => p.id === partyId ? data : p));
+      }
+    } catch (e) {
+      console.error("Error leaving seat:", e);
+    }
+  };
+
+  const handlePartyToggleMute = async (partyId: string, seatId: number) => {
+    try {
+      const response = await fetch(`/api/v1/parties/${partyId}/seats/toggle-mute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seatId })
+      });
+      const data = await response.json();
+      if (data && !data.error) {
+        setPartiesList(prev => prev.map(p => p.id === partyId ? data : p));
+      }
+    } catch (e) {
+      console.error("Error toggling mute:", e);
+    }
+  };
+
+  const handlePartyToggleLock = async (partyId: string, seatId: number) => {
+    try {
+      const response = await fetch(`/api/v1/parties/${partyId}/seats/toggle-lock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seatId })
+      });
+      const data = await response.json();
+      if (data && !data.error) {
+        setPartiesList(prev => prev.map(p => p.id === partyId ? data : p));
+      }
+    } catch (e) {
+      console.error("Error toggling lock:", e);
+    }
+  };
+
+  const handlePartyCloseRoom = async (partyId: string) => {
+    if (!window.confirm("Are you sure you want to end this audio party room?")) return;
+    try {
+      await fetch(`/api/v1/parties/${partyId}/close`, { method: "POST" });
+      setPartiesList(prev => prev.filter(p => p.id !== partyId));
+      setActivePartyId(null);
+      setClientView("feed");
+    } catch (e) {
+      console.error("Error closing party room:", e);
+      setActivePartyId(null);
+      setClientView("feed");
+    }
+  };
+
+  const handlePartyComment = async (partyId: string, messageText: string) => {
+    if (!messageText.trim()) return;
+    try {
+      const response = await fetch(`/api/v1/parties/${partyId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: messageText,
+          username: user.username,
+          avatar: user.avatar,
+          userLevel: user.userLevel,
+          vipLevel: user.vipLevel,
+          isSystem: false
+        })
+      });
+      const updatedComments = await response.json();
+      if (Array.isArray(updatedComments)) {
+        setPartiesList(prev => prev.map(p => p.id === partyId ? { ...p, comments: updatedComments } : p));
+      }
+    } catch (e) {
+      console.error("Error adding party comment:", e);
+    }
+  };
+
   // Join mic seat inside Audio room
   const handleJoinSeat = (seatId: number) => {
     setAudioSeats(prev =>
@@ -6422,7 +6627,7 @@ export default function App() {
                     )}
 
                     {/* ===================================================================== */}
-                    {/* VIEW 1: HOME FEED (Discover trending live streams, audio rooms) */}
+                    {/* VIEW 1: HOME - PARTY HUB (Audio Lounge, 12-Seat Rooms, Banners) */}
                     {/* ===================================================================== */}
                     {clientView === "feed" && (
                       <div className="flex-1 scroll-view-y p-3 pb-4 space-y-3">
@@ -6510,40 +6715,191 @@ export default function App() {
                             })}
                           </div>
                         </div>
-
-                        {/* Interactive Banner */}
-                        <div className="bg-gradient-to-r from-[#7b2cbf] to-[#ff007f] rounded-xl p-3 relative overflow-hidden shadow-lg">
-                          <div className="relative z-10">
-                            <span className="text-[9px] bg-white/20 text-white font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Battle Event</span>
-                            <h4 className="text-xs font-black text-white mt-1 uppercase">Sahr Live PK Crown Tournament</h4>
-                            <p className="text-[9px] text-purple-100">Top agency rewards! Diamond withdraw ratios boosted +15%.</p>
+                         {/* Interactive Banner */}
+                        <div className="bg-gradient-to-r from-[#7b2cbf] to-[#ff007f] rounded-xl p-3 relative overflow-hidden shadow-lg text-left">
+                          <div className="relative z-10 bg-transparent">
+                            <span className="text-[9px] bg-white/20 text-white font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Party Event</span>
+                            <h4 className="text-xs font-black text-white mt-1 uppercase">Sahr Live Audio Lounge Carnival 🎙️</h4>
+                            <p className="text-[9px] text-purple-100">Create a 12-seat room & invite friends to win free coin drops!</p>
                           </div>
-                          <Crown className="w-16 h-16 text-white/10 absolute -right-2 -bottom-2 transform rotate-12" />
+                          <Crown className="w-16 h-16 text-white/10 absolute -right-2 -bottom-2 transform rotate-12 bg-transparent" />
                         </div>
 
+                        {/* Quick Party Actions Panel */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => setShowCreatePartyModal(true)}
+                            className="bg-gradient-to-r from-[#12121a] to-[#25183a] border border-[#ff007f]/40 hover:border-[#ff007f] rounded-xl p-3 text-left transition-all active:scale-95 flex flex-col justify-between h-20 shadow-md cursor-pointer"
+                          >
+                            <span className="text-sm bg-transparent">🎙️</span>
+                            <div className="bg-transparent">
+                              <p className="text-[10px] font-black uppercase text-white tracking-wider bg-transparent">Create Room</p>
+                              <p className="text-[7.5px] text-gray-400 bg-transparent font-sans">Start 12-seat audio party</p>
+                            </div>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              const activeParties = partiesList.filter(p => p.status !== "ended");
+                              if (activeParties.length > 0) {
+                                const randomParty = activeParties[Math.floor(Math.random() * activeParties.length)];
+                                handleJoinParty(randomParty.id);
+                              } else {
+                                alert("No active parties right now. Start one yourself!");
+                              }
+                            }}
+                            className="bg-gradient-to-r from-[#12121a] to-[#0c1f24] border border-[#66fcf1]/40 hover:border-[#66fcf1] rounded-xl p-3 text-left transition-all active:scale-95 flex flex-col justify-between h-20 shadow-md cursor-pointer"
+                          >
+                            <span className="text-sm bg-transparent">⚡</span>
+                            <div className="bg-transparent">
+                              <p className="text-[10px] font-black uppercase text-white tracking-wider bg-transparent">Quick Join</p>
+                              <p className="text-[7.5px] text-gray-400 bg-transparent font-sans">Jump into a random party</p>
+                            </div>
+                          </button>
+                        </div>
+
+                        {/* Category Chips filter */}
+                        <div className="flex space-x-1.5 overflow-x-auto pb-1 scrollbar-none">
+                          {[
+                            { id: "all", label: "🔥 All Rooms" },
+                            { id: "Music", label: "🎙️ Music Party" },
+                            { id: "Talk", label: "💬 Talk Show" },
+                            { id: "Chill", label: "🍵 Chill Lounge" },
+                            { id: "Gaming", label: "🎮 Gaming Zone" },
+                            { id: "Friends", label: "💖 Friendship" }
+                          ].map(cat => (
+                            <button
+                              key={cat.id}
+                              onClick={() => setPartyCategory(cat.id)}
+                              className={`px-3 py-1 text-[10px] font-black rounded-full whitespace-nowrap transition-all cursor-pointer border ${
+                                partyCategory === cat.id 
+                                  ? "bg-gradient-to-r from-pink-500 to-[#ff007f] text-white border-transparent shadow-md" 
+                                  : "bg-[#1e1e2d] text-gray-400 border-[#303040]"
+                              }`}
+                            >
+                              {cat.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Active Parties List */}
+                        {(() => {
+                          const activeParties = partiesList.filter(p => {
+                            if (p.status === "ended") return false;
+                            if (partyCategory !== "all" && p.category !== partyCategory) return false;
+                            return true;
+                          });
+
+                          if (activeParties.length === 0) {
+                            return (
+                              <div className="bg-[#12121a]/60 border border-[#303040]/50 rounded-2xl p-8 text-center space-y-4 shadow-md w-full">
+                                <div className="text-4xl text-pink-500/80 bg-transparent animate-bounce">🎙️</div>
+                                <div className="space-y-1.5 bg-transparent">
+                                  <p className="text-xs font-black text-white uppercase tracking-wider bg-transparent">No Active Party Rooms</p>
+                                  <p className="text-[9px] text-gray-400 leading-relaxed max-w-[240px] mx-auto font-sans bg-transparent">
+                                    Is category mein koi active audio session nahi mila. Apna custom 12-seat room start karein!
+                                  </p>
+                                </div>
+                                <div className="pt-2 flex justify-center bg-transparent">
+                                  <button
+                                    onClick={() => setShowCreatePartyModal(true)}
+                                    className="bg-gradient-to-r from-[#ff007f] to-purple-600 hover:opacity-90 text-white text-[9.5px] font-black uppercase tracking-wider px-4 py-2 rounded-xl transition-all shadow-lg active:scale-95 cursor-pointer font-sans"
+                                  >
+                                    + Start Your Room
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="grid grid-cols-2 gap-2 text-left bg-transparent">
+                              {activeParties.map(party => {
+                                // calculate occupied seats
+                                const occupiedSeats = party.seats ? party.seats.filter((s: any) => s.name !== null).length : 1;
+                                return (
+                                  <div
+                                    key={party.id}
+                                    onClick={() => handleJoinParty(party.id)}
+                                    className="bg-[#1e1e2d] rounded-2xl overflow-hidden border border-[#303040]/75 hover:border-[#ff007f]/50 hover:shadow-[0_4px_12px_rgba(255,0,127,0.15)] transition-all cursor-pointer relative group flex flex-col justify-between h-[135px] shadow-md"
+                                  >
+                                    {/* Cover Gradient/Image representation */}
+                                    <div className="h-10 bg-gradient-to-r from-purple-900/40 via-indigo-900/30 to-pink-900/40 p-2 flex items-center justify-between shrink-0">
+                                      <span className="text-[7.5px] bg-pink-500/20 border border-pink-500/30 text-pink-400 font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider">
+                                        {party.category}
+                                      </span>
+                                      <div className="flex items-center space-x-0.5 text-white text-[7.5px] font-bold bg-black/40 px-1 py-0.5 rounded">
+                                        <Users className="w-2 h-2 text-pink-400" />
+                                        <span>{occupiedSeats}/12 Seats</span>
+                                      </div>
+                                    </div>
+
+                                    {/* Content Info */}
+                                    <div className="p-2.5 flex-1 flex flex-col justify-between bg-transparent">
+                                      <div className="bg-transparent">
+                                        <p className="text-[10px] font-black text-white truncate line-clamp-2 uppercase tracking-wide leading-tight group-hover:text-[#ff007f] transition-colors bg-transparent">
+                                          {party.title}
+                                        </p>
+                                        <p className="text-[7.5px] text-gray-400 font-sans mt-0.5 truncate italic bg-transparent">
+                                          "{party.description || "Welcome to our active chat room!"}"
+                                        </p>
+                                      </div>
+
+                                      <div className="flex items-center justify-between border-t border-[#303040]/30 pt-2 mt-1 bg-transparent shrink-0">
+                                        <div className="flex items-center space-x-1.5 bg-transparent">
+                                          <img
+                                            src={party.hostAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=50&h=50&q=80"}
+                                            className="w-4 h-4 rounded-full object-cover border border-[#ff007f]/20"
+                                            alt="host"
+                                          />
+                                          <div className="leading-none bg-transparent">
+                                            <p className="text-[8px] font-black text-gray-200 truncate max-w-[55px] uppercase tracking-tighter bg-transparent">
+                                              {party.hostUsername}
+                                            </p>
+                                            <p className="text-[6.5px] text-purple-400 font-bold uppercase tracking-widest leading-none bg-transparent">OWNER</p>
+                                          </div>
+                                        </div>
+                                        <span className="text-[8px] text-[#ff007f] font-black group-hover:translate-x-0.5 transition-transform bg-transparent">
+                                          JOIN →
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+
+                    {/* ===================================================================== */}
+                    {/* VIEW 1.5: STREAM DISCOVERY (Video Live, PK Battles, Solo Live) */}
+                    {/* ===================================================================== */}
+                    {clientView === "stream" && (
+                      <div className="flex-1 scroll-view-y p-3 pb-4 space-y-3">
                         {/* Interactive Go Live Broadcaster Card */}
-                        <div className="bg-gradient-to-r from-pink-600 via-[#ff007f] to-purple-700 rounded-xl p-3 shadow-lg flex items-center justify-between border border-pink-500/20">
+                        <div className="bg-gradient-to-r from-pink-600 via-[#ff007f] to-purple-700 rounded-xl p-3 shadow-lg flex items-center justify-between border border-pink-500/20 text-left">
                           <div className="space-y-1 bg-transparent">
-                            <div className="flex items-center space-x-1.5">
+                            <div className="flex items-center space-x-1.5 bg-transparent">
                               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
                               <span className="text-[8px] bg-black/40 text-white px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider font-mono">SOLO BROADCAST</span>
                             </div>
-                            <h4 className="text-xs font-black text-white uppercase tracking-wider">Aap Ka Live Show! 📹</h4>
-                            <p className="text-[9px] text-pink-100 font-medium leading-snug">Go Live, interact with viewers, and earn coins from premium gifts!</p>
+                            <h4 className="text-xs font-black text-white uppercase tracking-wider bg-transparent">Aap Ka Live Show! 📹</h4>
+                            <p className="text-[9px] text-pink-100 font-medium leading-snug bg-transparent">Go Live, interact with viewers, and earn coins from premium gifts!</p>
                           </div>
                           <button
                             onClick={() => startUserSoloLive()}
-                            className="bg-white hover:bg-pink-100 text-[#ff007f] font-black text-[10px] px-3.5 py-2 rounded-full shadow-md hover:scale-105 active:scale-95 transition-all uppercase whitespace-nowrap flex items-center space-x-1.5"
+                            className="bg-white hover:bg-pink-100 text-[#ff007f] font-black text-[10px] px-3.5 py-2 rounded-full shadow-md hover:scale-105 active:scale-95 transition-all uppercase whitespace-nowrap flex items-center space-x-1.5 cursor-pointer animate-pulse"
                           >
                             <span>Go Live</span>
                             <span className="w-1.5 h-1.5 bg-red-600 rounded-full inline-block animate-ping"></span>
                           </button>
                         </div>
 
-                        {/* Tab Selector & Search bar */}
-                        <div className="bg-[#12121a]/95 backdrop-blur-md p-3 rounded-xl border border-[#303040]/50 space-y-3 shadow-lg">
-                          {/* Tabs Row */}
-                          <div className="flex border-b border-[#303040]/40 pb-1">
+                        {/* Search bar & Tabs */}
+                        <div className="bg-[#12121a]/95 backdrop-blur-md p-3 rounded-xl border border-[#303040]/50 space-y-3 shadow-lg text-left">
+                          <div className="flex border-b border-[#303040]/40 pb-1 bg-transparent">
                             <button
                               onClick={() => {
                                 setFeedTab("explore");
@@ -6567,7 +6923,7 @@ export default function App() {
                               }`}
                             >
                               <span className="flex items-center justify-center space-x-1 bg-transparent">
-                                <span>Following ❤️</span>
+                                <span className="bg-transparent">Following ❤️</span>
                                 <span className="text-[8px] bg-pink-500/15 text-pink-400 px-1.5 py-0.2 rounded-full font-bold">
                                   {followedUsers.length}
                                 </span>
@@ -6588,7 +6944,7 @@ export default function App() {
                               value={feedSearchQuery}
                               onChange={(e) => setFeedSearchQuery(e.target.value)}
                               placeholder="Search by host name, category, or topic..."
-                              className="w-full bg-[#1c1c27] text-white text-[10px] font-medium pl-9 pr-8 py-2 rounded-lg border border-[#303040] focus:border-[#ff007f]/50 focus:outline-none transition-all placeholder:text-gray-500"
+                              className="w-full bg-[#1c1c27] text-white text-[10px] font-medium pl-9 pr-8 py-2 rounded-lg border border-[#303040] focus:border-[#ff007f]/50 focus:outline-none transition-all placeholder:text-gray-500 font-sans"
                             />
                             {feedSearchQuery && (
                               <button
@@ -6602,15 +6958,19 @@ export default function App() {
                         </div>
 
                         {/* Category Chips filter */}
-                        <div className="flex space-x-1.5 overflow-x-auto pb-1">
+                        <div className="flex space-x-1.5 overflow-x-auto pb-1 scrollbar-none">
                           {[
-                            { id: "all", label: "🔥 All Lives" }
+                            { id: "all", label: "🔥 All Lives" },
+                            { id: "video", label: "📹 Solo Live" },
+                            { id: "pk", label: "🥊 PK Battles" }
                           ].map(cat => (
                             <button
                               key={cat.id}
                               onClick={() => setFeedCategory(cat.id)}
-                              className={`px-3 py-1 text-[10px] font-black rounded-full whitespace-nowrap transition-all cursor-pointer ${
-                                feedCategory === cat.id ? "bg-[#ff007f] text-white" : "bg-[#1e1e2d] text-gray-400 border border-[#303040]"
+                              className={`px-3 py-1 text-[10px] font-black rounded-full whitespace-nowrap transition-all cursor-pointer border ${
+                                feedCategory === cat.id 
+                                  ? "bg-[#ff007f] text-white border-transparent shadow-md" 
+                                  : "bg-[#1e1e2d] text-gray-400 border-[#303040]"
                               }`}
                             >
                               {cat.label}
@@ -6621,6 +6981,9 @@ export default function App() {
                         {/* Host Stream list */}
                         {(() => {
                           const filteredHosts = liveStreamsList.filter(host => {
+                            // Filter out audio category since it belongs in Party Hub
+                            if (host.category === "audio") return false;
+
                             // Blocked Filter
                             if (blockedUsers.includes(host.name)) {
                               return false;
@@ -6653,12 +7016,12 @@ export default function App() {
                               <div className="bg-[#12121a]/60 border border-[#303040]/50 rounded-2xl p-6 text-center space-y-3 shadow-md">
                                 <div className="text-3xl text-gray-500 bg-transparent">🔍</div>
                                 <div className="space-y-1 bg-transparent">
-                                  <p className="text-xs font-black text-white uppercase tracking-wider">
+                                  <p className="text-xs font-black text-white uppercase tracking-wider bg-transparent">
                                     {feedTab === "following" ? "No Followed Hosts Live" : "No one is live right now."}
                                   </p>
-                                  <p className="text-[9px] text-gray-400 leading-relaxed max-w-[220px] mx-auto">
+                                  <p className="text-[9px] text-gray-400 leading-relaxed max-w-[220px] mx-auto font-sans bg-transparent">
                                     {feedTab === "following"
-                                      ? "Aap ne abhi tak kisi aor host ko follow nahi kiya ya wo offline hain. Explore tab se live hosts follow karein!"
+                                      ? "Aap ne abhi tak kisi aur host ko follow nahi kiya ya wo offline hain. Explore tab se live hosts follow karein!"
                                       : `Humain "${feedSearchQuery}" ke naam se koi live broad nahi mili. Koshish karein spelling theek ho.`}
                                   </p>
                                 </div>
@@ -6666,7 +7029,7 @@ export default function App() {
                                   {feedSearchQuery && (
                                     <button
                                       onClick={() => setFeedSearchQuery("")}
-                                      className="bg-purple-600 hover:bg-purple-500 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg transition-all shadow-md active:scale-95 cursor-pointer"
+                                      className="bg-[#ff007f] hover:bg-[#ff007f]/85 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg transition-all shadow-md active:scale-95 cursor-pointer font-sans"
                                     >
                                       Clear Search
                                     </button>
@@ -6678,7 +7041,7 @@ export default function App() {
                                         setFeedCategory("all");
                                         setFeedSearchQuery("");
                                       }}
-                                      className="bg-[#ff007f] hover:bg-[#ff007f]/80 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg transition-all shadow-md active:scale-95 cursor-pointer"
+                                      className="bg-[#ff007f] hover:bg-[#ff007f]/80 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg transition-all shadow-md active:scale-95 cursor-pointer font-sans"
                                     >
                                       Go to Explore 🗺️
                                     </button>
@@ -6689,7 +7052,7 @@ export default function App() {
                           }
 
                           return (
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-2 gap-2 text-left bg-transparent">
                               {filteredHosts.map(host => {
                                 const isFollowing = followedUsers.includes(host.name);
                                 return (
@@ -6703,21 +7066,14 @@ export default function App() {
                                     }}
                                     className="bg-[#1e1e2d] rounded-xl overflow-hidden border border-[#303040]/70 hover:border-[#ff007f]/50 transition-all cursor-pointer relative group shadow-md"
                                   >
-                                    {/* Thumbnail mock using abstract color placeholders */}
                                     <div className="aspect-[4/4.5] w-full bg-gradient-to-tr from-[#12121a] to-[#2a1b40] relative flex items-center justify-center p-2">
                                       <img src={host.avatar} className="w-13 h-13 rounded-full object-cover border-2 border-purple-500 shadow-md group-hover:scale-105 transition-all" alt="host" />
                                       
-                                      {/* Badge Container */}
                                       <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1 z-10 max-w-[75%] bg-transparent">
                                         {host.category === "pk" ? (
                                           <div className="bg-gradient-to-r from-red-500 via-pink-600 to-yellow-500 text-white text-[7.5px] font-black px-1.5 py-0.5 rounded-md flex items-center space-x-0.5 animate-pulse border border-white/10 shadow-sm shadow-red-500/20">
                                             <span className="text-[9px]">🥊</span>
                                             <span>PK</span>
-                                          </div>
-                                        ) : host.category === "audio" ? (
-                                          <div className="bg-gradient-to-r from-teal-500 to-blue-600 text-white text-[7.5px] font-black px-1.5 py-0.5 rounded-md flex items-center space-x-0.5 border border-white/10 shadow-sm shadow-blue-500/20">
-                                            <span className="text-[9px]">👥</span>
-                                            <span>GUEST</span>
                                           </div>
                                         ) : (
                                           <div className="bg-[#ff007f] text-white text-[7px] font-black px-1.5 py-0.5 rounded-md flex items-center space-x-0.5">
@@ -6726,7 +7082,6 @@ export default function App() {
                                           </div>
                                         )}
 
-                                        {/* Follow status badge */}
                                         {isFollowing && (
                                           <div className="bg-purple-600/90 text-white text-[6.5px] font-black px-1 py-0.5 rounded-md flex items-center space-x-0.5 border border-white/10">
                                             <span>❤️ Following</span>
@@ -6736,7 +7091,7 @@ export default function App() {
 
                                       <div className="absolute top-1.5 right-1.5 flex items-center space-x-1 z-20 bg-transparent">
                                         <div className="bg-black/60 text-white text-[7.5px] font-black px-1 py-0.5 rounded flex items-center space-x-0.5">
-                                          <Users className="w-2 h-2 mr-0.5" />
+                                          <Users className="w-2 h-2 mr-0.5 text-[#66fcf1]" />
                                           <span>{host.viewers}</span>
                                         </div>
                                         <button
@@ -6753,14 +7108,14 @@ export default function App() {
 
                                       <div className="absolute bottom-1.5 left-1.5 right-1.5 bg-black/75 backdrop-blur-xs p-1 rounded-lg">
                                         <div className="flex justify-between items-center bg-transparent">
-                                          <p className="text-[9px] font-black text-white truncate max-w-[80%]">{host.name}</p>
+                                          <p className="text-[9px] font-black text-white truncate max-w-[80%] uppercase tracking-wide bg-transparent">{host.name}</p>
                                           {isFollowing && (
                                             <span className="text-pink-500 text-[8px] font-black">✓</span>
                                           )}
                                         </div>
-                                        <p className="text-[7.5px] text-[#66fcf1] truncate">{host.role}</p>
+                                        <p className="text-[7.5px] text-[#66fcf1] truncate font-sans uppercase bg-transparent">{host.role}</p>
                                         {host.statusText && (
-                                          <p className="text-[7px] text-gray-400 truncate mt-0.5 leading-none italic">
+                                          <p className="text-[7px] text-gray-400 truncate mt-0.5 leading-none italic font-sans bg-transparent">
                                             "{host.statusText}"
                                           </p>
                                         )}
@@ -16942,14 +17297,16 @@ export default function App() {
 
                     {/* CLIENT FOOTER NAVIGATION BAR */}
                     <footer className="bg-[#1e1e2d] border-t border-[#303040] py-2 px-3 pb-3 safe-padding-bottom flex items-center justify-between text-xs text-gray-400">
+                      {/* Home (Party Hub) */}
                       <button
                         onClick={() => setClientView("feed")}
                         className={`flex flex-col items-center flex-1 py-1 ${clientView === "feed" ? "text-[#ff007f]" : "hover:text-white"}`}
                       >
-                        <Tv className="w-4 h-4 mb-0.5" />
-                        <span className="text-[8px] font-bold">Streams</span>
+                        <HomeIcon className="w-4 h-4 mb-0.5" />
+                        <span className="text-[8px] font-bold">Home</span>
                       </button>
 
+                      {/* Reels */}
                       <button
                         onClick={() => setClientView("reels")}
                         className={`flex flex-col items-center flex-1 py-1 ${clientView === "reels" ? "text-yellow-400" : "hover:text-white"}`}
@@ -16958,24 +17315,11 @@ export default function App() {
                         <span className="text-[8px] font-bold">Reels</span>
                       </button>
 
-                      {/* Dynamic Central Reels Upload Button */}
+                      {/* Create (+) */}
                       <button
-                        onClick={() => {
-                          setShowUploadReelOverlay(true);
-                          setUploadReelStep("select");
-                          setUploadedVideoName("");
-                          setUploadedVideoSize("");
-                          setUploadedVideoFileUrl(null);
-                          setRecordedVideoPreset(null);
-                          setIsRecordingReel(false);
-                          setReelRecordingSeconds(0);
-                          setReelPrivacy("public");
-                          setReelLocation("");
-                          setShowMusicLibrary(false);
-                          setSearchSoundQuery("");
-                        }}
+                        onClick={() => setShowCreateActionSheet(true)}
                         className="flex flex-col items-center flex-1 py-1"
-                        title="Upload Reel"
+                        title="Create"
                       >
                         <div className="w-9 h-9 rounded-full bg-gradient-to-r from-[#ff007f] via-[#7b2cbf] to-[#66fcf1] p-[2px] shadow-lg shadow-[#ff007f]/20 hover:scale-110 active:scale-95 transition-all">
                           <div className="w-full h-full rounded-full bg-[#1e1e2d] flex items-center justify-center text-white">
@@ -16984,28 +17328,25 @@ export default function App() {
                         </div>
                       </button>
 
+                      {/* Stream (Video Live, PK, Solo Live) */}
+                      <button
+                        onClick={() => setClientView("stream")}
+                        className={`flex flex-col items-center flex-1 py-1 ${clientView === "stream" ? "text-[#a855f7]" : "hover:text-white"}`}
+                      >
+                        <Tv className="w-4 h-4 mb-0.5" />
+                        <span className="text-[8px] font-bold">Stream</span>
+                      </button>
+
+                      {/* DM (Chat messages) */}
                       <button
                         onClick={() => setClientView("chat")}
                         className={`flex flex-col items-center flex-1 py-1 ${clientView === "chat" ? "text-indigo-400" : "hover:text-white"}`}
                       >
                         <MessageSquare className="w-4 h-4 mb-0.5" />
-                        <span className="text-[8px] font-bold">Chat DM</span>
+                        <span className="text-[8px] font-bold">DM</span>
                       </button>
 
-                      {/* 🔔 TikTok-style Inbox (Notifications) button in bottom navigation */}
-                      <button
-                        onClick={() => setClientView("notifications")}
-                        className={`flex flex-col items-center flex-1 py-1 relative ${clientView === "notifications" ? "text-pink-500" : "hover:text-white"}`}
-                      >
-                        <Bell className="w-4 h-4 mb-0.5" />
-                        <span className="text-[8px] font-bold">Inbox</span>
-                        {appNotifications.filter(n => n.isNew).length > 0 && (
-                          <span className="absolute top-1 right-3.5 bg-pink-500 text-white text-[7.5px] font-extrabold rounded-full w-3.5 h-3.5 flex items-center justify-center border border-[#1e1e2d] animate-pulse">
-                            {appNotifications.filter(n => n.isNew).length}
-                          </span>
-                        )}
-                      </button>
-
+                      {/* Profile */}
                       <button
                         onClick={() => setClientView("profile")}
                         className={`flex flex-col items-center flex-1 py-1 ${clientView === "profile" ? "text-[#66fcf1]" : "hover:text-white"}`}

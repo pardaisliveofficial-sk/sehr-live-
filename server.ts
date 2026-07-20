@@ -793,6 +793,230 @@ app.post("/api/v1/hosts/:id/comments", (req, res) => {
   }
 });
 
+// Party Hub & 12-Seat Audio Party endpoints
+app.get("/api/v1/parties", (req, res) => {
+  res.json(dbData.parties || []);
+});
+
+app.post("/api/v1/parties", (req, res) => {
+  const { title, hostUsername, hostAvatar, category, isPublic, password, language, description } = req.body;
+  const id = `party-${Date.now()}`;
+  const newParty = {
+    id,
+    title: title || "Sehr Live Audio Lounge",
+    hostUsername,
+    hostAvatar,
+    category: category || "Music",
+    participantCount: 1,
+    maxCapacity: 12,
+    isPublic: isPublic !== false,
+    password: password || "",
+    language: language || "English",
+    description: description || "",
+    status: "active",
+    connectedViewers: [{ userId: hostUsername, username: hostUsername, avatar: hostAvatar || "", level: 1, vipLevel: 0 }],
+    seats: [
+      { id: 1, name: `${hostUsername} (Host) 🎙️`, avatar: hostAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80", isMuted: false, isLocked: false },
+      { id: 2, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 3, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 4, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 5, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 6, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 7, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 8, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 9, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 10, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 11, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 12, name: null, avatar: null, isMuted: false, isLocked: false }
+    ],
+    comments: [
+      {
+        id: `sys-${Date.now()}`,
+        username: "System",
+        message: `🎙️ Room created successfully by ${hostUsername}. Welcome everyone!`,
+        isSystem: true,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }
+    ]
+  };
+  if (!dbData.parties) {
+    dbData.parties = [];
+  }
+  dbData.parties.push(newParty);
+  saveDatabase();
+  syncDocument("parties", id, newParty);
+  res.status(201).json(newParty);
+});
+
+app.post("/api/v1/parties/:id/join", (req, res) => {
+  const { id } = req.params;
+  const { username, avatar } = req.body;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    if (!party.connectedViewers) {
+      party.connectedViewers = [];
+    }
+    if (!party.connectedViewers.some((v: any) => v.username === username)) {
+      party.connectedViewers.push({ userId: username, username, avatar: avatar || "", level: 1, vipLevel: 0 });
+    }
+    party.participantCount = party.connectedViewers.length;
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/leave", (req, res) => {
+  const { id } = req.params;
+  const { username } = req.body;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    if (party.connectedViewers) {
+      party.connectedViewers = party.connectedViewers.filter((v: any) => v.username !== username);
+    }
+    party.participantCount = party.connectedViewers ? party.connectedViewers.length : 0;
+    
+    // Clean up from seats
+    party.seats = party.seats.map((seat: any) => {
+      if (seat.name === username || (seat.name && seat.name.startsWith(username))) {
+        return { ...seat, name: null, avatar: null };
+      }
+      return seat;
+    });
+
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/seats/join", (req, res) => {
+  const { id } = req.params;
+  const { seatId, username, avatar } = req.body;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    party.seats = party.seats.map((seat: any) => {
+      if (seat.id === Number(seatId)) {
+        return { ...seat, name: username, avatar: avatar || "" };
+      }
+      return seat;
+    });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/seats/leave", (req, res) => {
+  const { id } = req.params;
+  const { seatId } = req.body;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    party.seats = party.seats.map((seat: any) => {
+      if (seat.id === Number(seatId)) {
+        return { ...seat, name: null, avatar: null };
+      }
+      return seat;
+    });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/seats/toggle-mute", (req, res) => {
+  const { id } = req.params;
+  const { seatId } = req.body;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    party.seats = party.seats.map((seat: any) => {
+      if (seat.id === Number(seatId)) {
+        return { ...seat, isMuted: !seat.isMuted };
+      }
+      return seat;
+    });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/seats/toggle-lock", (req, res) => {
+  const { id } = req.params;
+  const { seatId } = req.body;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    party.seats = party.seats.map((seat: any) => {
+      if (seat.id === Number(seatId)) {
+        return { ...seat, isLocked: !seat.isLocked };
+      }
+      return seat;
+    });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/close", (req, res) => {
+  const { id } = req.params;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    party.status = "ended";
+    dbData.parties = dbData.parties.filter((p: any) => p.id !== id);
+    saveDatabase();
+    deleteDocument("parties", id);
+    res.json({ message: "Party closed successfully" });
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/comments", (req, res) => {
+  const { id } = req.params;
+  const { message, username, vipLevel, userLevel, isSystem, avatar } = req.body;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    if (!party.comments) party.comments = [];
+    const newComment = {
+      id: `c-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      username,
+      message,
+      vipLevel: vipLevel || 0,
+      userLevel: userLevel || 1,
+      isSystem: !!isSystem,
+      avatar: avatar || "",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    party.comments.push(newComment);
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.status(201).json(party.comments);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
 // Families endpoints
 app.get("/api/v1/families", (req, res) => {
   res.json(dbData.families);
