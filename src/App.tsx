@@ -3026,6 +3026,20 @@ export default function App() {
     { id: "ul-init-toast-1", username: "Shahzaib", giftName: "Rose", giftIcon: "🌹", count: 10, avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80" },
     { id: "ul-init-toast-2", username: "Awais Khan", giftName: "Lion", giftIcon: "🦁", count: 1, avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80" }
   ]);
+  const [liveRoomTopGifters, setLiveRoomTopGifters] = useState<Array<{
+    id: string;
+    username: string;
+    avatar: string;
+    coinsContributed: number;
+  }>>([
+    { id: "g1", username: "Shahzaib", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80", coinsContributed: 3500 },
+    { id: "g2", username: "Awais Khan", avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80", coinsContributed: 2100 },
+    { id: "g3", username: "Zara", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80", coinsContributed: 1200 }
+  ]);
+
+  const liveBroadcasterName = clientView === "user-live" ? user.username : (activeHost?.name || "Broadcaster");
+  const liveBroadcasterAvatar = clientView === "user-live" ? user.avatar : (activeHost?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80");
+  const liveBroadcasterLevel = clientView === "user-live" ? (user.userLevel || 1) : (activeHost?.hostLevel || activeHost?.level || 1);
   const [userLiveChatVisible, setUserLiveChatVisible] = useState<boolean>(true);
 
   // 📸 Camera Screen UI (Go Live Prep) States
@@ -4594,6 +4608,25 @@ export default function App() {
       userLevel: Math.floor((prev.xp + xpGained) / 100) + 1, // basic level increment
       wealthLevel: prev.wealthLevel + 1
     }));
+
+    setLiveRoomTopGifters(prev => {
+      const userIndex = prev.findIndex(g => g.username === user.username);
+      let updated = [...prev];
+      if (userIndex > -1) {
+        updated[userIndex] = {
+          ...updated[userIndex],
+          coinsContributed: updated[userIndex].coinsContributed + totalCost
+        };
+      } else {
+        updated.push({
+          id: `u-${user.uniqueId || Date.now()}`,
+          username: user.username,
+          avatar: user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&h=100&q=80",
+          coinsContributed: totalCost
+        });
+      }
+      return updated.sort((a, b) => b.coinsContributed - a.coinsContributed).slice(0, 3);
+    });
 
     // Add transaction ledger entry
     const newTx: Transaction = {
@@ -6818,18 +6851,9 @@ export default function App() {
                           </div>
                         )}
                         {viewerLiveGuestModeActive ? (
-                          <div className="absolute inset-0 bg-[#06040a] flex flex-col z-35 h-full w-full select-none">
-                            {/* REALISTIC STATUS BAR FOR GUEST ROOM */}
-                            <div className="px-5 pt-2 pb-1 z-10 flex justify-between items-center bg-transparent text-[10px] font-black text-white">
-                              <div className="font-mono">9:41</div>
-                              <div className="flex items-center space-x-1.5">
-                                <span className="text-[9px]">📶</span>
-                                <span className="text-[9px]">🔋</span>
-                              </div>
-                            </div>
-
+                          <div className="absolute inset-0 bg-[#06040a] flex flex-col z-35 h-full w-full select-none pt-2">
                             {/* TOP HEADER ROW FOR GUEST MODE */}
-                            <div className="px-3 py-1.5 flex items-center justify-between z-10 bg-transparent">
+                            <div className="px-3 py-1 flex items-center justify-between z-10 bg-transparent">
                               {/* Left Host Bubble */}
                               <div className="flex items-center space-x-2 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full border border-white/10 shadow-lg">
                                 <div className="relative">
@@ -6860,14 +6884,12 @@ export default function App() {
 
                               {/* Center-Right Contributors List */}
                               <div className="flex items-center space-x-1.5">
-                                {[
-                                  { url: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80", label: "12.8K" },
-                                  { url: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80", label: "8.4K" },
-                                  { url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80", label: "5.1K" }
-                                ].map((viewer, idx) => (
-                                  <div key={idx} className="flex flex-col items-center bg-transparent">
-                                    <img src={viewer.url} className="w-6 h-6 rounded-full border border-white/20 object-cover shadow" />
-                                    <span className="text-[7px] text-gray-200 font-black font-mono scale-90 mt-0.5">{viewer.label}</span>
+                                {liveRoomTopGifters.map((viewer, idx) => (
+                                  <div key={viewer.id || idx} className="flex flex-col items-center bg-transparent">
+                                    <img src={viewer.avatar} className="w-6.5 h-6.5 rounded-full border border-white/20 object-cover shadow" title={viewer.username} />
+                                    <span className="text-[7px] text-gray-200 font-black font-mono scale-90 mt-0.5">
+                                      {viewer.coinsContributed >= 1000 ? `${(viewer.coinsContributed / 1000).toFixed(1)}K` : viewer.coinsContributed}
+                                    </span>
                                   </div>
                                 ))}
                               </div>
@@ -7391,9 +7413,21 @@ export default function App() {
                                   <span>🎙️ Live Guest Room</span>
                                 </button>
 
+                                {/* Stream Top Gifters */}
+                                <div className="flex items-center space-x-1.5 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/5 select-none shrink-0">
+                                  {liveRoomTopGifters.map((viewer, idx) => (
+                                    <div key={viewer.id || idx} className="flex flex-col items-center bg-transparent">
+                                      <img src={viewer.avatar} className="w-6 h-6 rounded-full border border-white/20 object-cover shadow" title={viewer.username} />
+                                      <span className="text-[7px] text-gray-200 font-black font-mono scale-90 mt-0.5">
+                                        {viewer.coinsContributed >= 1000 ? `${(viewer.coinsContributed / 1000).toFixed(1)}K` : viewer.coinsContributed}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+
                                 <div 
                                   onClick={() => setShowActiveViewersModal(true)}
-                                  className="bg-black/50 backdrop-blur-md px-2 py-1 rounded-full text-[9px] font-bold text-white flex items-center space-x-1 border border-white/10 hover:border-pink-500/50 cursor-pointer transition-all active:scale-95"
+                                  className="bg-black/50 backdrop-blur-md px-2 py-1 rounded-full text-[9px] font-bold text-white flex items-center space-x-1 border border-white/10 hover:border-pink-500/50 cursor-pointer transition-all active:scale-95 shrink-0"
                                   title="View Active Audience List"
                                 >
                                   <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span>
@@ -7430,7 +7464,7 @@ export default function App() {
                               </div>
 
                               {/* Top row overlays */}
-                              <div className="w-full z-10 flex justify-between items-center bg-transparent pt-12">
+                              <div className="w-full z-10 flex justify-between items-center bg-transparent pt-2">
                                 <span className="bg-red-600 text-white font-mono font-black text-[7.5px] px-2 py-0.5 rounded-full uppercase tracking-widest animate-pulse border border-white/10 shadow-lg">
                                   ● LIVE SOLO BROADCAST
                                 </span>
@@ -7486,7 +7520,7 @@ export default function App() {
                           {activeHost.category === "pk" && (
                             <div className="absolute inset-0 flex flex-col justify-between p-3 select-none">
                               {/* Dual split-screen video simulations */}
-                              <div className="flex-1 grid grid-cols-2 gap-1 rounded-xl overflow-hidden border border-purple-500/20 shadow-2xl bg-black/40 relative pt-12">
+                              <div className="flex-1 grid grid-cols-2 gap-1 rounded-xl overflow-hidden border border-purple-500/20 shadow-2xl bg-black/40 relative pt-2">
                                 
                                 {/* Side A: Broadcaster Host */}
                                 <div className="h-full relative border-r border-purple-500/10 bg-[#140f25] flex items-center justify-center overflow-hidden">
@@ -7570,7 +7604,7 @@ export default function App() {
 
                           {/* 3. MULTI-GUEST AUDIO ROOM (10-Seat Interactive Grid) */}
                           {activeHost.category === "audio" && (
-                            <div className="absolute inset-0 flex flex-col justify-center p-3 pt-12 space-y-3">
+                            <div className="absolute inset-0 flex flex-col justify-center p-3 pt-2 space-y-3">
                               <div className="text-center">
                                 <p className="text-xs text-white font-black">🎙️ Host Lounge General Chat Room</p>
                                 <p className="text-[9px] text-[#66fcf1]">Audio seats: Tap any empty seat to Request Microphone</p>
@@ -11599,23 +11633,14 @@ export default function App() {
                               )}
                             </div>
                             {userLiveGuestModeActive ? (
-                              <div className="absolute inset-0 bg-[#06040a] flex flex-col z-35 h-full w-full select-none">
-                                {/* REALISTIC CELLPHONE STATUS BAR */}
-                                <div className="px-5 pt-2 pb-1 z-10 flex justify-between items-center bg-transparent text-[10px] font-black text-white select-none">
-                                  <div className="font-mono">9:41</div>
-                                  <div className="flex items-center space-x-1.5">
-                                    <span className="text-[9px]">📶</span>
-                                    <span className="text-[9px]">🔋</span>
-                                  </div>
-                                </div>
-
+                              <div className="absolute inset-0 bg-[#06040a] flex flex-col z-35 h-full w-full select-none pt-2">
                                 {/* TOP HEADER ROW OVERLAYS */}
-                                <div className="px-3 py-1.5 flex items-center justify-between z-10 bg-transparent select-none">
+                                <div className="px-3 py-1 flex items-center justify-between z-10 bg-transparent select-none">
                                   {/* Left Host Bubble */}
                                   <div className="flex items-center space-x-2 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full border border-white/10 shadow-lg">
                                     <div className="relative">
                                       <img
-                                        src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80"
+                                        src={liveBroadcasterAvatar}
                                         className="w-8 h-8 rounded-full border border-pink-500 object-cover"
                                       />
                                       <span className="absolute bottom-0 right-0 bg-blue-500 text-white rounded-full p-0.5 text-[5px] flex items-center justify-center border border-white">
@@ -11624,11 +11649,11 @@ export default function App() {
                                     </div>
                                     <div className="flex flex-col text-left pr-1">
                                       <span className="text-[10px] font-black text-white flex items-center space-x-0.5">
-                                        <span>Arooj Queen</span>
+                                        <span>{liveBroadcasterName}</span>
                                         <span className="text-blue-400 text-[8px]">✔️</span>
                                       </span>
                                       <div className="flex items-center space-x-1 bg-transparent">
-                                        <span className="text-[7.5px] bg-purple-600 text-white px-1 py-0.2 rounded font-black font-mono">Lv.25</span>
+                                        <span className="text-[7.5px] bg-purple-600 text-white px-1 py-0.2 rounded font-black font-mono">Lv.{liveBroadcasterLevel}</span>
                                         <span className="text-[7.5px] text-gray-300 font-bold font-mono">Solo Live</span>
                                       </div>
                                     </div>
@@ -11636,14 +11661,12 @@ export default function App() {
 
                                   {/* Center-Right Contributors List */}
                                   <div className="flex items-center space-x-1.5">
-                                    {[
-                                      { url: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80", label: "12.8K" },
-                                      { url: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80", label: "8.4K" },
-                                      { url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80", label: "5.1K" }
-                                    ].map((viewer, idx) => (
-                                      <div key={idx} className="flex flex-col items-center bg-transparent">
-                                        <img src={viewer.url} className="w-6 h-6 rounded-full border border-white/20 object-cover shadow" />
-                                        <span className="text-[7px] text-gray-200 font-black font-mono scale-90 mt-0.5">{viewer.label}</span>
+                                    {liveRoomTopGifters.map((viewer, idx) => (
+                                      <div key={viewer.id || idx} className="flex flex-col items-center bg-transparent">
+                                        <img src={viewer.avatar} className="w-6.5 h-6.5 rounded-full border border-white/20 object-cover shadow" title={viewer.username} />
+                                        <span className="text-[7px] text-gray-200 font-black font-mono scale-90 mt-0.5">
+                                          {viewer.coinsContributed >= 1000 ? `${(viewer.coinsContributed / 1000).toFixed(1)}K` : viewer.coinsContributed}
+                                        </span>
                                       </div>
                                     ))}
                                   </div>
@@ -12693,22 +12716,13 @@ export default function App() {
                               <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/15 to-black/60 pointer-events-none"></div>
                             </div>
 
-                            {/* REALISTIC CELLPHONE STATUS BAR */}
-                            <div className="px-5 pt-2 pb-1 z-10 flex justify-between items-center bg-transparent text-[10px] font-black text-white select-none">
-                              <div className="font-mono">9:41</div>
-                              <div className="flex items-center space-x-1.5">
-                                <span className="text-[9px]">📶</span>
-                                <span className="text-[9px]">🔋</span>
-                              </div>
-                            </div>
-
                             {/* TOP HEADER ROW OVERLAYS */}
-                            <div className="px-3 py-1.5 flex items-center justify-between z-10 bg-transparent select-none">
+                            <div className="px-3 py-1 flex items-center justify-between z-10 bg-transparent select-none pt-2">
                               {/* Left Host Bubble */}
                               <div className="flex items-center space-x-2 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full border border-white/10 shadow-lg">
                                 <div className="relative">
                                   <img
-                                    src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80"
+                                    src={liveBroadcasterAvatar}
                                     className="w-8 h-8 rounded-full border border-pink-500 object-cover"
                                   />
                                   <span className="absolute bottom-0 right-0 bg-blue-500 text-white rounded-full p-0.5 text-[5px] flex items-center justify-center border border-white">
@@ -12717,54 +12731,24 @@ export default function App() {
                                 </div>
                                 <div className="flex flex-col text-left pr-1">
                                   <span className="text-[10px] font-black text-white flex items-center space-x-0.5">
-                                    <span>Arooj Queen</span>
+                                    <span>{liveBroadcasterName}</span>
                                     <span className="text-blue-400 text-[8px]">✔️</span>
                                   </span>
                                   <div className="flex items-center space-x-1 bg-transparent">
-                                    <span className="text-[7.5px] bg-purple-600 text-white px-1 py-0.2 rounded font-black font-mono">Lv.25</span>
+                                    <span className="text-[7.5px] bg-purple-600 text-white px-1 py-0.2 rounded font-black font-mono">Lv.{liveBroadcasterLevel}</span>
                                     <span className="text-[7.5px] text-gray-300 font-bold font-mono">Solo Live</span>
                                   </div>
                                 </div>
-                                
-                                {/* Heart/Follow Plus button inside bubble */}
-                                <button
-                                  onClick={() => {
-                                    setUserLiveFollowed(!userLiveFollowed);
-                                    if (!userLiveFollowed) {
-                                      setUserLiveViewers(prev => prev + 1);
-                                      setUserLiveMessages(prev => [
-                                        ...prev,
-                                        {
-                                          id: "ul-follow-" + Date.now(),
-                                          username: user.username,
-                                          message: "followed the host",
-                                          vipLevel: user.vipLevel,
-                                          userLevel: user.userLevel,
-                                          isSystem: true,
-                                          isFlagged: false,
-                                          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                        }
-                                      ]);
-                                    }
-                                  }}
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
-                                    userLiveFollowed ? "bg-white/20 text-white" : "bg-white text-pink-600 hover:scale-105 active:scale-95 shadow-md"
-                                  }`}
-                                >
-                                  {userLiveFollowed ? "✓" : "❤️"}
-                                </button>
                               </div>
 
                               {/* Center-Right Contributors List */}
                               <div className="flex items-center space-x-1.5">
-                                {[
-                                  { url: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80", label: "3.5K" },
-                                  { url: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80", label: "2.1K" },
-                                  { url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80", label: "1.2K" }
-                                ].map((viewer, idx) => (
-                                  <div key={idx} className="flex flex-col items-center bg-transparent">
-                                    <img src={viewer.url} className="w-6.5 h-6.5 rounded-full border border-white/20 object-cover shadow" />
-                                    <span className="text-[7px] text-gray-200 font-black font-mono scale-90 mt-0.5">{viewer.label}</span>
+                                {liveRoomTopGifters.map((viewer, idx) => (
+                                  <div key={viewer.id || idx} className="flex flex-col items-center bg-transparent">
+                                    <img src={viewer.avatar} className="w-6.5 h-6.5 rounded-full border border-white/20 object-cover shadow" title={viewer.username} />
+                                    <span className="text-[7px] text-gray-200 font-black font-mono scale-90 mt-0.5">
+                                      {viewer.coinsContributed >= 1000 ? `${(viewer.coinsContributed / 1000).toFixed(1)}K` : viewer.coinsContributed}
+                                    </span>
                                   </div>
                                 ))}
                               </div>
@@ -12793,6 +12777,30 @@ export default function App() {
                                   <X className="w-4 h-4" />
                                 </button>
                               </div>
+                            </div>
+
+                            {/* SUB-HEADER ROW FOR LIVE, TIMER & FAN CLUB */}
+                            <div className="px-3 py-1 flex items-center justify-between z-10 bg-transparent select-none">
+                              <div className="flex items-center space-x-1.5 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#ff007f] animate-ping"></span>
+                                <span className="text-[7.5px] font-black text-pink-500 uppercase tracking-wider font-mono">LIVE</span>
+                              </div>
+                              
+                              <div className="flex items-center space-x-1 font-mono text-[7.5px] text-gray-300 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/5">
+                                <span className="w-1 h-1 rounded-full bg-red-600 animate-pulse"></span>
+                                <span>
+                                  {Math.floor(userLiveDuration / 3600).toString().padStart(2, '0')}:
+                                  {Math.floor((userLiveDuration % 3600) / 60).toString().padStart(2, '0')}:
+                                  {(userLiveDuration % 60).toString().padStart(2, '0')}
+                                </span>
+                              </div>
+
+                              <button
+                                onClick={() => setUserLiveShowFanClubModal(true)}
+                                className="text-[7.5px] font-black text-pink-400 hover:text-pink-300 flex items-center space-x-1 uppercase tracking-wider font-mono bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/5"
+                              >
+                                👥 Fan Club
+                              </button>
                             </div>
 
                             {/* SUB-HEADER RANKING & EXPLORE OVERLAYS */}
@@ -14563,32 +14571,7 @@ export default function App() {
                               ))}
                             </div>
 
-                            {/* LOWEST FOOTER STATUS BAR */}
-                            <div className="bg-black py-1 px-4 z-10 flex items-center justify-between text-gray-400 border-t border-white/5 select-none">
-                              {/* Live text status tab */}
-                              <div className="flex flex-col items-center relative pr-2 bg-transparent">
-                                <span className="text-[8.5px] font-black text-pink-500 uppercase tracking-widest font-mono">Live</span>
-                                <span className="w-6 h-[2px] bg-pink-500 rounded-full mt-0.5"></span>
-                              </div>
-                              
-                              {/* Red dot duration counter */}
-                              <div className="flex items-center space-x-1 font-mono text-[8.5px] text-gray-300 bg-black/60 px-2 py-0.5 rounded-full border border-white/5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse"></span>
-                                <span>
-                                  {Math.floor(userLiveDuration / 3600).toString().padStart(2, '0')}:
-                                  {Math.floor((userLiveDuration % 3600) / 60).toString().padStart(2, '0')}:
-                                  {(userLiveDuration % 60).toString().padStart(2, '0')}
-                                </span>
-                              </div>
 
-                              {/* Fan Club button */}
-                              <button
-                                onClick={() => setUserLiveShowFanClubModal(true)}
-                                className="text-[8px] font-black text-pink-400 hover:text-pink-300 flex items-center space-x-1 uppercase tracking-wider font-mono bg-transparent"
-                              >
-                                👥 Fan Club
-                              </button>
-                            </div>
 
                             {/* DOUBLE TAP FLOATING HEARTS GENERATOR OVERLAY */}
                             {doubleTapHearts.map(heart => (
