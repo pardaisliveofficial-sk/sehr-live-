@@ -3906,58 +3906,15 @@ export default function App() {
     }).catch(err => console.error("Error synchronizing user to backend:", err));
   }, [user]);
 
-  // Periodic simulated user chats & countdown timers
+  // Real-time synchronization of comments and audience counts for the viewer in live-room
   useEffect(() => {
-    const chatInterval = setInterval(() => {
-      if (clientView === "live-room" && activeHost.isLive) {
-        // Randomly pick a message from pool
-        const randomIndex = Math.floor(Math.random() * STATIC_COMMENTS_POOL.length);
-        const text = STATIC_COMMENTS_POOL[randomIndex];
-        const randomUsers = ["Sana_Princess", "Lahori_Gabru", "Diamond_Collector", "Zain_Fan_99", "Alpha_Support", "VIP_King"];
-        const randomUser = randomUsers[Math.floor(Math.random() * randomUsers.length)];
-        const randomVip = Math.random() > 0.7 ? Math.floor(Math.random() * 3) + 1 : 0;
-        const randomLevel = Math.floor(Math.random() * 40) + 1;
-
-        const newMsg: ChatMessage = {
-          id: Date.now().toString(),
-          username: randomUser,
-          message: text,
-          vipLevel: randomVip,
-          userLevel: randomLevel,
-          isSystem: false,
-          isFlagged: false,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-
-        // If the message contains restriction flags, let's flag it retrospectively for Admin monitoring
-        const checkFlagged = text.toLowerCase().includes("stupid") || text.toLowerCase().includes("scam") || text.toLowerCase().includes("win free");
-
-        if (checkFlagged) {
-          newMsg.isFlagged = true;
-          newMsg.flagReason = "Restricted keyword or link";
-          // Add to admin mod logs
-          setModerationLogs(prev => [
-            { id: Date.now().toString(), user: randomUser, text, flag: "Auto Content Filter Flag", action: "Flagged" },
-            ...prev
-          ]);
-        }
-
-        setChatMessages(prev => [...prev, newMsg]);
-        setViewersCount(prev => prev + Math.floor(Math.random() * 10) - 4);
-
-        // 45% chance of a new viewer joining when chat messages tick
-        if (Math.random() < 0.45) {
-          const joinerNames = ["Saif_Ali_VIP", "Malik_Sheraz_40", "Raja_G_Level40", "Ayesha_Gull", "Sardar_Sb_VIP", "Awais_King", "Princess_Zara", "Malik_Sb", "Shahid_Afridi_Fan", "Aadi_G", "Hassan_Vip"];
-          const name = joinerNames[Math.floor(Math.random() * joinerNames.length)];
-          const lvl = Math.floor(Math.random() * 45) + 5;
-          const vip = Math.random() > 0.65 ? Math.floor(Math.random() * 3) + 1 : 0;
-          triggerJoinNotif(name, lvl, vip);
-        }
+    if (clientView === "live-room" && activeHost) {
+      if (Array.isArray(activeHost.comments)) {
+        setChatMessages(activeHost.comments);
       }
-    }, 8000);
-
-    return () => clearInterval(chatInterval);
-  }, [clientView, activeHost]);
+      setViewersCount(activeHost.realViewerCount || 0);
+    }
+  }, [clientView, activeHost?.comments, activeHost?.realViewerCount]);
 
   // PK Battle Score Timer countdown
   useEffect(() => {
@@ -4001,134 +3958,33 @@ export default function App() {
     return () => clearInterval(timerInterval);
   }, [clientView, userLiveShowSummary]);
 
-  // User's Solo Live viewer activity simulation
+  // Synchronize broadcaster's live state (viewers list, comments list, and other stats)
+  // directly from the backend live session database in real time.
   useEffect(() => {
-    let activityInterval: NodeJS.Timeout;
-    if (clientView === "user-live" && !userLiveShowSummary) {
-      activityInterval = setInterval(() => {
-        // Randomly choose viewer activity event
-        const rand = Math.random();
-        
-        const simulatedViewers = [
-          { name: "Alina_Malik", vip: 1, lvl: 15 },
-          { name: "Siddique_bhai", vip: 0, lvl: 8 },
-          { name: "Pak_Turk_Dost", vip: 0, lvl: 22 },
-          { name: "Karachi_King", vip: 2, lvl: 35 },
-          { name: "Sufi_Saeed", vip: 0, lvl: 12 },
-          { name: "Zain_Fan_99", vip: 0, lvl: 5 },
-          { name: "Lahori_Gabru", vip: 1, lvl: 19 },
-          { name: "Aisha_Khan", vip: 0, lvl: 14 },
-          { name: "Sana_Khan", vip: 1, lvl: 18 },
-          { name: "DJ_Sam", vip: 0, lvl: 25 }
-        ];
-
-        const randomViewer = simulatedViewers[Math.floor(Math.random() * simulatedViewers.length)];
-
-        if (rand < 0.55) {
-          // 55% chance: Comment
-          const simulatedComments = [
-            "Assalam o Alaikum host! Kaise ho? 🇵🇰",
-            "Very nice live streaming, keep it up!",
-            "Apka setup boht accha hai bro. 🎙️",
-            "Support standard max! Syed Team is best! 🏆",
-            "MashaAllah host, you look so nice today!",
-            "Ap kahan se live ho?",
-            "Greetings from Islamabad! ❤️✨",
-            "Gift shower coming soon, stay tuned! 🔥🎁",
-            "Please say my name once! Big fan!",
-            "Aapki voice main boht hi sukoon hai."
-          ];
-          const randomComment = simulatedComments[Math.floor(Math.random() * simulatedComments.length)];
-          
-          setUserLiveMessages(prev => [
-            ...prev,
-            {
-              id: "ul-msg-" + Date.now(),
-              username: randomViewer.name,
-              message: randomComment,
-              vipLevel: randomViewer.vip,
-              userLevel: randomViewer.lvl,
-              isSystem: false,
-              isFlagged: false,
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    if (clientView !== "user-live" || userLiveShowSummary) return;
+    const interval = setInterval(() => {
+      const hostId = `h-${user.uniqueId || "sehr_1001"}`;
+      fetch("/api/v1/hosts")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            const myHost = data.find((h: any) => h.id === hostId);
+            if (myHost) {
+              setUserLiveViewers(myHost.realViewerCount || 0);
+              if (Array.isArray(myHost.connectedViewers)) {
+                setUserLiveViewerList(myHost.connectedViewers);
+              }
+              if (Array.isArray(myHost.comments)) {
+                setUserLiveMessages(myHost.comments);
+              }
             }
-          ]);
-
-          // Likes tap fluctuation
-          setUserLiveLikes(prev => prev + Math.floor(Math.random() * 25) + 5);
-        } else if (rand < 0.8) {
-          // 25% chance: Gift sent!
-          const giftsPool = [
-            { name: "Rose 🌹", cost: 10, icon: "🌹" },
-            { name: "Heart ❤️", cost: 50, icon: "❤️" },
-            { name: "Crown 👑", cost: 250, icon: "👑" },
-            { name: "Sports Car 🏎️", cost: 1000, icon: "🏎️" }
-          ];
-          const randomGift = giftsPool[Math.floor(Math.random() * giftsPool.length)];
-
-          // Permanent balance update: credit users diamonds for gift value received!
-          const earnAmt = randomGift.cost;
-          
-          setUserLiveCoinsEarned(prev => prev + earnAmt);
-          setUserLiveMessages(prev => [
-            ...prev,
-            {
-              id: "ul-gift-" + Date.now(),
-              username: randomViewer.name,
-              message: `sent you [${randomGift.name} ${randomGift.icon}]! 🎁`,
-              vipLevel: randomViewer.vip,
-              userLevel: randomViewer.lvl,
-              isSystem: true,
-              isFlagged: false,
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            }
-          ]);
-
-          // Add to overall user coin balance
-          setUser(prev => ({
-            ...prev,
-            coins: prev.coins + Math.floor(earnAmt * 0.5) // give them 50% coins cash out bonus too!
-          }));
-
-          // Trigger screen animations for large gifts
-          if (randomGift.cost >= 250) {
-            const giftObj: Gift = {
-              id: "g-simulated-" + Date.now(),
-              name: randomGift.name,
-              icon: randomGift.icon,
-              cost: randomGift.cost,
-              color: "from-yellow-400 to-[#ff007f]",
-              animationClass: "animate-bounce",
-              type: randomGift.cost >= 1000 ? GiftType.THREE_D : GiftType.LUXURY
-            };
-            setLuxuryGiftActive(giftObj);
-            setTimeout(() => setLuxuryGiftActive(null), 3500);
           }
+        })
+        .catch(err => console.error("Error synchronizing active broadcaster stream stats from backend:", err));
+    }, 2000);
 
-          // Double tap like boost
-          setUserLiveLikes(prev => prev + Math.floor(randomGift.cost * 1.5));
-        } else {
-          // 20% chance: User joined stream
-          setUserLiveMessages(prev => [
-            ...prev,
-            {
-              id: "ul-join-" + Date.now(),
-              username: randomViewer.name,
-              message: "joined your stream! 👋",
-              vipLevel: randomViewer.vip,
-              userLevel: randomViewer.lvl,
-              isSystem: true,
-              isFlagged: false,
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            }
-          ]);
-          setUserLiveViewers(prev => prev + 1);
-          triggerJoinNotif(randomViewer.name, randomViewer.lvl, randomViewer.vip);
-        }
-      }, 3500);
-    }
-    return () => clearInterval(activityInterval);
-  }, [clientView, userLiveShowSummary]);
+    return () => clearInterval(interval);
+  }, [clientView, userLiveShowSummary, user.uniqueId]);
 
   // User PK battle dynamic ticking & score fluctuation
   useEffect(() => {
@@ -4916,45 +4772,15 @@ export default function App() {
 
   const actuallyGoLive = () => {
     setClientView("user-live");
-    setUserLiveDuration(32 * 60 + 45); // Set to 00:32:45 matching the reference image!
-    setUserLiveViewers(8700); // Set to 8.7K matching the reference image!
-    setUserLiveCoinsEarned(12400);
-    setUserLiveLikes(125400);
+    setUserLiveDuration(0); 
+    setUserLiveViewers(0); 
+    setUserLiveCoinsEarned(0);
+    setUserLiveLikes(0);
     setUserLiveMessages([
       {
-        id: "ul-ref-1",
-        username: "Ali Raza",
-        message: "Beautiful smile! 💕",
-        vipLevel: 0,
-        userLevel: 25,
-        isSystem: false,
-        isFlagged: false,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      },
-      {
-        id: "ul-ref-2",
-        username: "Hassan",
-        message: "kanwal jani big fan ❤️",
-        vipLevel: 0,
-        userLevel: 18,
-        isSystem: false,
-        isFlagged: false,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      },
-      {
-        id: "ul-ref-3",
-        username: "Noor",
-        message: "Nice lighting 😊",
-        vipLevel: 0,
-        userLevel: 12,
-        isSystem: false,
-        isFlagged: false,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      },
-      {
-        id: "ul-ref-4",
-        username: "Usman Gujjar",
-        message: "followed the host",
+        id: "ul-system-1",
+        username: "System",
+        message: `✨ Welcome to your live stream, ${user.username}! Real-time audience chat and viewers will appear here. ✨`,
         vipLevel: 0,
         userLevel: 0,
         isSystem: true,
@@ -4974,13 +4800,25 @@ export default function App() {
       name: user.username || "Sehr_User",
       role: "Broadcaster",
       avatar: user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
-      viewers: 8700,
-      likes: 125400,
+      viewers: 0,
+      likes: 0,
       category: prepLiveCategory === "Music" ? "audio" : (prepLiveCategory === "PK" ? "pk" : "video"),
       isLive: true,
       statusText: prepLiveTitle || "Live Stream Active",
       bio: user.bio || "Senior Live Stream Creator on Sehr Live! 🌟",
-      agencyId: user.agencyId || ""
+      agencyId: user.agencyId || "",
+      liveSessionId: `session-${Date.now()}`,
+      channelName: hostId,
+      hostUid: user.uniqueId,
+      hostUsername: user.username,
+      hostAvatar: user.avatar,
+      hostLevel: user.userLevel || 1,
+      hostVIPStatus: user.vipLevel > 0 ? "VIP" : "Regular",
+      startedAt: new Date().toISOString(),
+      status: "live",
+      realViewerCount: 0,
+      connectedViewers: [],
+      comments: []
     };
 
     fetch("/api/v1/hosts", {
@@ -20553,44 +20391,50 @@ export default function App() {
             </div>
 
             <div className="mt-4 max-h-[300px] overflow-y-auto space-y-2 pr-1">
-              {[
-                { name: "Saif_Ali_VIP", level: 40, vip: 2, avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=50&q=80", tag: "Contributor 💎" },
-                { name: "Malik_Sheraz_40", level: 35, vip: 1, avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=50&q=80", tag: "Elite 🦁" },
-                { name: "Sardar_Sb_VIP", level: 50, vip: 3, avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=50&q=80", tag: "Whale 👑" },
-                { name: "Alina_Malik", level: 25, vip: 0, avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=50&q=80", tag: "Viewer 👋" },
-                { name: "Zain_Fan_99", level: 18, vip: 0, avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=50&q=80", tag: "Moderator 🛡️" },
-                { name: "Awais_King", level: 42, vip: 2, avatar: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=50&q=80", tag: "Supporter 🔥" }
-              ].map((v, i) => (
-                <div
-                  key={i}
-                  onClick={() => {
-                    setShowActiveViewersModal(false);
-                    setViewerMenuUser({
-                      username: v.name,
-                      userLevel: v.level,
-                      vipLevel: v.vip
-                    });
-                  }}
-                  className="flex items-center justify-between p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 cursor-pointer hover:border-purple-500/30 transition-all group text-left"
-                >
-                  <div className="flex items-center space-x-2.5 bg-transparent">
-                    <img src={v.avatar} className="w-8 h-8 rounded-full object-cover border border-white/10 shrink-0" />
-                    <div className="bg-transparent">
-                      <div className="flex items-center space-x-1 bg-transparent">
-                        <span className="text-[10px] font-black text-white group-hover:text-pink-400 transition-colors">@{v.name}</span>
-                        {v.vip > 0 && (
-                          <span className="text-[6.5px] bg-amber-400 text-amber-950 px-1 py-0.2 rounded font-black font-mono">👑 V{v.vip}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center space-x-1.5 mt-0.5 bg-transparent">
-                        <span className="text-[7.5px] bg-purple-600 text-white font-mono font-black px-1 rounded">Lv.{v.level}</span>
-                        <span className="text-[7.5px] text-gray-400 font-mono">{v.tag}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-[8px] text-[#66fcf1] opacity-0 group-hover:opacity-100 transition-opacity font-bold uppercase tracking-wider font-mono">Control ⚙️</span>
+              {(clientView === "user-live" ? userLiveViewerList : (activeHost?.connectedViewers || [])).length === 0 ? (
+                <div className="text-center py-6 text-gray-500 text-[10px]">
+                  No active viewers in this room yet.
                 </div>
-              ))}
+              ) : (
+                (clientView === "user-live" ? userLiveViewerList : (activeHost?.connectedViewers || [])).map((v: any, i: number) => {
+                  const name = v.username || "User";
+                  const level = v.level || v.userLevel || 1;
+                  const vip = v.vipLevel || v.vip || 0;
+                  const avatar = v.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=50&h=50&q=80";
+                  const tag = vip > 0 ? `VIP ${vip} 👑` : (level >= 30 ? "Elite 🦁" : "Viewer 👋");
+                  return (
+                    <div
+                      key={i}
+                      onClick={() => {
+                        setShowActiveViewersModal(false);
+                        setViewerMenuUser({
+                          username: name,
+                          userLevel: level,
+                          vipLevel: vip
+                        });
+                      }}
+                      className="flex items-center justify-between p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 cursor-pointer hover:border-purple-500/30 transition-all group text-left"
+                    >
+                      <div className="flex items-center space-x-2.5 bg-transparent">
+                        <img src={avatar} className="w-8 h-8 rounded-full object-cover border border-white/10 shrink-0" referrerPolicy="no-referrer" />
+                        <div className="bg-transparent">
+                          <div className="flex items-center space-x-1 bg-transparent">
+                            <span className="text-[10px] font-black text-white group-hover:text-pink-400 transition-colors">@{name}</span>
+                            {vip > 0 && (
+                              <span className="text-[6.5px] bg-amber-400 text-amber-950 px-1 py-0.2 rounded font-black font-mono">👑 V{vip}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center space-x-1.5 mt-0.5 bg-transparent">
+                            <span className="text-[7.5px] bg-purple-600 text-white font-mono font-black px-1 rounded">Lv.{level}</span>
+                            <span className="text-[7.5px] text-gray-400 font-mono">{tag}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-[8px] text-[#66fcf1] opacity-0 group-hover:opacity-100 transition-opacity font-bold uppercase tracking-wider font-mono">Control ⚙️</span>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>

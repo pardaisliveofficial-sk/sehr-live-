@@ -711,6 +711,88 @@ app.delete("/api/v1/hosts/:id", (req, res) => {
   res.json({ message: "Host deleted successfully" });
 });
 
+// Real-time viewer presence & comments endpoints
+app.post("/api/v1/hosts/:id/join", (req, res) => {
+  const { id } = req.params;
+  const { userId, username, avatar, level, vipLevel } = req.body;
+  if (!username) {
+    return res.status(400).json({ error: "Username is required to join" });
+  }
+  const index = dbData.hosts.findIndex((h: any) => h.id === id);
+  if (index !== -1) {
+    const host = dbData.hosts[index];
+    if (!host.connectedViewers) {
+      host.connectedViewers = [];
+    }
+    // Avoid duplicates
+    if (!host.connectedViewers.some((v: any) => v.username === username)) {
+      host.connectedViewers.push({ userId: userId || username, username, avatar: avatar || "", level: level || 1, vipLevel: vipLevel || 0 });
+    }
+    host.viewers = host.connectedViewers.length;
+    host.realViewerCount = host.connectedViewers.length;
+    saveDatabase();
+    syncDocument("hosts", id, host);
+    res.json(host);
+  } else {
+    res.status(404).json({ error: "Host not found" });
+  }
+});
+
+app.post("/api/v1/hosts/:id/leave", (req, res) => {
+  const { id } = req.params;
+  const { username } = req.body;
+  if (!username) {
+    return res.status(400).json({ error: "Username is required to leave" });
+  }
+  const index = dbData.hosts.findIndex((h: any) => h.id === id);
+  if (index !== -1) {
+    const host = dbData.hosts[index];
+    if (host.connectedViewers) {
+      host.connectedViewers = host.connectedViewers.filter((v: any) => v.username !== username);
+    } else {
+      host.connectedViewers = [];
+    }
+    host.viewers = host.connectedViewers.length;
+    host.realViewerCount = host.connectedViewers.length;
+    saveDatabase();
+    syncDocument("hosts", id, host);
+    res.json(host);
+  } else {
+    res.status(404).json({ error: "Host not found" });
+  }
+});
+
+app.post("/api/v1/hosts/:id/comments", (req, res) => {
+  const { id } = req.params;
+  const { message, username, vipLevel, userLevel, isSystem, avatar } = req.body;
+  if (!message || !username) {
+    return res.status(400).json({ error: "Username and message are required" });
+  }
+  const index = dbData.hosts.findIndex((h: any) => h.id === id);
+  if (index !== -1) {
+    const host = dbData.hosts[index];
+    if (!host.comments) {
+      host.comments = [];
+    }
+    const newComment = {
+      id: `c-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      username,
+      message,
+      vipLevel: vipLevel || 0,
+      userLevel: userLevel || 1,
+      isSystem: !!isSystem,
+      avatar: avatar || "",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    host.comments.push(newComment);
+    saveDatabase();
+    syncDocument("hosts", id, host);
+    res.status(201).json(host.comments);
+  } else {
+    res.status(404).json({ error: "Host not found" });
+  }
+});
+
 // Families endpoints
 app.get("/api/v1/families", (req, res) => {
   res.json(dbData.families);
