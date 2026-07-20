@@ -1844,9 +1844,18 @@ export default function App() {
   // Party System states
   const [partiesList, setPartiesList] = useState<any[]>([]);
   const [activePartyId, setActivePartyId] = useState<string | null>(null);
+  const [promotionBanners, setPromotionBanners] = useState<any[]>([]);
+  const [currentBannerIndex, setCurrentBannerIndex] = useState<number>(0);
+  const [invitedToSeat, setInvitedToSeat] = useState<{ partyId: string; seatId: number; hostName: string } | null>(null);
   const [showCreatePartyModal, setShowCreatePartyModal] = useState<boolean>(false);
   const [showCreateActionSheet, setShowCreateActionSheet] = useState<boolean>(false);
   const [partyCategory, setPartyCategory] = useState<string>("all");
+  
+  // Seating and Controls states
+  const [activeSeatMenu, setActiveSeatMenu] = useState<{ seatId: number; occupantName: string | null } | null>(null);
+  const [showRequestsSheet, setShowRequestsSheet] = useState<boolean>(false);
+  const [showInviteSheetForSeat, setShowInviteSheetForSeat] = useState<number | null>(null);
+  const [giftTargetUser, setGiftTargetUser] = useState<string | null>(null);
   
   // Create Party Form states
   const [partyFormName, setPartyFormName] = useState<string>("");
@@ -3665,6 +3674,16 @@ export default function App() {
   // Initial mount: Fetch user profile, live streams, and gifts list from the Express backend APIs
   useEffect(() => {
     const fetchInitial = () => {
+      // 0. Fetch global config banners
+      fetch("/api/v1/config")
+        .then(res => res.json())
+        .then(data => {
+          if (data && Array.isArray(data.banners)) {
+            setPromotionBanners(data.banners.filter((b: any) => b.active !== false));
+          }
+        })
+        .catch(err => console.error("Error loading configs:", err));
+
       // 1. Fetch user profile
       fetch("/api/v1/user")
         .then(res => {
@@ -3816,6 +3835,15 @@ export default function App() {
 
     // Polling interval for real-time synchronization with Admin dashboard actions (every 3 seconds)
     const pollInterval = setInterval(() => {
+      fetch("/api/v1/config")
+        .then(res => res.json())
+        .then(data => {
+          if (data && Array.isArray(data.banners)) {
+            setPromotionBanners(data.banners.filter((b: any) => b.active !== false));
+          }
+        })
+        .catch(err => console.error("Error polling configs:", err));
+
       fetch("/api/v1/parties")
         .then(res => res.json())
         .then(data => {
@@ -3934,6 +3962,15 @@ export default function App() {
       clearInterval(pollInterval);
     };
   }, []);
+
+  // Automatic Promo Banner Slider auto-advance interval
+  useEffect(() => {
+    if (promotionBanners.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentBannerIndex(prev => (prev + 1) % promotionBanners.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [promotionBanners.length]);
 
   useEffect(() => {
     localStorage.setItem("sehr_user_profile", JSON.stringify(user));
@@ -6632,98 +6669,61 @@ export default function App() {
                     {clientView === "feed" && (
                       <div className="flex-1 scroll-view-y p-3 pb-4 space-y-3">
                         
-                        {/* 📖 24-HOUR STYLISH STORIES TRAY */}
-                        <div className="bg-[#12121a]/90 border border-[#303040]/30 rounded-xl p-3 space-y-2 shadow-lg text-left no-double-tap">
-                          <div className="flex items-center justify-between">
-                            <h5 className="text-[10px] font-black uppercase text-pink-500 tracking-wider font-mono flex items-center space-x-1">
-                              <Clock className="w-3.5 h-3.5 animate-pulse text-[#ff007f]" />
-                              <span>Sehr 24h Stories</span>
-                            </h5>
-                            <span className="text-[8px] text-gray-500 font-mono bg-transparent">24 Hours Active</span>
-                          </div>
-                          
-                          <div className="flex items-center space-x-3 overflow-x-auto pb-1 scrollbar-thin bg-transparent">
-                            {/* 1. CURRENT USER STORY BUBBLE */}
-                            {(() => {
-                              const myStories = stories.filter(s => s.username === user.username);
-                              const hasMyStory = myStories.length > 0;
-                              return (
-                                <div className="flex flex-col items-center shrink-0 space-y-1 relative bg-transparent">
-                                  <div className="relative bg-transparent">
-                                    {/* Avatar story circle */}
-                                    <div 
-                                      onClick={() => {
-                                        if (hasMyStory) {
-                                          const idx = stories.findIndex(s => s.username === user.username);
-                                          if (idx !== -1) {
-                                            setActiveStoryIndex(idx);
-                                            setShowStoryViewerModal(true);
-                                          }
-                                        } else {
-                                          setShowCreateStoryModal(true);
-                                        }
-                                      }}
-                                      className={`w-14 h-14 rounded-full p-[2px] transition-all cursor-pointer ${
-                                        hasMyStory 
-                                          ? "bg-gradient-to-tr from-[#ff007f] via-[#7b2cbf] to-[#00f5ff] animate-pulse" 
-                                          : "bg-[#222230] border border-white/10"
-                                      }`}
-                                    >
-                                      <img src={user.avatar} className="w-full h-full rounded-full object-cover" alt="My avatar" />
-                                    </div>
-
-                                    {/* Add Story (+) button */}
-                                    <button 
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setShowCreateStoryModal(true);
-                                      }}
-                                      className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-gradient-to-r from-[#ff007f] to-purple-600 border border-[#12121a] text-white flex items-center justify-center hover:scale-110 active:scale-90 transition-all shadow"
-                                    >
-                                      <Plus className="w-3 h-3 text-white font-bold" />
-                                    </button>
-                                  </div>
-                                  <span className="text-[8px] font-bold text-gray-300 bg-transparent">Your Story</span>
+                        {/* 🎪 AUTO-PLAYING ADVERTISING PROMO BANNER CAROUSEL */}
+                        {(() => {
+                          const activeBanners = promotionBanners.length > 0 ? promotionBanners : [
+                            { id: "b-1", title: "🇵🇰 PAKISTAN DAY MEGA STREAM FESTIVAL", image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80" },
+                            { id: "b-2", title: "👑 SAHR TALENT RECRUITMENT PROGRAM", image: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=80" },
+                            { id: "b-3", title: "⚡ OFFICIAL PK BATTLE TOURNAMENT LIVE NOW", image: "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80" },
+                            { id: "b-4", title: "🎙️ AUDIO LOUNGE TALENT CARNIVAL", image: "https://images.unsplash.com/photo-1516280440614-37939bbacd6a?auto=format&fit=crop&w=800&q=80" },
+                            { id: "b-5", title: "💰 COIN AGENT PARTNER REWARDS", image: "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&w=800&q=80" }
+                          ];
+                          const banner = activeBanners[currentBannerIndex % activeBanners.length];
+                          if (!banner) return null;
+                          return (
+                            <div className="relative rounded-xl overflow-hidden shadow-lg h-32 group select-none transition-all duration-500 border border-[#303040]/30">
+                              <img src={banner.image} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt={banner.title} />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent p-3 flex flex-col justify-between">
+                                <div className="flex items-center justify-between bg-transparent">
+                                  <span className="text-[7.5px] bg-[#ff007f] text-white font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Party Event</span>
+                                  <span className="text-[7.5px] font-mono text-gray-400 bg-black/40 px-1.5 py-0.5 rounded-md">Slide { (currentBannerIndex % activeBanners.length) + 1 } of { activeBanners.length }</span>
                                 </div>
-                              );
-                            })()}
-
-                            {/* 2. OTHER USERS STORIES */}
-                            {stories.map((story, index) => {
-                              if (story.username === user.username) return null;
-                              
-                              return (
-                                <div 
-                                  key={story.id} 
-                                  onClick={() => {
-                                    setActiveStoryIndex(index);
-                                    setShowStoryViewerModal(true);
-                                  }}
-                                  className="flex flex-col items-center shrink-0 space-y-1 cursor-pointer group bg-transparent"
-                                >
-                                  <div className="w-14 h-14 rounded-full p-[2px] bg-gradient-to-tr from-[#ff007f] via-[#7b2cbf] to-amber-400 group-hover:scale-105 transition-all bg-transparent">
-                                    <div className="w-full h-full rounded-full overflow-hidden border border-[#12121a] bg-transparent">
-                                      <img src={story.avatar} className="w-full h-full object-cover" alt={story.fullName} />
-                                    </div>
-                                  </div>
-                                  <span className="text-[8px] font-semibold text-gray-400 group-hover:text-white truncate max-w-[65px] bg-transparent">
-                                    {story.fullName}
-                                  </span>
+                                <div className="bg-transparent text-left">
+                                  <h4 className="text-[11px] font-black text-white uppercase tracking-wider drop-shadow-md leading-tight">{banner.title}</h4>
+                                  <p className="text-[8.5px] text-pink-100 font-sans mt-0.5">Participate & win big coin drops in active 12-seat room audio leagues!</p>
                                 </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                         {/* Interactive Banner */}
-                        <div className="bg-gradient-to-r from-[#7b2cbf] to-[#ff007f] rounded-xl p-3 relative overflow-hidden shadow-lg text-left">
-                          <div className="relative z-10 bg-transparent">
-                            <span className="text-[9px] bg-white/20 text-white font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Party Event</span>
-                            <h4 className="text-xs font-black text-white mt-1 uppercase">Sahr Live Audio Lounge Carnival 🎙️</h4>
-                            <p className="text-[9px] text-purple-100">Create a 12-seat room & invite friends to win free coin drops!</p>
-                          </div>
-                          <Crown className="w-16 h-16 text-white/10 absolute -right-2 -bottom-2 transform rotate-12 bg-transparent" />
-                        </div>
+                              </div>
+                              {/* Left / Right slider controls */}
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCurrentBannerIndex(prev => (prev - 1 + activeBanners.length) % activeBanners.length);
+                                }}
+                                className="absolute left-1 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-black/60 border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-[9px]"
+                              >
+                                ◀
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCurrentBannerIndex(prev => (prev + 1) % activeBanners.length);
+                                }}
+                                className="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-black/60 border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-[9px]"
+                              >
+                                ▶
+                              </button>
+                              {/* Dots navigation */}
+                              <div className="absolute bottom-1 right-2 flex space-x-1 bg-transparent">
+                                {activeBanners.map((_, idx) => (
+                                  <span 
+                                    key={idx} 
+                                    className={`w-1 h-1 rounded-full transition-all ${idx === (currentBannerIndex % activeBanners.length) ? 'bg-[#ff007f] w-2' : 'bg-white/40'}`}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         {/* Quick Party Actions Panel */}
                         <div className="grid grid-cols-2 gap-2">
@@ -6895,6 +6895,90 @@ export default function App() {
                             <span>Go Live</span>
                             <span className="w-1.5 h-1.5 bg-red-600 rounded-full inline-block animate-ping"></span>
                           </button>
+                        </div>
+
+                        {/* 📖 24-HOUR STYLISH STORIES TRAY (MOVED TO STREAM DISCOVERY PAGE) */}
+                        <div className="bg-[#12121a]/90 border border-[#303040]/30 rounded-xl p-3 space-y-2 shadow-lg text-left no-double-tap">
+                          <div className="flex items-center justify-between">
+                            <h5 className="text-[10px] font-black uppercase text-pink-500 tracking-wider font-mono flex items-center space-x-1">
+                              <Clock className="w-3.5 h-3.5 animate-pulse text-[#ff007f]" />
+                              <span>Sehr 24h Stories</span>
+                            </h5>
+                            <span className="text-[8px] text-gray-500 font-mono bg-transparent">24 Hours Active</span>
+                          </div>
+                          
+                          <div className="flex items-center space-x-3 overflow-x-auto pb-1 scrollbar-thin bg-transparent">
+                            {/* 1. CURRENT USER STORY BUBBLE */}
+                            {(() => {
+                              const myStories = stories.filter(s => s.username === user.username);
+                              const hasMyStory = myStories.length > 0;
+                              return (
+                                <div className="flex flex-col items-center shrink-0 space-y-1 relative bg-transparent">
+                                  <div className="relative bg-transparent">
+                                    {/* Avatar story circle */}
+                                    <div 
+                                      onClick={() => {
+                                        if (hasMyStory) {
+                                          const idx = stories.findIndex(s => s.username === user.username);
+                                          if (idx !== -1) {
+                                            setActiveStoryIndex(idx);
+                                            setShowStoryViewerModal(true);
+                                          }
+                                        } else {
+                                          setShowCreateStoryModal(true);
+                                        }
+                                      }}
+                                      className={`w-14 h-14 rounded-full p-[2px] transition-all cursor-pointer ${
+                                        hasMyStory 
+                                          ? "bg-gradient-to-tr from-[#ff007f] via-[#7b2cbf] to-[#00f5ff] animate-pulse" 
+                                          : "bg-[#222230] border border-white/10"
+                                      }`}
+                                    >
+                                      <img src={user.avatar} className="w-full h-full rounded-full object-cover" alt="My avatar" />
+                                    </div>
+
+                                    {/* Add Story (+) button */}
+                                    <button 
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowCreateStoryModal(true);
+                                      }}
+                                      className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-gradient-to-r from-[#ff007f] to-purple-600 border border-[#12121a] text-white flex items-center justify-center hover:scale-110 active:scale-90 transition-all shadow"
+                                    >
+                                      <Plus className="w-3 h-3 text-white font-bold" />
+                                    </button>
+                                  </div>
+                                  <span className="text-[8px] font-bold text-gray-300 bg-transparent">Your Story</span>
+                                </div>
+                              );
+                            })()}
+
+                            {/* 2. OTHER USERS STORIES */}
+                            {stories.map((story, index) => {
+                              if (story.username === user.username) return null;
+                              
+                              return (
+                                <div 
+                                  key={story.id} 
+                                  onClick={() => {
+                                    setActiveStoryIndex(index);
+                                    setShowStoryViewerModal(true);
+                                  }}
+                                  className="flex flex-col items-center shrink-0 space-y-1 cursor-pointer group bg-transparent"
+                                >
+                                  <div className="w-14 h-14 rounded-full p-[2px] bg-gradient-to-tr from-[#ff007f] via-[#7b2cbf] to-amber-400 group-hover:scale-105 transition-all bg-transparent">
+                                    <div className="w-full h-full rounded-full overflow-hidden border border-[#12121a] bg-transparent">
+                                      <img src={story.avatar} className="w-full h-full object-cover" alt={story.fullName} />
+                                    </div>
+                                  </div>
+                                  <span className="text-[8px] font-semibold text-gray-400 group-hover:text-white truncate max-w-[65px] bg-transparent">
+                                    {story.fullName}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
 
                         {/* Search bar & Tabs */}
@@ -7129,6 +7213,796 @@ export default function App() {
                         })()}
                       </div>
                     )}
+
+                    {/* ===================================================================== */}
+                    {/* VIEW 1.8: 12-SEAT AUDIO PARTY ROOM (AUDIO LOUNGE & SEATING CONTROL)  */}
+                    {/* ===================================================================== */}
+                    {clientView === "party-room" && (() => {
+                      const party = partiesList.find(p => p.id === activePartyId);
+                      if (!party) {
+                        return (
+                          <div className="flex-1 flex flex-col items-center justify-center bg-[#090412] text-white p-6 space-y-4">
+                            <span className="text-3xl animate-spin">🎙️</span>
+                            <p className="text-xs text-gray-400 font-mono">Synchronizing Audio Lounge...</p>
+                            <button
+                              onClick={() => setClientView("feed")}
+                              className="bg-pink-600 px-4 py-2 rounded-xl text-xs font-bold font-mono"
+                            >
+                              Exit Room
+                            </button>
+                          </div>
+                        );
+                      }
+
+                      const isHostOfRoom = party.hostUsername === user.username;
+                      const mySeatedSeat = party.seats ? party.seats.find((s: any) => s.name === user.username) : null;
+                      const activeInvite = party.invites?.find((i: any) => i.username === user.username);
+                      const activeRequests = party.requests || [];
+                      const activeInvites = party.invites || [];
+
+                      // Handle typing comments
+                      const handleSendPartyComment = async (msgText: string) => {
+                        if (!msgText.trim()) return;
+                        try {
+                          const res = await fetch(`/api/v1/parties/${party.id}/comments`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              message: msgText,
+                              username: user.username,
+                              avatar: user.avatar,
+                              vipLevel: user.vipLevel || 0,
+                              userLevel: user.level || 1,
+                              isSystem: false
+                            })
+                          });
+                          const data = await res.json();
+                          if (Array.isArray(data)) {
+                            setPartiesList(prev => prev.map(p => p.id === party.id ? { ...p, comments: data } : p));
+                          }
+                        } catch (err) {
+                          console.error("Error sending party comment:", err);
+                        }
+                      };
+
+                      // Handle seat invitation approvals / rejections
+                      const handleAcceptInvite = async (seatId: number) => {
+                        try {
+                          const res = await fetch(`/api/v1/parties/${party.id}/invites/${user.username}/accept`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ avatar: user.avatar })
+                          });
+                          const data = await res.json();
+                          if (data && !data.error) {
+                            setPartiesList(prev => prev.map(p => p.id === party.id ? data : p));
+                          }
+                        } catch (err) {
+                          console.error("Error accepting seat invitation:", err);
+                        }
+                      };
+
+                      const handleRejectInvite = async () => {
+                        try {
+                          const res = await fetch(`/api/v1/parties/${party.id}/invites/${user.username}/reject`, {
+                            method: "POST"
+                          });
+                          const data = await res.json();
+                          if (data && !data.error) {
+                            setPartiesList(prev => prev.map(p => p.id === party.id ? data : p));
+                          }
+                        } catch (err) {
+                          console.error("Error rejecting seat invitation:", err);
+                        }
+                      };
+
+                      // Request seat function
+                      const handleRequestSeat = async (seatId: number) => {
+                        try {
+                          const res = await fetch(`/api/v1/parties/${party.id}/requests`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ username: user.username, avatar: user.avatar, seatId })
+                          });
+                          const data = await res.json();
+                          if (data && !data.error) {
+                            setPartiesList(prev => prev.map(p => p.id === party.id ? data : p));
+                            alert(`Requested Seat ${seatId}! Wait for host approval.`);
+                          }
+                        } catch (err) {
+                          console.error("Error submitting seat request:", err);
+                        }
+                      };
+
+                      // Approve / Reject a request
+                      const handleApproveRequest = async (targetUser: string) => {
+                        try {
+                          const res = await fetch(`/api/v1/parties/${party.id}/requests/${targetUser}/approve`, {
+                            method: "POST"
+                          });
+                          const data = await res.json();
+                          if (data && !data.error) {
+                            setPartiesList(prev => prev.map(p => p.id === party.id ? data : p));
+                          }
+                        } catch (err) {
+                          console.error("Error approving request:", err);
+                        }
+                      };
+
+                      const handleRejectRequest = async (targetUser: string) => {
+                        try {
+                          const res = await fetch(`/api/v1/parties/${party.id}/requests/${targetUser}/reject`, {
+                            method: "POST"
+                          });
+                          const data = await res.json();
+                          if (data && !data.error) {
+                            setPartiesList(prev => prev.map(p => p.id === party.id ? data : p));
+                          }
+                        } catch (err) {
+                          console.error("Error rejecting request:", err);
+                        }
+                      };
+
+                      // Host-specific seating operations
+                      const handleHostMuteUser = async (seatId: number, isMuted: boolean) => {
+                        try {
+                          const res = await fetch(`/api/v1/parties/${party.id}/seats/mute-user`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ seatId, isMuted })
+                          });
+                          const data = await res.json();
+                          if (data && !data.error) {
+                            setPartiesList(prev => prev.map(p => p.id === party.id ? data : p));
+                          }
+                        } catch (err) {
+                          console.error("Error muting user:", err);
+                        }
+                      };
+
+                      const handleHostKickUser = async (seatId: number) => {
+                        try {
+                          const res = await fetch(`/api/v1/parties/${party.id}/seats/kick-user`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ seatId })
+                          });
+                          const data = await res.json();
+                          if (data && !data.error) {
+                            setPartiesList(prev => prev.map(p => p.id === party.id ? data : p));
+                          }
+                        } catch (err) {
+                          console.error("Error kicking user:", err);
+                        }
+                      };
+
+                      const handleHostBlockUser = async (targetUser: string) => {
+                        try {
+                          const res = await fetch(`/api/v1/parties/${party.id}/block-user`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ username: targetUser })
+                          });
+                          const data = await res.json();
+                          if (data && !data.error) {
+                            setPartiesList(prev => prev.map(p => p.id === party.id ? data : p));
+                            alert(`${targetUser} has been blocked and removed!`);
+                          }
+                        } catch (err) {
+                          console.error("Error blocking user:", err);
+                        }
+                      };
+
+                      // Send gift inside party room
+                      const handleSendPartyGift = async (recipient: string, giftId: string) => {
+                        const gift = giftsList.find(g => g.id === giftId);
+                        if (!gift) return;
+                        if (user.coins < gift.coins) {
+                          alert("Insufficient coins to purchase this gift! Recharge from Sahr Wallet.");
+                          return;
+                        }
+
+                        // Deduct coins locally and sync with user state
+                        setUser(prev => ({ ...prev, coins: prev.coins - gift.coins }));
+
+                        // Send gift transaction log
+                        const newTx: Transaction = {
+                          id: `GFT-${Date.now().toString().slice(-4)}`,
+                          type: "gift_sent",
+                          amount: gift.coins,
+                          currency: "coins",
+                          timestamp: new Date().toISOString().replace("T", " ").slice(0, 16),
+                          status: "Completed",
+                          details: `Sent ${gift.name} (${gift.coins} Coins) to ${recipient}`
+                        };
+                        setTransactions(prev => [newTx, ...prev]);
+
+                        // Post system message inside room comments
+                        try {
+                          const res = await fetch(`/api/v1/parties/${party.id}/comments`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              message: `🎁 sent a ${gift.name} to ${recipient}!`,
+                              username: user.username,
+                              avatar: user.avatar,
+                              vipLevel: user.vipLevel || 0,
+                              userLevel: user.level || 1,
+                              isSystem: true
+                            })
+                          });
+                          const data = await res.json();
+                          if (Array.isArray(data)) {
+                            setPartiesList(prev => prev.map(p => p.id === party.id ? { ...p, comments: data } : p));
+                          }
+                        } catch (err) {
+                          console.error("Error logging party gift comment:", err);
+                        }
+
+                        setGiftTargetUser(null);
+                        alert(`Sent ${gift.name} to ${recipient}! 🚀`);
+                      };
+
+                      // Click seat event handler
+                      const handleSeatClick = (seatId: number, occupantName: string | null) => {
+                        if (occupantName === user.username) {
+                          // Unseat yourself
+                          setActiveSeatMenu({ seatId, occupantName });
+                        } else if (occupantName) {
+                          // Seated by someone else
+                          setActiveSeatMenu({ seatId, occupantName });
+                        } else {
+                          // Empty seat clicked
+                          if (mySeatedSeat) {
+                            // Exchange seat prompt
+                            const confirmExchange = window.confirm(`Seat exchange? Empty Seat ${seatId} par move karna chahte hain?`);
+                            if (confirmExchange) {
+                              handlePartyLeaveSeat(party.id, mySeatedSeat.id).then(() => {
+                                handlePartyJoinSeat(party.id, seatId);
+                              });
+                            }
+                          } else {
+                            // Request or sit directly
+                            if (isHostOfRoom) {
+                              handlePartyJoinSeat(party.id, seatId);
+                            } else {
+                              const choice = window.confirm("Sit on this seat? Sit karne ke liye seat request send karein.");
+                              if (choice) {
+                                handleRequestSeat(seatId);
+                              }
+                            }
+                          }
+                        }
+                      };
+
+                      return (
+                        <div className="flex-1 flex flex-col justify-between bg-gradient-to-b from-[#0e0720] via-[#0a0414] to-[#040108] relative pb-4 select-none">
+                          {/* 👑 FLOATING HOST INVITATION TOAST BAR */}
+                          {activeInvite && (
+                            <div className="absolute top-14 inset-x-3 z-50 bg-[#12121a]/95 border-2 border-pink-500 rounded-2xl p-3 shadow-2xl flex items-center justify-between animate-slide-up text-left">
+                              <div className="bg-transparent space-y-1">
+                                <div className="flex items-center space-x-1.5 bg-transparent">
+                                  <span className="w-2 h-2 rounded-full bg-pink-500 animate-ping"></span>
+                                  <p className="text-[10px] font-black uppercase text-pink-500 font-mono tracking-wider">🎙️ Seat Invitation!</p>
+                                </div>
+                                <p className="text-[8.5px] text-gray-300 font-sans">Room host has invited you to take active mic **Seat {activeInvite.seatId}**.</p>
+                              </div>
+                              <div className="flex items-center space-x-2 shrink-0 bg-transparent">
+                                <button
+                                  onClick={() => handleAcceptInvite(activeInvite.seatId)}
+                                  className="bg-gradient-to-r from-pink-500 to-purple-600 text-white font-black text-[9px] uppercase px-3 py-1.5 rounded-lg active:scale-95 cursor-pointer shadow-md"
+                                >
+                                  Accept
+                                </button>
+                                <button
+                                  onClick={handleRejectInvite}
+                                  className="bg-[#222230] hover:bg-[#303040] text-gray-400 font-bold text-[9px] uppercase px-3 py-1.5 rounded-lg active:scale-95 cursor-pointer border border-white/5"
+                                >
+                                  Decline
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 🎵 ROOM HEADER INFO BOX */}
+                          <div className="flex items-center justify-between p-3 border-b border-white/5 bg-[#12121a]/60 backdrop-blur-md">
+                            <div className="flex items-center space-x-2.5 bg-transparent text-left max-w-[70%]">
+                              <img src={party.hostAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"} className="w-9 h-9 rounded-full object-cover border border-[#ff007f]" alt="Host" />
+                              <div className="bg-transparent leading-tight truncate">
+                                <h4 className="text-[11px] font-bold text-white uppercase truncate flex items-center space-x-1">
+                                  <span>{party.title}</span>
+                                  <span className="text-[7.5px] bg-[#ff007f] text-white px-1 py-0.5 rounded ml-1 tracking-wider uppercase font-black font-mono">LIVE LOUNGE</span>
+                                </h4>
+                                <p className="text-[8.5px] text-[#ff007f] font-mono mt-0.5">Host: @{party.hostUsername} • 🎙️ {party.category}</p>
+                              </div>
+                            </div>
+
+                            {/* Header Actions */}
+                            <div className="flex items-center space-x-2 bg-transparent shrink-0">
+                              {isHostOfRoom && (
+                                <button
+                                  onClick={() => setShowRequestsSheet(true)}
+                                  className="relative bg-[#20102a] border border-pink-500/30 hover:border-pink-500 p-1.5 rounded-xl text-pink-400 hover:text-pink-300 transition-all cursor-pointer flex items-center justify-center w-8 h-8 shadow-md"
+                                  title="Seat Join Requests"
+                                >
+                                  <span>🎙️</span>
+                                  {activeRequests.length > 0 && (
+                                    <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[7px] font-black rounded-full w-4 h-4 flex items-center justify-center border border-[#12121a]">
+                                      {activeRequests.length}
+                                    </span>
+                                  )}
+                                </button>
+                              )}
+                              
+                              <button
+                                onClick={() => {
+                                  if (isHostOfRoom) {
+                                    const confirmClose = window.confirm("Host Warning: Close or leave this party audio room?");
+                                    if (confirmClose) {
+                                      // Close party
+                                      fetch(`/api/v1/parties/${party.id}/close`, { method: "POST" }).then(() => {
+                                        setActivePartyId(null);
+                                        setClientView("feed");
+                                      });
+                                    }
+                                  } else {
+                                    handleLeaveParty(party.id);
+                                  }
+                                }}
+                                className="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-xl border border-white/10 transition-colors cursor-pointer flex items-center justify-center w-8 h-8 shadow-lg"
+                                title="Leave Room"
+                              >
+                                ❌
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* 🎙️ 12-SEAT LOUNGE AUDIOGRID AREA (3 ROWS OF 4 SEATS) */}
+                          <div className="p-3.5 space-y-4">
+                            <div className="grid grid-cols-4 gap-x-2 gap-y-4 bg-black/40 border border-[#303040]/20 rounded-2xl p-4 shadow-2xl relative overflow-hidden">
+                              {/* Background ambient aesthetic light */}
+                              <div className="absolute -top-12 -left-12 w-28 h-28 rounded-full bg-[#ff007f]/5 blur-3xl pointer-events-none" />
+                              <div className="absolute -bottom-12 -right-12 w-28 h-28 rounded-full bg-purple-500/5 blur-3xl pointer-events-none" />
+
+                              {(() => {
+                                const fullSeats = Array.from({ length: 12 }, (_, i) => {
+                                  const sId = i + 1;
+                                  const found = party.seats?.find((s: any) => s.id === sId);
+                                  return found || { id: sId, name: null, avatar: null, isMuted: false };
+                                });
+
+                                return fullSeats.map((seat) => {
+                                  const isOccupied = !!seat.name;
+                                  const isMe = seat.name === user.username;
+                                  const seatIsMuted = seat.isMuted;
+                                  return (
+                                    <div 
+                                      key={seat.id} 
+                                      className="flex flex-col items-center space-y-1 relative bg-transparent"
+                                    >
+                                      {/* Seat Node circle frame */}
+                                      <div 
+                                        onClick={() => handleSeatClick(seat.id, seat.name)}
+                                        className={`w-14 h-14 rounded-full p-[2px] cursor-pointer relative transition-transform duration-300 hover:scale-105 active:scale-95 ${
+                                          isOccupied 
+                                            ? isMe 
+                                              ? "bg-gradient-to-tr from-[#ff007f] to-cyan-400 shadow-[0_0_12px_rgba(255,0,127,0.4)]"
+                                              : seat.id === 1 
+                                                ? "bg-gradient-to-tr from-amber-400 via-pink-500 to-[#ff007f] shadow-[0_0_12px_rgba(251,191,36,0.3)] animate-pulse"
+                                                : "bg-[#3a206a] border border-[#ff007f]/40"
+                                            : "bg-[#18122c] border border-dashed border-gray-600/55 hover:border-[#ff007f]/50"
+                                        }`}
+                                      >
+                                        <div className="w-full h-full rounded-full overflow-hidden border border-[#0e0720] flex items-center justify-center bg-transparent">
+                                          {isOccupied ? (
+                                            <img src={seat.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"} className="w-full h-full object-cover" alt={seat.name} />
+                                          ) : (
+                                            <div className="flex flex-col items-center justify-center bg-transparent text-gray-500">
+                                              <span className="text-[10px] bg-transparent font-black">🎙️</span>
+                                              <span className="text-[7.5px] bg-transparent font-sans text-gray-500 font-bold uppercase tracking-widest mt-0.5">+{seat.id}</span>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Seat badge label overlays */}
+                                        {isOccupied && seat.id === 1 && (
+                                          <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-400 to-pink-500 text-black text-[6.5px] font-black px-1 rounded-full uppercase tracking-wider font-sans border border-black/10">HOST</span>
+                                        )}
+
+                                        {/* Soundwave equalizer indicator overlay if talking & unmuted */}
+                                        {isOccupied && !seatIsMuted && (
+                                          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-[#ff007f] text-white rounded-full px-1 py-0.5 flex items-center space-x-0.5 text-[5px] font-black uppercase tracking-wider border border-black animate-pulse">
+                                            <span className="w-0.5 h-1.5 bg-white rounded-full animate-bounce"></span>
+                                            <span className="w-0.5 h-2.5 bg-white rounded-full animate-bounce delay-75"></span>
+                                            <span className="w-0.5 h-1.5 bg-white rounded-full animate-bounce delay-150"></span>
+                                          </div>
+                                        )}
+
+                                        {/* Muted indicator overlay */}
+                                        {isOccupied && seatIsMuted && (
+                                          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-gray-800 border border-white/10 rounded-full w-4 h-4 flex items-center justify-center shadow">
+                                            <span className="text-[7px] text-red-500 leading-none">🎙️⃠</span>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Seated occupant name label */}
+                                      <p className="text-[8.5px] font-semibold text-gray-300 truncate max-w-[62px] text-center font-sans tracking-tight">
+                                        {isOccupied ? (isMe ? "You" : seat.name) : `Seat ${seat.id}`}
+                                      </p>
+                                    </div>
+                                  );
+                                });
+                              })()}
+                            </div>
+                          </div>
+
+                          {/* 💬 INTERACTIVE COMMENTS TIMELINE CHAT STREAM */}
+                          <div className="flex-1 min-h-[140px] max-h-[180px] p-3 mx-3.5 bg-black/35 border border-[#303040]/25 rounded-2xl flex flex-col justify-between overflow-hidden">
+                            <div className="flex-1 overflow-y-auto space-y-1.5 scrollbar-thin text-left p-1 pr-1.5">
+                              {/* Welcome system instructions message */}
+                              <div className="bg-[#1a0f30]/40 border border-pink-500/10 rounded-xl p-2.5 space-y-1">
+                                <p className="text-[9px] font-black text-[#ff007f] uppercase tracking-wider font-mono">🎙️ Sahr Live Audio Lounge Carnival</p>
+                                <p className="text-[7.5px] text-gray-400 leading-snug font-sans">
+                                  Welcome to this interactive 12-seat audio party! Click any empty seat to request or join the mic session. Viewers can send premium visual gifts, exchange seating, or text real-time messages. Keep Sahr guidelines intact!
+                                </p>
+                              </div>
+
+                              {party.comments?.map((comment: any) => {
+                                if (comment.isSystem) {
+                                  return (
+                                    <div key={comment.id} className="text-[8px] font-black text-pink-400 font-mono italic leading-relaxed py-0.5 bg-transparent">
+                                      {comment.message}
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <div 
+                                    key={comment.id}
+                                    onClick={() => {
+                                      if (comment.username !== user.username) {
+                                        setGiftTargetUser(comment.username);
+                                      }
+                                    }}
+                                    className="bg-black/20 hover:bg-white/5 p-1 px-2 rounded-lg flex items-start space-x-1.5 max-w-[95%] transition-all cursor-pointer leading-snug"
+                                  >
+                                    <span className="text-[7.5px] font-bold text-[#ff007f] font-mono whitespace-nowrap bg-transparent uppercase">Lv.{comment.userLevel || 1}</span>
+                                    <p className="text-[8.5px] bg-transparent text-gray-200">
+                                      <span className="font-bold text-[#66fcf1] mr-1 uppercase font-mono">@{comment.username}:</span>
+                                      {comment.message}
+                                    </p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* 🎙️ ACTIVE SEAT POPUP INTERACTION ACTION DROPDOWNS */}
+                          {activeSeatMenu && (() => {
+                            const isMenuMySeat = activeSeatMenu.occupantName === user.username;
+                            const seat = party.seats?.find((s: any) => s.id === activeSeatMenu.seatId);
+                            const occupantName = activeSeatMenu.occupantName;
+
+                            return (
+                              <div className="absolute inset-x-4 bottom-16 z-55 bg-[#12121a] border border-[#ff007f]/50 rounded-2xl p-4 shadow-2xl space-y-3.5 text-left animate-slide-up">
+                                <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                                  <div className="flex items-center space-x-2.5 bg-transparent">
+                                    <div className="w-8 h-8 rounded-full bg-pink-500/20 border border-pink-500/40 flex items-center justify-center text-xs">🎙️</div>
+                                    <div className="leading-tight bg-transparent">
+                                      <p className="text-[10px] font-black text-white uppercase font-mono">Seat {activeSeatMenu.seatId} Controls</p>
+                                      <p className="text-[8.5px] text-gray-400 font-sans">Occupant: @{occupantName || "Empty"}</p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => setActiveSeatMenu(null)}
+                                    className="text-gray-500 hover:text-white font-black text-xs cursor-pointer"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                  {isMenuMySeat ? (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          handlePartyLeaveSeat(party.id, activeSeatMenu.seatId);
+                                          setActiveSeatMenu(null);
+                                        }}
+                                        className="bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/40 rounded-xl py-2 text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer text-center"
+                                      >
+                                        Leave Seat
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          handlePartyToggleMute(party.id, activeSeatMenu.seatId);
+                                          setActiveSeatMenu(null);
+                                        }}
+                                        className="bg-[#20102a] hover:bg-[#ff007f] text-pink-400 hover:text-white border border-pink-500/30 rounded-xl py-2 text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer text-center"
+                                      >
+                                        {seat?.isMuted ? "Unmute Mic" : "Mute Mic"}
+                                      </button>
+                                    </>
+                                  ) : occupantName ? (
+                                    <>
+                                      {/* Actions for other seated guests */}
+                                      {isHostOfRoom ? (
+                                        <>
+                                          <button
+                                            onClick={() => {
+                                              handleHostMuteUser(activeSeatMenu.seatId, !seat?.isMuted);
+                                              setActiveSeatMenu(null);
+                                            }}
+                                            className="bg-[#20102a] hover:bg-[#ff007f] text-pink-400 hover:text-white border border-pink-500/30 rounded-xl py-2.5 text-[9px] font-black uppercase tracking-wider text-center cursor-pointer transition-all"
+                                          >
+                                            {seat?.isMuted ? "Unmute Guest" : "Mute Guest"}
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              handleHostKickUser(activeSeatMenu.seatId);
+                                              setActiveSeatMenu(null);
+                                            }}
+                                            className="bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 rounded-xl py-2.5 text-[9px] font-black uppercase tracking-wider text-center cursor-pointer transition-all"
+                                          >
+                                            Kick Seat
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              handleHostBlockUser(occupantName);
+                                              setActiveSeatMenu(null);
+                                            }}
+                                            className="col-span-2 bg-black border border-red-500 text-red-500 hover:bg-red-500 hover:text-white rounded-xl py-2.5 text-[9px] font-black uppercase tracking-wider text-center cursor-pointer transition-all"
+                                          >
+                                            Block From Room 🚫
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <button
+                                            onClick={() => {
+                                              setGiftTargetUser(occupantName);
+                                              setActiveSeatMenu(null);
+                                            }}
+                                            className="bg-pink-500 hover:bg-pink-600 text-white rounded-xl py-2 text-[9.5px] font-black uppercase tracking-wider text-center cursor-pointer transition-all"
+                                          >
+                                            Send Gift 🎁
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              alert(`Local Block: @${occupantName} ignored successfully.`);
+                                              setActiveSeatMenu(null);
+                                            }}
+                                            className="bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white rounded-xl py-2 text-[9.5px] font-bold uppercase tracking-wider text-center cursor-pointer transition-all"
+                                          >
+                                            Block User 🚫
+                                          </button>
+                                        </>
+                                      )}
+                                    </>
+                                  ) : null}
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* 🎙️ SEAT REQUESTS BOTTOM DRAWER (HOST ONLY) */}
+                          {showRequestsSheet && (
+                            <div className="absolute inset-x-3 bottom-16 z-55 bg-[#12121a]/95 border-2 border-pink-500 rounded-3xl p-4 shadow-2xl text-left space-y-4 animate-slide-up">
+                              <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                                <div className="bg-transparent space-y-0.5">
+                                  <h4 className="text-[11px] font-black uppercase text-pink-500 font-mono tracking-wider">🎙️ Seat Join Requests ({activeRequests.length})</h4>
+                                  <p className="text-[8px] text-gray-400 font-sans">Approve requests to allow viewers to take mic seats.</p>
+                                </div>
+                                <button
+                                  onClick={() => setShowRequestsSheet(false)}
+                                  className="text-gray-500 hover:text-white font-black text-xs cursor-pointer"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <div className="space-y-2 max-h-[140px] overflow-y-auto scrollbar-thin">
+                                {activeRequests.length === 0 ? (
+                                  <p className="text-[8.5px] text-gray-500 text-center py-4 font-mono">No pending join requests.</p>
+                                ) : (
+                                  activeRequests.map((req: any) => (
+                                    <div key={req.username} className="flex items-center justify-between p-2 rounded-xl bg-black/40 border border-white/5">
+                                      <div className="flex items-center space-x-2 bg-transparent">
+                                        <img src={req.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"} className="w-7 h-7 rounded-full object-cover" alt="avatar" />
+                                        <div className="bg-transparent text-left">
+                                          <p className="text-[9px] font-bold text-white uppercase font-mono">@{req.username}</p>
+                                          <p className="text-[7.5px] text-pink-400 font-mono">Requested Seat {req.seatId}</p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center space-x-2 shrink-0 bg-transparent">
+                                        <button
+                                          onClick={() => {
+                                            handleApproveRequest(req.username);
+                                          }}
+                                          className="bg-green-500 text-black font-black text-[8px] uppercase px-2.5 py-1 rounded-md cursor-pointer"
+                                        >
+                                          Approve
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            handleRejectRequest(req.username);
+                                          }}
+                                          className="bg-red-500/20 text-red-400 font-bold text-[8px] uppercase px-2.5 py-1 rounded-md cursor-pointer"
+                                        >
+                                          Reject
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 🎙️ SEND SEAT INVITATION SELECTOR (HOST ONLY) */}
+                          {showInviteSheetForSeat && (
+                            <div className="absolute inset-x-3 bottom-16 z-55 bg-[#12121a]/95 border-2 border-pink-500 rounded-3xl p-4 shadow-2xl text-left space-y-4 animate-slide-up">
+                              <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                                <div className="bg-transparent space-y-0.5">
+                                  <h4 className="text-[11px] font-black uppercase text-pink-500 font-mono tracking-wider">👑 Invite Guest to Seat {showInviteSheetForSeat}</h4>
+                                  <p className="text-[8px] text-gray-400 font-sans">Choose an active room viewer to occupy this mic seat.</p>
+                                </div>
+                                <button
+                                  onClick={() => setShowInviteSheetForSeat(null)}
+                                  className="text-gray-500 hover:text-white font-black text-xs cursor-pointer"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <div className="space-y-2 max-h-[140px] overflow-y-auto scrollbar-thin">
+                                {(() => {
+                                  // Find people in connectedViewers who are NOT on seats
+                                  const seatedNames = party.seats ? party.seats.filter((s: any) => s.name !== null).map((s: any) => s.name) : [];
+                                  const unseatedViewers = (party.connectedViewers || []).filter((v: any) => v.username !== user.username && !seatedNames.includes(v.username));
+
+                                  if (unseatedViewers.length === 0) {
+                                    return <p className="text-[8.5px] text-gray-500 text-center py-4 font-mono">No unseated viewers in room.</p>;
+                                  }
+
+                                  return unseatedViewers.map((viewer: any) => (
+                                    <div key={viewer.username} className="flex items-center justify-between p-2 rounded-xl bg-black/40 border border-white/5">
+                                      <div className="flex items-center space-x-2 bg-transparent">
+                                        <img src={viewer.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"} className="w-7 h-7 rounded-full object-cover" alt="avatar" />
+                                        <p className="text-[9px] font-bold text-white uppercase font-mono bg-transparent">@{viewer.username}</p>
+                                      </div>
+                                      <button
+                                        onClick={async () => {
+                                          try {
+                                            await fetch(`/api/v1/parties/${party.id}/invites`, {
+                                              method: "POST",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({ targetUsername: viewer.username, seatId: showInviteSheetForSeat })
+                                            });
+                                            setShowInviteSheetForSeat(null);
+                                            alert(`Invitation sent to @${viewer.username}!`);
+                                          } catch (err) {
+                                            console.error("Error sending invite:", err);
+                                          }
+                                        }}
+                                        className="bg-gradient-to-r from-pink-500 to-purple-600 text-white font-black text-[8px] uppercase px-3 py-1 rounded-md cursor-pointer"
+                                      >
+                                        Send Invite
+                                      </button>
+                                    </div>
+                                  ));
+                                })()}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 🎁 INTERACTIVE GIFT LAUNCHER TRAY MODAL OVERLAY */}
+                          {giftTargetUser && (
+                            <div className="absolute inset-x-3 bottom-16 z-55 bg-[#12121a]/95 border-2 border-[#ff007f] rounded-3xl p-4 shadow-2xl text-left space-y-4 animate-slide-up">
+                              <div className="flex items-center justify-between border-b border-white/5 pb-2 bg-transparent">
+                                <div className="bg-transparent space-y-0.5">
+                                  <h4 className="text-[11px] font-black uppercase text-[#ff007f] tracking-wider font-mono">🎁 Send Sahr Premium Gift</h4>
+                                  <p className="text-[8px] text-gray-400 font-sans">Recipient: @{giftTargetUser} • Your balance: {user.coins} Coins</p>
+                                </div>
+                                <button
+                                  onClick={() => setGiftTargetUser(null)}
+                                  className="text-gray-500 hover:text-white font-black text-xs cursor-pointer"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-4 gap-2 max-h-[140px] overflow-y-auto scrollbar-thin">
+                                {giftsList.map((gift) => (
+                                  <div
+                                    key={gift.id}
+                                    onClick={() => handleSendPartyGift(giftTargetUser, gift.id)}
+                                    className="p-2 bg-black/40 border border-white/5 hover:border-pink-500 rounded-2xl flex flex-col items-center space-y-1 cursor-pointer transition-all active:scale-95 text-center group"
+                                  >
+                                    <span className="text-xl group-hover:scale-110 transition-transform">{gift.emoji}</span>
+                                    <p className="text-[8px] font-bold text-white truncate max-w-full uppercase font-sans tracking-wide leading-tight">{gift.name}</p>
+                                    <p className="text-[7.5px] font-bold font-mono text-pink-500 leading-none">{gift.coins} 💰</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ⌨️ INTERACTIVE BOTTOM CONTROL ACTIONS ROW */}
+                          <div className="p-3 border-t border-white/5 bg-[#12121a]/90 backdrop-blur-md flex items-center space-x-2">
+                            {/* Message input */}
+                            <form 
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                const form = e.currentTarget;
+                                const input = form.elements.namedItem("chatMessage") as HTMLInputElement;
+                                if (input && input.value.trim()) {
+                                  handleSendPartyComment(input.value);
+                                  input.value = "";
+                                }
+                              }}
+                              className="flex-1 flex items-center space-x-1 bg-black/40 border border-white/10 rounded-full px-3 py-1.5"
+                            >
+                              <input
+                                name="chatMessage"
+                                type="text"
+                                placeholder="Write message..."
+                                className="flex-1 bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none"
+                              />
+                              <button
+                                type="submit"
+                                className="text-pink-500 hover:text-pink-400 font-bold text-xs uppercase px-2 bg-transparent shrink-0 cursor-pointer"
+                              >
+                                Send
+                              </button>
+                            </form>
+
+                            {/* Mic Toggle Button */}
+                            {mySeatedSeat ? (
+                              <button
+                                onClick={() => handlePartyToggleMute(party.id, mySeatedSeat.id)}
+                                className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 border transition-all cursor-pointer shadow-lg active:scale-90 ${
+                                  mySeatedSeat.isMuted
+                                    ? "bg-red-500/20 text-red-500 border-red-500/40"
+                                    : "bg-pink-500 text-white border-pink-400 shadow-[0_0_8px_rgba(255,0,127,0.3)] animate-pulse"
+                                }`}
+                                title={mySeatedSeat.isMuted ? "Unmute Microphone" : "Mute Microphone"}
+                              >
+                                <span className="text-sm">{mySeatedSeat.isMuted ? "🎙️⃠" : "🎙️"}</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  // Sit on first available empty seat
+                                  const firstEmpty = party.seats ? party.seats.find((s: any) => s.name === null) : null;
+                                  if (firstEmpty) {
+                                    handleSeatClick(firstEmpty.id, null);
+                                  } else {
+                                    alert("Room capacity full! Wait for seat availability.");
+                                  }
+                                }}
+                                className="w-9 h-9 rounded-full bg-[#20102a] hover:bg-[#ff007f] text-pink-400 hover:text-white border border-pink-500/30 flex items-center justify-center shrink-0 cursor-pointer shadow-md transition-all active:scale-90"
+                                title="Request to Join Mic Seats"
+                              >
+                                <span className="text-sm font-black">+🎙️</span>
+                              </button>
+                            )}
+
+                            {/* Gift launcher button */}
+                            <button
+                              onClick={() => {
+                                setGiftTargetUser(party.hostUsername);
+                              }}
+                              className="w-9 h-9 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 hover:brightness-110 text-white flex items-center justify-center shrink-0 cursor-pointer shadow-[0_0_8px_rgba(255,0,127,0.3)] border border-pink-400 transition-all active:scale-90"
+                              title="Send gift to Host"
+                            >
+                              <span className="text-sm">🎁</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* ===================================================================== */}
                     {/* VIEW 2: ACTIVE LIVE ROOM SCREEN (Video, Audio, PK, & Gifts) */}

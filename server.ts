@@ -1017,6 +1017,265 @@ app.post("/api/v1/parties/:id/comments", (req, res) => {
   }
 });
 
+// Party Seating Requests and Invitations / Host Controls
+app.post("/api/v1/parties/:id/requests", (req, res) => {
+  const { id } = req.params;
+  const { username, avatar, seatId } = req.body;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    if (!party.requests) party.requests = [];
+    party.requests = party.requests.filter((r: any) => r.username !== username);
+    party.requests.push({ username, avatar, seatId: Number(seatId), timestamp: Date.now() });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/requests/:username/approve", (req, res) => {
+  const { id, username } = req.params;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    const request = party.requests?.find((r: any) => r.username === username);
+    if (request) {
+      const targetSeatId = request.seatId;
+      // Clean up user from other seats
+      party.seats = party.seats.map((seat: any) => {
+        if (seat.name === username || (seat.name && seat.name.startsWith(username))) {
+          return { ...seat, name: null, avatar: null };
+        }
+        return seat;
+      });
+      // Occupy seat
+      party.seats = party.seats.map((seat: any) => {
+        if (seat.id === targetSeatId) {
+          return { ...seat, name: username, avatar: request.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80" };
+        }
+        return seat;
+      });
+      // Remove from requests
+      party.requests = party.requests.filter((r: any) => r.username !== username);
+      // Add system comment
+      if (!party.comments) party.comments = [];
+      party.comments.push({
+        id: `sys-${Date.now()}`,
+        username: "System",
+        message: `✅ ${username} has taken Seat ${targetSeatId}!`,
+        isSystem: true,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+      saveDatabase();
+      syncDocument("parties", id, party);
+      res.json(party);
+    } else {
+      res.status(400).json({ error: "Request not found" });
+    }
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/requests/:username/reject", (req, res) => {
+  const { id, username } = req.params;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    if (party.requests) {
+      party.requests = party.requests.filter((r: any) => r.username !== username);
+    }
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/invites", (req, res) => {
+  const { id } = req.params;
+  const { targetUsername, seatId } = req.body;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    if (!party.invites) party.invites = [];
+    party.invites = party.invites.filter((i: any) => i.username !== targetUsername);
+    party.invites.push({ username: targetUsername, seatId: Number(seatId), timestamp: Date.now() });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/invites/:username/accept", (req, res) => {
+  const { id, username } = req.params;
+  const { avatar } = req.body;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    const invite = party.invites?.find((i: any) => i.username === username);
+    if (invite) {
+      const targetSeatId = invite.seatId;
+      // Clean up user from any other seats
+      party.seats = party.seats.map((seat: any) => {
+        if (seat.name === username || (seat.name && seat.name.startsWith(username))) {
+          return { ...seat, name: null, avatar: null };
+        }
+        return seat;
+      });
+      // Put user in seat
+      party.seats = party.seats.map((seat: any) => {
+        if (seat.id === targetSeatId) {
+          return { ...seat, name: username, avatar: avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80" };
+        }
+        return seat;
+      });
+      // Remove invite
+      party.invites = party.invites.filter((i: any) => i.username !== username);
+      // Add system comment
+      if (!party.comments) party.comments = [];
+      party.comments.push({
+        id: `sys-${Date.now()}`,
+        username: "System",
+        message: `🎙️ ${username} accepted host's invite to take Seat ${targetSeatId}!`,
+        isSystem: true,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+      saveDatabase();
+      syncDocument("parties", id, party);
+      res.json(party);
+    } else {
+      res.status(400).json({ error: "Invitation not found" });
+    }
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/invites/:username/reject", (req, res) => {
+  const { id, username } = req.params;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    if (party.invites) {
+      party.invites = party.invites.filter((i: any) => i.username !== username);
+    }
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/seats/kick-user", (req, res) => {
+  const { id } = req.params;
+  const { seatId } = req.body;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    let kickedUser = "";
+    party.seats = party.seats.map((seat: any) => {
+      if (seat.id === Number(seatId)) {
+        kickedUser = seat.name || "User";
+        return { ...seat, name: null, avatar: null, isMuted: false };
+      }
+      return seat;
+    });
+    if (kickedUser) {
+      if (!party.comments) party.comments = [];
+      party.comments.push({
+        id: `sys-${Date.now()}`,
+        username: "System",
+        message: `⚠️ Host has removed ${kickedUser} from Seat ${seatId}.`,
+        isSystem: true,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+    }
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/seats/mute-user", (req, res) => {
+  const { id } = req.params;
+  const { seatId, isMuted } = req.body;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    let targetUser = "";
+    party.seats = party.seats.map((seat: any) => {
+      if (seat.id === Number(seatId)) {
+        targetUser = seat.name || "User";
+        return { ...seat, isMuted: isMuted !== false };
+      }
+      return seat;
+    });
+    if (targetUser) {
+      if (!party.comments) party.comments = [];
+      party.comments.push({
+        id: `sys-${Date.now()}`,
+        username: "System",
+        message: `🎙️ Host has ${isMuted ? 'Muted' : 'Unmuted'} ${targetUser} on Seat ${seatId}.`,
+        isSystem: true,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+    }
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+app.post("/api/v1/parties/:id/block-user", (req, res) => {
+  const { id } = req.params;
+  const { username } = req.body;
+  const index = dbData.parties?.findIndex((p: any) => p.id === id);
+  if (index !== -1 && index !== undefined) {
+    const party = dbData.parties[index];
+    if (!party.blockedUsers) party.blockedUsers = [];
+    if (!party.blockedUsers.includes(username)) {
+      party.blockedUsers.push(username);
+    }
+    // Kick them from seats if they are on one
+    party.seats = party.seats.map((seat: any) => {
+      if (seat.name === username || (seat.name && seat.name.startsWith(username))) {
+        return { ...seat, name: null, avatar: null };
+      }
+      return seat;
+    });
+    // Remove them from connected viewers
+    if (party.connectedViewers) {
+      party.connectedViewers = party.connectedViewers.filter((v: any) => v.username !== username);
+    }
+    party.participantCount = party.connectedViewers ? party.connectedViewers.length : 0;
+    
+    if (!party.comments) party.comments = [];
+    party.comments.push({
+      id: `sys-${Date.now()}`,
+      username: "System",
+      message: `🚫 Host has blocked ${username} from this room.`,
+      isSystem: true,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
 // Families endpoints
 app.get("/api/v1/families", (req, res) => {
   res.json(dbData.families);
