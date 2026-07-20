@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { ReelsView } from "./components/ReelsView";
+import { AgoraStream } from "./components/AgoraStream";
 import {
   Tv,
   Mic,
@@ -4964,6 +4965,37 @@ export default function App() {
     setUserLiveShowSummary(false);
     setUserLiveFollowed(false);
     setUserLivePkActive(false);
+
+    // Dynamic Live Session: POST host to database
+    const token = localStorage.getItem("sehr_auth_token");
+    const hostId = `h-${user.uniqueId || "sehr_1001"}`;
+    const newHostData = {
+      id: hostId,
+      name: user.username || "Sehr_User",
+      role: "Broadcaster",
+      avatar: user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+      viewers: 8700,
+      likes: 125400,
+      category: prepLiveCategory === "Music" ? "audio" : (prepLiveCategory === "PK" ? "pk" : "video"),
+      isLive: true,
+      statusText: prepLiveTitle || "Live Stream Active",
+      bio: user.bio || "Senior Live Stream Creator on Sehr Live! 🌟",
+      agencyId: user.agencyId || ""
+    };
+
+    fetch("/api/v1/hosts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { "Authorization": `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify(newHostData)
+    })
+      .then(res => res.json())
+      .then(data => {
+        console.log("Successfully created active host stream on backend:", data);
+      })
+      .catch(err => console.error("Error creating host stream on backend:", err));
   };
 
   const triggerDoubleTapHeart = (x: number, y: number) => {
@@ -5088,6 +5120,21 @@ export default function App() {
       };
       setTransactions(prev => [newTx, ...prev]);
     }
+
+    // Call delete endpoint to end stream on backend
+    const token = localStorage.getItem("sehr_auth_token");
+    const hostId = `h-${user.uniqueId || "sehr_1001"}`;
+    fetch(`/api/v1/hosts/${hostId}`, {
+      method: "DELETE",
+      headers: {
+        ...(token ? { "Authorization": `Bearer ${token}` } : {})
+      }
+    })
+      .then(res => res.json())
+      .then(data => {
+        console.log("Successfully deleted active host stream on backend:", data);
+      })
+      .catch(err => console.error("Error deleting host stream:", err));
   };
 
   // OTP Login triggers
@@ -6736,7 +6783,7 @@ export default function App() {
                                 <div className="text-3xl text-gray-500 bg-transparent">🔍</div>
                                 <div className="space-y-1 bg-transparent">
                                   <p className="text-xs font-black text-white uppercase tracking-wider">
-                                    {feedTab === "following" ? "No Followed Hosts Live" : "No Broadcasts Found"}
+                                    {feedTab === "following" ? "No Followed Hosts Live" : "No one is live right now."}
                                   </p>
                                   <p className="text-[9px] text-gray-400 leading-relaxed max-w-[220px] mx-auto">
                                     {feedTab === "following"
@@ -7533,10 +7580,15 @@ export default function App() {
                           {/* 1. SOLO VIDEO LIVE BROADCAST SIMULATION */}
                           {activeHost.category === "video" && (
                             <div className="absolute inset-0 flex flex-col justify-between p-3 select-none">
-                              {/* Background Host Avatar cover blur */}
-                              <div className="absolute inset-0 z-0">
-                                <img src={activeHost.avatar} className="w-full h-full object-cover opacity-35 blur-md" alt="back" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-[#120f21] via-[#120f21]/20 to-[#120f21]/90"></div>
+                              {/* Background Real-Time WebRTC Agora Stream */}
+                              <div className="absolute inset-0 z-0 overflow-hidden">
+                                <AgoraStream
+                                  channelName={`room_${activeHost.id || activeHost.username}`}
+                                  role="subscriber"
+                                  hostAvatar={activeHost.avatar}
+                                  hostName={activeHost.name}
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-[#120f21] via-[#120f21]/20 to-[#120f21]/90 pointer-events-none"></div>
                               </div>
 
                               {/* Top row overlays */}
@@ -12778,16 +12830,14 @@ export default function App() {
                                     </div>
                                   </>
                                 ) : (
-                                  <div className="w-full h-full relative animate-fade-in">
-                                    <img
-                                      src={USER_LIVE_BG_IMAGES[userLiveBgIndex]}
-                                      className="w-full h-full object-cover opacity-95 transition-all duration-300"
-                                      style={{
-                                        filter: `brightness(${userLiveBeauty.brightness}%) contrast(105%) saturate(110%) blur(${userLiveBeauty.smooth > 80 ? '0.5px' : '0px'})`,
-                                        transform: `scaleX(${userLiveCamFlipped ? -1 : 1}) rotate(${userLiveCamRotation}deg)`
-                                      }}
-                                      alt="Broadcaster portrait"
-                                      referrerPolicy="no-referrer"
+                                  <div className="w-full h-full relative animate-fade-in overflow-hidden">
+                                    <AgoraStream
+                                      channelName={`room_${DEFAULT_USER.uniqueId || DEFAULT_USER.username}`}
+                                      role="publisher"
+                                      muted={!userLiveMic}
+                                      videoMuted={!userLiveCam}
+                                      hostAvatar={DEFAULT_USER.avatar}
+                                      hostName={DEFAULT_USER.username}
                                     />
                                   </div>
                                 )

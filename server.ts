@@ -6,13 +6,16 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import agoraToken from "agora-token";
+const { RtcTokenBuilder, RtcRole } = agoraToken;
 import {
   checkAndSeedDatabase,
   startFirestoreSynchronization,
   dbDataCache,
   syncDocument,
   deleteDocument,
-  writeMetadata
+  writeMetadata,
+  clearAllHostsInFirestore
 } from "./src/db/firebaseDb";
 
 dotenv.config();
@@ -56,16 +59,22 @@ async function loadDatabase() {
     // 1. Check if Firestore contains seeded tables, if not seed it from local database template
     await checkAndSeedDatabase();
 
-    // 2. Start real-time Firestore synchronization listeners
+    // 2. Clear all stale hosts from Firestore and local cache to ensure fresh active-only live stream directory
+    await clearAllHostsInFirestore();
+
+    // 3. Start real-time Firestore synchronization listeners
     startFirestoreSynchronization();
 
-    // 3. Fallback: Load initial local cache immediately during server boot to ensure zero startup latency
+    // 4. Fallback: Load initial local cache immediately during server boot to ensure zero startup latency
     if (fs.existsSync(DB_PATH)) {
       const raw = fs.readFileSync(DB_PATH, "utf-8");
       const local = JSON.parse(raw);
       Object.assign(dbDataCache, local);
       console.log("[SEHR-LIVE FIREBASE] Pre-populated in-memory cache with local database backup.");
     }
+    
+    // Explicitly guarantee hosts array is clean on startup
+    dbDataCache.hosts = [];
   } catch (e) {
     console.error("[SEHR-LIVE FIREBASE] Error loading database:", e);
   }
@@ -134,6 +143,66 @@ function authenticateUser(req: any, res: any, next: any) {
   // Unauthorized token format / expired session, send unauthorized
   return res.status(401).json({ error: "Session expired or invalid token. Please log in again." });
 }
+
+// ------------------------------------------------------------------
+// AGORA SECURE TOKEN GENERATION ENDPOINT
+// ------------------------------------------------------------------
+const handleAgoraTokenRequest = (req: any, res: any) => {
+  try {
+    const { channelName, uid, role } = req.body;
+    if (!channelName) {
+      return res.status(400).json({ error: "channelName is required" });
+    }
+
+    const appId = process.env.AGORA_APP_ID || "";
+    const appCertificate = process.env.AGORA_APP_CERTIFICATE || "";
+
+    const agoraUid = uid ? Number(uid) : 0;
+    const resolvedRole = (role === "publisher" || role === "host" || role === 1)
+      ? RtcRole.PUBLISHER
+      : RtcRole.SUBSCRIBER;
+
+    const expirationTimeInSeconds = 3600; // 1 hour
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+
+    let token = "";
+    if (appId && appCertificate) {
+      try {
+        token = RtcTokenBuilder.buildTokenWithUid(
+          appId,
+          appCertificate,
+          channelName,
+          agoraUid,
+          resolvedRole,
+          privilegeExpiredTs,
+          privilegeExpiredTs
+        );
+        console.log(`[SEHR-LIVE AGORA] Generated REAL token for channel ${channelName}, uid ${agoraUid}`);
+      } catch (err: any) {
+        console.error("[SEHR-LIVE AGORA] RtcTokenBuilder failed:", err);
+        return res.status(500).json({ error: "Failed to generate token: " + err.message });
+      }
+    } else {
+      console.warn("[SEHR-LIVE AGORA] AGORA_APP_ID or AGORA_APP_CERTIFICATE not configured. Using mock token for dev.");
+      token = `mock-token-${channelName}-${agoraUid}-${resolvedRole}`;
+    }
+
+    return res.json({
+      token,
+      appId: appId || "MOCK_AGORA_APP_ID",
+      channelName,
+      uid: agoraUid,
+      expiresAt: privilegeExpiredTs
+    });
+  } catch (error: any) {
+    console.error("[SEHR-LIVE AGORA] Token generation error:", error);
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+app.post("/api/agora/token", authenticateUser, handleAgoraTokenRequest);
+app.post("/api/v1/agora/token", authenticateUser, handleAgoraTokenRequest);
 
 // ------------------------------------------------------------------
 // AUTHENTICATION & PROFILE PERSISTENCE ENDPOINTS

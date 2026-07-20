@@ -7,7 +7,8 @@ import {
   deleteDoc, 
   collection, 
   onSnapshot,
-  setLogLevel
+  setLogLevel,
+  getDocs
 } from "firebase/firestore";
 import fs from "fs";
 import path from "path";
@@ -204,7 +205,7 @@ export async function checkAndSeedDatabase() {
     const collectionsToSeed = [
       { name: "users", key: "username", data: localDb.users },
       { name: "gifts", key: "id", data: localDb.gifts },
-      { name: "hosts", key: "id", data: localDb.hosts },
+      { name: "hosts", key: "id", data: [] }, // No demo hosts!
       { name: "families", key: "id", data: localDb.families },
       { name: "agencies", key: "id", data: [] }, // No demo agencies!
       { name: "transactions", key: "id", data: [] }, // No demo transactions!
@@ -294,6 +295,21 @@ export function startFirestoreSynchronization() {
     });
     dbDataCache.otps = dict;
   }, err => handleQuotaError(err, "Sync otps"));
+}
+
+export async function clearAllHostsInFirestore() {
+  if (isFirestoreQuotaExhausted) return;
+  try {
+    const querySnapshot = await getDocs(collection(db, "hosts"));
+    const deletePromises: Promise<void>[] = [];
+    querySnapshot.forEach((docSnap) => {
+      deletePromises.push(deleteDoc(doc(db, "hosts", docSnap.id)));
+    });
+    await Promise.all(deletePromises);
+    console.log("[SEHR-LIVE FIREBASE] Cleared all stale hosts from Firestore.");
+  } catch (err) {
+    console.error("[SEHR-LIVE FIREBASE] Failed to clear hosts in Firestore:", err);
+  }
 }
 
 export async function syncDocument(collectionName: string, docId: string, data: any) {
