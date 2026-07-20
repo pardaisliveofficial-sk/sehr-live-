@@ -8637,7 +8637,7 @@ export default function App() {
                                     setViewerLiveGuestModeActive(true);
                                     alert("🎙️ Loaded Host's Guest Room Mode view!");
                                   }}
-                                  className="bg-purple-600 hover:bg-purple-500 text-white text-[8px] font-black px-2 py-1 rounded-full border border-white/10 animate-pulse flex items-center space-x-1"
+                                  className={`${activeHost.category === 'pk' ? 'hidden' : 'bg-purple-600 hover:bg-purple-500'} text-white text-[8px] font-black px-2 py-1 rounded-full border border-white/10 animate-pulse flex items-center space-x-1`}
                                 >
                                   <span>🎙️ Live Guest Room</span>
                                 </button>
@@ -8675,11 +8675,11 @@ export default function App() {
                         {/* STREAM VIEWPORT: DYNAMIC BACKGROUND DEPENDING ON ROOM TYPE */}
                         <div
                           onDoubleClick={triggerDoubleTapLike}
-                          className="flex-1 relative bg-gradient-to-b from-[#090710] via-[#120f21] to-[#090710] flex flex-col justify-center items-center overflow-hidden"
+                          className="flex-1 w-full relative bg-gradient-to-b from-[#090710] via-[#120f21] to-[#090710] flex flex-col justify-center items-center overflow-hidden"
                         >
                           
-                          {/* 1. SOLO VIDEO LIVE BROADCAST SIMULATION */}
-                          {activeHost.category === "video" && (
+                          {/* 1. SOLO VIDEO & PK LIVE BROADCAST SIMULATION */}
+                          {(activeHost.category === "video" || activeHost.category === "pk") && (
                             <div className="absolute inset-0 flex flex-col justify-between p-3 select-none">
                               {/* Background Real-Time WebRTC Agora Stream */}
                               <div className="absolute inset-0 z-0 overflow-hidden">
@@ -8693,13 +8693,50 @@ export default function App() {
                               </div>
 
                               {/* Top row overlays */}
-                              <div className="w-full z-10 flex justify-between items-center bg-transparent pt-2">
-                                <span className="bg-red-600 text-white font-mono font-black text-[7.5px] px-2 py-0.5 rounded-full uppercase tracking-widest animate-pulse border border-white/10 shadow-lg">
-                                  ● LIVE SOLO BROADCAST
-                                </span>
-                                <div className="bg-black/55 backdrop-blur-md border border-white/5 px-2 py-0.5 rounded-full text-[8.5px] text-yellow-400 font-bold flex items-center space-x-1 font-mono">
-                                  <span>⭐ VIP Room Host</span>
+                              <div className="w-full z-10 flex flex-col space-y-1">
+                                <div className="flex justify-between items-center bg-transparent pt-2">
+                                  <span className="bg-red-600 text-white font-mono font-black text-[7.5px] px-2 py-0.5 rounded-full uppercase tracking-widest animate-pulse border border-white/10 shadow-lg">
+                                    {activeHost.category === "pk" ? "⚔️ PK BATTLE LIVE" : "● LIVE SOLO BROADCAST"}
+                                  </span>
+                                  <div className="bg-black/55 backdrop-blur-md border border-white/5 px-2 py-0.5 rounded-full text-[8.5px] text-yellow-400 font-bold flex items-center space-x-1 font-mono">
+                                    <span>⭐ VIP Room Host</span>
+                                  </div>
                                 </div>
+
+                                {activeHost.category === "pk" && (
+                                  <div className="bg-gradient-to-b from-[#12111b]/80 to-[#0c0b12]/80 border border-purple-500/15 p-1.5 rounded-lg shadow-xl space-y-1 mt-1">
+                                    <div className="flex justify-between items-center text-[9px]">
+                                      <div className="flex items-center space-x-1 font-mono font-black text-pink-400">
+                                        <span>🌹 My Room:</span>
+                                        <span>{pkScoreHost}</span>
+                                      </div>
+                                      
+                                      <div className="bg-[#ff007f]/10 border border-[#ff007f]/25 text-pink-300 font-bold px-2 py-0.5 rounded-full text-[7.5px] animate-pulse flex items-center space-x-1">
+                                        <span>⚔️ Battle Match:</span>
+                                        <span className="font-mono">{formatTime(pkTimer)}</span>
+                                      </div>
+
+                                      <div className="flex items-center space-x-1 font-mono font-black text-indigo-400">
+                                        <span>🦁 Other:</span>
+                                        <span>{pkScoreOpponent}</span>
+                                      </div>
+                                    </div>
+
+                                    {/* Comparison progress bar */}
+                                    <div className="h-2 w-full bg-indigo-600 rounded-full overflow-hidden flex shadow-inner">
+                                      <div
+                                        style={{ width: `${(pkScoreHost / (pkScoreHost + pkScoreOpponent || 1)) * 100}%` }}
+                                        className="bg-gradient-to-r from-pink-500 to-[#ff007f] h-full transition-all duration-500"
+                                      ></div>
+                                    </div>
+
+                                    <div className="flex justify-between items-center text-[7px] text-gray-400">
+                                      <span>Streaks: My x3 Win streak</span>
+                                      <span className="font-mono text-pink-400">Task: Singer Punishment</span>
+                                      <span>Opponent Level: 35</span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
 
                               {/* Center Spotlight & crown visual */}
@@ -8734,98 +8771,6 @@ export default function App() {
                                       className="w-0.75 bg-[#ff007f] animate-[bounce_1s_infinite] rounded-full"
                                     ></div>
                                   ))}
-                                </div>
-                              </div>
-
-                              {/* Bottom interactive feedback overlay */}
-                              <div className="z-10 bg-black/40 backdrop-blur-sm border border-white/5 rounded-xl px-4 py-2 text-center max-w-[280px] mx-auto mb-1 shadow-md">
-                                <p className="text-[10px] text-[#66fcf1] font-bold leading-snug">🎤 Currently broadcasting live content</p>
-                                <p className="text-[8.5px] text-gray-300 font-medium leading-normal mt-0.5">Double tap screen anytime to send standard Hearts ❤️</p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* 2. PK BATTLE LIVE SCREEN INTERFACE */}
-                          {activeHost.category === "pk" && (
-                            <div className="absolute inset-0 flex flex-col justify-between p-3 select-none">
-                              {/* Dual split-screen video simulations */}
-                              <div className="flex-1 grid grid-cols-2 gap-1 rounded-xl overflow-hidden border border-purple-500/20 shadow-2xl bg-black/40 relative pt-2">
-                                
-                                {/* Side A: Broadcaster Host */}
-                                <div className="h-full relative border-r border-purple-500/10 bg-[#140f25] flex items-center justify-center overflow-hidden">
-                                  <img 
-                                    src={activeHost.avatar} 
-                                    className="w-full h-full object-cover opacity-90 scale-105 transition-all" 
-                                    alt="Side A host" 
-                                  />
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none"></div>
-
-                                  {/* Host name card overlay */}
-                                  <div className="absolute bottom-2 left-2 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-full border border-pink-500/35 flex items-center space-x-1.5 z-10 shadow-lg scale-90">
-                                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span>
-                                    <span className="text-[8.5px] font-black text-white">{activeHost.name}</span>
-                                    <span className="text-[7.5px] text-yellow-400 font-bold font-mono">💎 {pkScoreHost}</span>
-                                  </div>
-
-                                  {/* Side A MVP board */}
-                                  <div className="absolute top-2 left-2 z-10 bg-black/60 backdrop-blur-md rounded px-1.5 py-0.5 border border-pink-500/20 text-[6.5px] text-pink-300 font-bold scale-90">
-                                    🏆 MVP: Shahzaib
-                                  </div>
-                                </div>
-
-                                {/* Side B: Opponent Co-host */}
-                                <div className="h-full relative bg-[#0d1421] flex items-center justify-center overflow-hidden">
-                                  <img 
-                                    src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=250&q=80" 
-                                    className="w-full h-full object-cover opacity-90 scale-105 transition-all" 
-                                    alt="Side B host" 
-                                  />
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none"></div>
-
-                                  {/* Opponent name card overlay */}
-                                  <div className="absolute bottom-2 right-2 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-full border border-indigo-500/35 flex items-center space-x-1.5 z-10 shadow-lg scale-90">
-                                    <span className="text-[8.5px] font-black text-white">Alpha_Queen 👑</span>
-                                    <span className="text-[7.5px] text-indigo-300 font-bold font-mono">💎 {pkScoreOpponent}</span>
-                                  </div>
-
-                                  {/* Side B MVP board */}
-                                  <div className="absolute top-2 right-2 z-10 bg-black/60 backdrop-blur-md rounded px-1.5 py-0.5 border border-indigo-500/20 text-[6.5px] text-indigo-300 font-bold scale-90">
-                                    🏆 MVP: Awais
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* PK Timer and Score bars comparison (floating nicely) */}
-                              <div className="bg-gradient-to-b from-[#12111b] to-[#0c0b12] border border-purple-500/15 p-2 rounded-xl mt-2.5 shadow-xl space-y-1.5">
-                                <div className="flex justify-between items-center text-[9.5px]">
-                                  <div className="flex items-center space-x-1 font-mono font-black text-pink-400">
-                                    <span>🌹 My Room:</span>
-                                    <span>{pkScoreHost}</span>
-                                  </div>
-                                  
-                                  <div className="bg-[#ff007f]/10 border border-[#ff007f]/25 text-pink-300 font-bold px-2.5 py-0.5 rounded-full text-[8px] animate-pulse flex items-center space-x-1">
-                                    <span>⚔️ Battle Match:</span>
-                                    <span className="font-mono">{formatTime(pkTimer)}</span>
-                                  </div>
-
-                                  <div className="flex items-center space-x-1 font-mono font-black text-indigo-400">
-                                    <span>🦁 Other:</span>
-                                    <span>{pkScoreOpponent}</span>
-                                  </div>
-                                </div>
-
-                                {/* Comparison progress bar */}
-                                <div className="h-2.5 w-full bg-indigo-600 rounded-full overflow-hidden flex shadow-inner">
-                                  <div
-                                    style={{ width: `${(pkScoreHost / (pkScoreHost + pkScoreOpponent || 1)) * 100}%` }}
-                                    className="bg-gradient-to-r from-pink-500 to-[#ff007f] h-full transition-all duration-500"
-                                  ></div>
-                                </div>
-
-                                <div className="flex justify-between items-center text-[7.5px] text-gray-500">
-                                  <span>Streaks: My x3 Win streak</span>
-                                  <span className="font-mono">Task: Singer Punishment</span>
-                                  <span>Opponent Level: 35</span>
                                 </div>
                               </div>
                             </div>
@@ -8967,7 +8912,7 @@ export default function App() {
                         </div>
 
                         {/* LIVE CHAT STREAM FEED */}
-                        <div className="h-36 bg-gradient-to-b from-transparent to-black/90 px-3 overflow-y-auto space-y-1.5 z-10 flex flex-col justify-end pb-2 border-t border-white/5">
+                        <div className={`${activeHost.category === "pk" ? "flex-1 min-h-[160px]" : "h-48"} bg-gradient-to-b from-transparent to-black/90 px-3 overflow-y-auto space-y-1.5 z-10 flex flex-col justify-end pb-2 border-t border-white/5`}>
                           {/* Room Comments Disable/Enable Toggle (Fully active) */}
                           <div className="flex justify-between items-center mb-1 bg-transparent">
                             <p className="text-[7px] text-gray-400 uppercase tracking-wider font-mono">Live Broadcast Chat</p>
@@ -9221,7 +9166,7 @@ export default function App() {
                                   setPkScoreHost(prev => prev + 500);
                                   alert("⚔️ Match Points Boosted! You sent +500 support points to your Host in this PK Battle!");
                                 }}
-                                className="w-7 h-7 rounded-full bg-gradient-to-r from-red-500 to-pink-500 hover:brightness-110 flex items-center justify-center text-xs text-white animate-pulse"
+                                className={`${activeHost.category === "pk" ? "flex" : "hidden"} w-7 h-7 rounded-full bg-gradient-to-r from-red-500 to-pink-500 hover:brightness-110 items-center justify-center text-xs text-white animate-pulse`}
                                 title="Support Host PK Points"
                               >
                                 ⚔️
@@ -13335,7 +13280,7 @@ export default function App() {
                                 </div>
 
                                 {/* MIDDLE 50%: BOTH HOSTS CAMERA split-screen & PK BARS & THEIR MVPs */}
-                                <div className="h-[50%] min-h-[260px] max-h-[300px] w-full bg-black relative flex flex-col shrink-0 overflow-hidden border-b border-white/5">
+                                <div className="h-[50%] min-h-[260px] max-h-[310px] w-full bg-black relative flex flex-col shrink-0 overflow-hidden border-b border-white/5">
                                   
                                   {/* PK SCORE BARS (If PK Active) */}
                                   {userLivePkActive && (
@@ -13411,20 +13356,10 @@ export default function App() {
                                       )}
 
                                       {/* Left label overlay inside camera */}
-                                      <div className="absolute bottom-10 left-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 flex items-center space-x-1 z-10 select-none">
+                                      <div className="absolute bottom-4 left-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 flex items-center space-x-1 z-10 select-none">
                                         <span className="w-1.5 h-1.5 bg-pink-500 rounded-full animate-ping"></span>
                                         <span className="text-[7.5px] font-black text-white">Hoorain</span>
                                         <span className="text-[6.5px] text-yellow-400 font-bold font-mono">💎 {userLivePkScoreMy}</span>
-                                      </div>
-
-                                      {/* Left Host's Support MVPs (Hoorain's MVPs) */}
-                                      <div className="absolute bottom-2 left-2 z-10 bg-black/70 backdrop-blur-md rounded-lg p-1 border border-pink-500/25 flex items-center space-x-1 text-[7px] shadow-lg">
-                                        <span className="text-yellow-400 font-bold">🏆 MVP</span>
-                                        <div className="flex -space-x-1">
-                                          <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=50&q=80" className="w-3.5 h-3.5 rounded-full border border-pink-500/40 object-cover" />
-                                          <img src="https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=50&q=80" className="w-3.5 h-3.5 rounded-full border border-pink-500/40 object-cover" />
-                                        </div>
-                                        <span className="text-pink-400 font-bold">3x</span>
                                       </div>
                                     </div>
 
@@ -13438,22 +13373,54 @@ export default function App() {
                                       />
 
                                       {/* Right label overlay inside camera */}
-                                      <div className="absolute bottom-10 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 flex items-center space-x-1 z-10 select-none">
+                                      <div className="absolute bottom-4 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 flex items-center space-x-1 z-10 select-none">
                                         <span className="text-[7.5px] font-black text-white">{userLiveCoHost?.username || "Hamza"}</span>
                                         <span className="text-[6.5px] text-cyan-400 font-bold font-mono">💎 {userLivePkScoreOther}</span>
                                         <button className="w-3.5 h-3.5 rounded-full bg-blue-500 text-white text-[8px] flex items-center justify-center shadow hover:scale-115 active:scale-90 ml-0.5">+</button>
                                       </div>
-
-                                      {/* Right Host's Support MVPs (Opponent's MVPs) */}
-                                      <div className="absolute bottom-2 right-2 z-10 bg-black/70 backdrop-blur-md rounded-lg p-1 border border-blue-500/25 flex items-center space-x-1 text-[7px] shadow-lg">
-                                        <span className="text-yellow-400 font-bold">🏆 MVP</span>
-                                        <div className="flex -space-x-1">
-                                          <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=50&q=80" className="w-3.5 h-3.5 rounded-full border border-blue-500/40 object-cover" />
-                                        </div>
-                                        <span className="text-blue-300 font-bold">1x</span>
-                                      </div>
                                     </div>
                                   </div>
+
+                                  {/* Dedicated Horizontal MVP Bar BELOW video panels */}
+                                  {userLivePkActive && (
+                                    <div className="flex-none flex flex-col">
+                                      {/* Thin Divider Line above MVP */}
+                                      <div className="h-[1px] bg-white/10 w-full"></div>
+
+                                      <div className="flex items-center justify-between px-3 py-1 bg-black/50 w-full text-white">
+                                        {/* Left Host MVP (You/Hoorain) */}
+                                        <div className="flex items-center space-x-1.5 bg-transparent">
+                                          <img 
+                                            src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=50&q=80" 
+                                            className="w-5 h-5 rounded-full object-cover border border-pink-500/50" 
+                                            alt="Left MVP" 
+                                          />
+                                          <div className="flex flex-col text-left bg-transparent">
+                                            <span className="text-[7.5px] font-black text-pink-400 leading-none">🏆 Shahzaib</span>
+                                            <span className="text-[6px] text-gray-400 font-mono mt-0.5 leading-none">💎 {Math.floor(userLivePkScoreMy * 0.75)}</span>
+                                          </div>
+                                        </div>
+
+                                        <span className="text-[6px] text-gray-500 font-black tracking-wider uppercase font-mono">MVP Arena</span>
+
+                                        {/* Right Host MVP (CoHost) */}
+                                        <div className="flex items-center space-x-1.5 bg-transparent">
+                                          <div className="flex flex-col text-right bg-transparent">
+                                            <span className="text-[7.5px] font-black text-indigo-400 leading-none">🏆 Awais</span>
+                                            <span className="text-[6px] text-gray-400 font-mono mt-0.5 leading-none">💎 {Math.floor(userLivePkScoreOther * 0.65)}</span>
+                                          </div>
+                                          <img 
+                                            src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=50&q=80" 
+                                            className="w-5 h-5 rounded-full object-cover border border-indigo-500/50" 
+                                            alt="Right MVP" 
+                                          />
+                                        </div>
+                                      </div>
+
+                                      {/* Thin Divider Line below MVP */}
+                                      <div className="h-[1px] bg-white/10 w-full"></div>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* LOWER 40% COMMENTS, LIVE INTERACTIONS AND INTERACTIVE BOTTOM RAIL */}
@@ -13483,7 +13450,7 @@ export default function App() {
                                   <div className="flex-1 flex justify-between items-end mb-2.5 relative z-10">
                                     {/* Left Comments Stream */}
                                     {userLiveChatVisible ? (
-                                      <div className="w-[58%] h-full max-h-[160px] overflow-y-auto space-y-1 flex flex-col justify-end pb-0.5 text-left scrollbar-none">
+                                      <div className="w-[58%] max-h-[160px] h-full overflow-y-auto space-y-1 flex flex-col justify-end pb-0.5 text-left scrollbar-none">
                                         {/* Host Chat Moderation Lock Button */}
                                         <div className="flex justify-between items-center mb-1 bg-transparent px-1">
                                           <span className="text-[6.5px] text-gray-400 font-mono font-bold">HOST CHATROOM</span>
@@ -13854,83 +13821,16 @@ export default function App() {
                             {/* CAMERA VIEWPORT BACKGROUND SIMULATION */}
                             <div className="absolute inset-0 z-0 bg-black flex">
                               {userLiveCam ? (
-                                (userLivePkActive || userLivePkConnected) ? (
-                                  <>
-                                    {/* Left Screen (Broadcaster) */}
-                                    <div className="w-1/2 h-full relative border-r border-purple-900/30 animate-fade-in">
-                                      <img
-                                        src={USER_LIVE_BG_IMAGES[userLiveBgIndex]}
-                                        className="w-full h-full object-cover opacity-90 transition-all duration-300"
-                                        style={{
-                                          filter: `brightness(${userLiveBeauty.brightness}%) contrast(105%) saturate(110%) blur(${userLiveBeauty.smooth > 80 ? '0.5px' : '0px'})`,
-                                          transform: `scaleX(${userLiveCamFlipped ? -1 : 1}) rotate(${userLiveCamRotation}deg)`
-                                        }}
-                                        alt="Broadcaster portrait"
-                                        referrerPolicy="no-referrer"
-                                      />
-                                      
-                                      {/* Left overlay badge matching reference */}
-                                      <div className="absolute bottom-2 left-2 flex flex-col space-y-1 bg-transparent max-w-[130px] text-left select-none z-10">
-                                        <div className="bg-black/55 backdrop-blur-md px-1.5 py-0.5 rounded-full flex items-center space-x-1 border border-white/5">
-                                          <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=50&q=80" className="w-4.5 h-4.5 rounded-full object-cover shrink-0" />
-                                          <div className="flex flex-col">
-                                            <span className="text-[7.5px] font-black text-white leading-none">Hoorain</span>
-                                            <span className="text-[6.5px] text-yellow-400 font-mono font-bold leading-none mt-0.5">💎 {userLivePkScoreMy}</span>
-                                          </div>
-                                        </div>
-                                        
-                                        {userLivePkActive && (
-                                          <div className="bg-black/55 backdrop-blur-md px-1.5 py-0.5 rounded-full flex items-center space-x-1 border border-pink-500/10 w-fit">
-                                            <span className="text-[9px]">🌹</span>
-                                            <span className="text-[7px] font-mono text-pink-400 font-black">x 45</span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {/* Right Screen (Opponent) */}
-                                    <div className="w-1/2 h-full relative animate-fade-in">
-                                      <img
-                                        src={userLiveCoHost?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80"}
-                                        className="w-full h-full object-cover opacity-90"
-                                        alt="Opponent portrait"
-                                        referrerPolicy="no-referrer"
-                                      />
-                                      
-                                      {/* Right overlay badge matching reference */}
-                                      <div className="absolute bottom-2 right-2 flex flex-col space-y-1 items-end max-w-[130px] text-right select-none z-10">
-                                        <div className="bg-black/55 backdrop-blur-md px-1.5 py-0.5 rounded-full flex items-center space-x-1 border border-white/5">
-                                          <img src={userLiveCoHost?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=50&q=80"} className="w-4.5 h-4.5 rounded-full object-cover shrink-0" />
-                                          <div className="flex flex-col text-left mr-1">
-                                            <span className="text-[7.5px] font-black text-white leading-none">{userLiveCoHost?.username || "Hamza"}</span>
-                                            <span className="text-[6.5px] text-blue-300 font-mono font-bold leading-none mt-0.5">💎 {userLivePkScoreOther}</span>
-                                          </div>
-                                          <button className="w-3.5 h-3.5 rounded-full bg-blue-500 text-white font-bold text-[8px] flex items-center justify-center hover:scale-105 active:scale-95 shadow">
-                                            +
-                                          </button>
-                                        </div>
-                                        
-                                        {userLivePkActive && (
-                                          <div className="bg-black/55 backdrop-blur-md px-1.5 py-0.5 rounded-full flex items-center space-x-1 border border-blue-500/10 w-fit">
-                                            <span className="text-[9px]">🦁</span>
-                                            <span className="text-[7px] font-mono text-blue-400 font-black">x 12</span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <div className="w-full h-full relative animate-fade-in overflow-hidden">
-                                    <AgoraStream
-                                      channelName={`room_${DEFAULT_USER.uniqueId || DEFAULT_USER.username}`}
-                                      role="publisher"
-                                      muted={!userLiveMic}
-                                      videoMuted={!userLiveCam}
-                                      hostAvatar={DEFAULT_USER.avatar}
-                                      hostName={DEFAULT_USER.username}
-                                    />
-                                  </div>
-                                )
+                                <div className="w-full h-full relative animate-fade-in overflow-hidden">
+                                  <AgoraStream
+                                    channelName={`room_${DEFAULT_USER.uniqueId || DEFAULT_USER.username}`}
+                                    role="publisher"
+                                    muted={!userLiveMic}
+                                    videoMuted={!userLiveCam}
+                                    hostAvatar={DEFAULT_USER.avatar}
+                                    hostName={DEFAULT_USER.username}
+                                  />
+                                </div>
                               ) : (
                                 <div className="w-full h-full flex flex-col items-center justify-center bg-[#12121a] text-center space-y-3">
                                   <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center border border-white/10 text-gray-400">
@@ -14177,8 +14077,8 @@ export default function App() {
                                 ))}
                               </div>
 
-                              {/* BOTTOM-RIGHT WIDGET: TOP CONTRIBUTORS BOARD & REQUEST TO JOIN (Removed in Solo Live) */}
-                              {(userLivePkActive || userLivePkConnected) && (
+                              {/* BOTTOM-RIGHT WIDGET: TOP CONTRIBUTORS BOARD & REQUEST TO JOIN (Removed in Solo Live & PK) */}
+                              {!(userLivePkActive || userLivePkConnected) && (
                                 <div className="absolute right-3 bottom-2 z-10 flex flex-col items-end space-y-2 select-none">
                                   {/* Double tap gesture simulation widget */}
                                   <div 
