@@ -3016,6 +3016,13 @@ export default function App() {
   const [userLiveShowGiftModal, setUserLiveShowGiftModal] = useState<boolean>(false);
   const [userLiveShowFanClubModal, setUserLiveShowFanClubModal] = useState<boolean>(false);
   const [userLiveShowJoinRequestModal, setUserLiveShowJoinRequestModal] = useState<boolean>(false);
+  const [userLiveShowPkMatchesModal, setUserLiveShowPkMatchesModal] = useState<boolean>(false);
+  const [userLiveShowExploreModal, setUserLiveShowExploreModal] = useState<boolean>(false);
+  const [selectedPkMatch, setSelectedPkMatch] = useState<{
+    id: string;
+    hostA: { username: string; avatar: string; score: number };
+    hostB: { username: string; avatar: string; score: number };
+  } | null>(null);
   
   // Live Stream Ranking System States
   const [showRankingModal, setShowRankingModal] = useState<boolean>(false);
@@ -14120,16 +14127,13 @@ export default function App() {
 
                             {/* SUB-HEADER RANKING & EXPLORE OVERLAYS */}
                             <div className="px-3 py-1 flex items-center justify-between z-10 bg-transparent text-[8.5px] font-black text-white relative select-none">
-                              {/* Left Weekly Ranking Pill */}
-                              <div className="bg-black/35 backdrop-blur-sm px-2.5 py-1 rounded-full border border-white/5 flex items-center space-x-1 hover:bg-black/50 transition-all cursor-pointer">
-                                <Flame className="w-2.5 h-2.5 text-yellow-400 fill-yellow-400 animate-pulse" />
-                                <span className="text-gray-100 tracking-wide font-bold">Top 12 in Weekly Ranking</span>
-                              </div>
+                              {/* Left Spacer to balance row */}
+                              <div className="w-1" />
 
                               {/* Right Stack: Explore & Stickers */}
                               <div className="absolute right-3 top-1.5 flex flex-col space-y-1.5 items-end">
                                 <div
-                                  onClick={() => alert("Explore: Loading next trending global channels...")}
+                                  onClick={() => setUserLiveShowExploreModal(true)}
                                   className="bg-pink-600/90 hover:bg-pink-600 backdrop-blur-sm px-2.5 py-0.5 rounded-full border border-pink-500/20 flex items-center space-x-0.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shadow"
                                 >
                                   <Globe className="w-2.5 h-2.5 text-white" />
@@ -14139,38 +14143,7 @@ export default function App() {
                                 {/* PK Promo Sticker */}
                                 <div
                                   onClick={() => {
-                                    setUserLivePkActive(!userLivePkActive);
-                                    if (!userLivePkActive) {
-                                      setUserLivePkScoreMy(12400);
-                                      setUserLivePkScoreOther(9800);
-                                      setUserLiveMessages(prev => [
-                                        ...prev,
-                                        {
-                                          id: "ul-pk-start-" + Date.now(),
-                                          username: "System ⚔️",
-                                          message: "A match is found! PK Battle with Ali_Shah_PK has begun. Show your support!",
-                                          vipLevel: 0,
-                                          userLevel: 0,
-                                          isSystem: true,
-                                          isFlagged: false,
-                                          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                        }
-                                      ]);
-                                    } else {
-                                      setUserLiveMessages(prev => [
-                                        ...prev,
-                                        {
-                                          id: "ul-pk-end-" + Date.now(),
-                                          username: "System ⚔️",
-                                          message: "PK Battle ended.",
-                                          vipLevel: 0,
-                                          userLevel: 0,
-                                          isSystem: true,
-                                          isFlagged: false,
-                                          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                        }
-                                      ]);
-                                    }
+                                    setUserLiveShowPkMatchesModal(true);
                                   }}
                                   className="bg-[#12121a]/90 border border-purple-500/30 p-1 rounded-lg text-left shadow-lg scale-90 -mr-1 hover:scale-95 transition-all cursor-pointer"
                                 >
@@ -14243,49 +14216,6 @@ export default function App() {
                             {/* FLOATING ACTION HUD / MODALS */}
                             <div className="relative flex-1 flex flex-col justify-end pb-1 pr-1.5 pl-1.5">
                               
-                              {/* LEFT-CENTER FLOATING GIFT ALERTS TOASTS */}
-                              <div className="absolute left-3 top-10 z-10 flex flex-col space-y-2 pointer-events-none max-w-[170px] select-none">
-                                {userLiveGiftToasts.map(toast => (
-                                  <div
-                                    key={toast.id}
-                                    className="bg-black/60 backdrop-blur-md border border-white/5 p-1 rounded-full flex items-center space-x-2 pr-3.5 animate-slide-in shadow-xl text-left"
-                                  >
-                                    <img src={toast.avatar} className="w-7 h-7 rounded-full border border-pink-500/40 object-cover shrink-0" />
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-[8px] text-white font-black truncate">{toast.username}</p>
-                                      <p className="text-[6.5px] text-pink-300 font-bold truncate">sent {toast.giftName}</p>
-                                    </div>
-                                    <div className="flex items-center space-x-1 bg-transparent shrink-0">
-                                      <span className="text-[12px]">{toast.giftIcon}</span>
-                                      <span className="text-yellow-400 font-black text-[9.5px] font-mono">x{toast.count}</span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-
-                              {/* BOTTOM-RIGHT WIDGET: TOP CONTRIBUTORS BOARD & REQUEST TO JOIN (Removed in Solo Live & PK) */}
-                              {!(userLivePkActive || userLivePkConnected) && (
-                                <div className="absolute right-3 bottom-2 z-10 flex flex-col items-end space-y-2 select-none">
-                                  {/* Double tap gesture simulation widget */}
-                                  <div 
-                                    className="flex flex-col items-center space-y-1 bg-black/60 backdrop-blur-md p-1.5 rounded-xl border border-white/5 w-[110px] text-center animate-pulse cursor-pointer hover:bg-black/70 transition-all select-none scale-95"
-                                    onClick={(e) => {
-                                      // Simulate sending floating heart
-                                      const heartId = Date.now().toString() + Math.random();
-                                      setActiveHearts(prev => [...prev, { id: heartId, left: 30 + Math.random() * 40 }]);
-                                      setTimeout(() => {
-                                        setActiveHearts(prev => prev.filter(h => h.id !== heartId));
-                                      }, 2000);
-                                      setUserLiveLikes(prev => prev + 1);
-                                    }}
-                                  >
-                                    <span className="text-sm animate-bounce">👆</span>
-                                    <span className="text-[7px] text-white font-black leading-none font-sans uppercase tracking-wider">Double Tap Like</span>
-                                    <span className="text-[6px] text-pink-400 font-mono mt-0.5">Sends Heart ❤️</span>
-                                  </div>
-                                </div>
-                              )}
-
                               {/* MATCH MVPs (If PK Active) */}
                               {userLivePkActive && (
                                 <div className="mx-3 mb-1.5 z-15 bg-black/45 backdrop-blur-md rounded-xl p-1.5 border border-white/5 flex items-center justify-between text-[7.5px] max-w-[210px] animate-fade-in">
@@ -14408,11 +14338,26 @@ export default function App() {
                               </form>
 
                               {/* Quick Interactive Actions */}
-                              <div className="flex items-center space-x-3 text-center">
+                              <div className="flex items-center space-x-3 text-center bg-transparent">
+                                {/* Flip Camera button */}
+                                <button
+                                  onClick={() => {
+                                    setUserLiveBgIndex(prev => (prev + 1) % 6); // Assuming 6 bg images or standard list
+                                    alert("🔄 Broadcast Camera Flipped!");
+                                  }}
+                                  className="flex flex-col items-center space-y-0.5 hover:scale-110 transition-all text-white bg-transparent"
+                                  title="Flip Camera orientation"
+                                >
+                                  <div className="w-8 h-8 rounded-full bg-black/40 border border-white/5 flex items-center justify-center shadow-md">
+                                    <RefreshCw className="w-4 h-4 text-pink-400" />
+                                  </div>
+                                  <span className="text-[8px] font-bold text-gray-300">Flip Cam</span>
+                                </button>
+
                                 {/* Share button */}
                                 <button
                                   onClick={() => setUserLiveShowShareModal(true)}
-                                  className="flex flex-col items-center space-y-0.5 hover:scale-110 transition-all text-white"
+                                  className="flex flex-col items-center space-y-0.5 hover:scale-110 transition-all text-white bg-transparent"
                                 >
                                   <div className="w-8 h-8 rounded-full bg-black/40 border border-white/5 flex items-center justify-center shadow-md">
                                     <Share2 className="w-4 h-4 text-white" />
@@ -14627,6 +14572,207 @@ export default function App() {
                                 >
                                   Apply Filters
                                 </button>
+                              </div>
+                            )}
+
+                            {/* SEHR LIVE Active PK Battles list modal */}
+                            {userLiveShowPkMatchesModal && (
+                              <div className="absolute inset-x-4 bottom-20 z-40 bg-black/95 backdrop-blur-md border border-purple-500/30 rounded-2xl p-4 space-y-3 shadow-2xl animate-slide-up text-left max-h-[340px] overflow-y-auto">
+                                <div className="flex justify-between items-center border-b border-purple-500/20 pb-2 bg-transparent">
+                                  <h5 className="text-[10px] font-black text-purple-400 uppercase tracking-wider font-mono flex items-center space-x-1">
+                                    <span>⚔️ SEHR LIVE Active PK Battles</span>
+                                  </h5>
+                                  <button onClick={() => { setUserLiveShowPkMatchesModal(false); setSelectedPkMatch(null); }} className="text-gray-400 hover:text-white text-xs">✕</button>
+                                </div>
+
+                                {!selectedPkMatch ? (
+                                  <div className="space-y-2">
+                                    <p className="text-[8px] text-gray-400">All active PK battles. Select a match to enter & support your favorite side!</p>
+                                    <div className="space-y-2">
+                                      {[
+                                        {
+                                          id: "pk-1",
+                                          hostA: { username: "Ali_Shah_PK", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80", score: 12400 },
+                                          hostB: { username: "Zain_Killer 🔥", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=100&q=80", score: 9800 }
+                                        },
+                                        {
+                                          id: "pk-2",
+                                          hostA: { username: "Arooj_Sehr", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80", score: 82000 },
+                                          hostB: { username: "Awais_Khan", avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80", score: 155600 }
+                                        },
+                                        {
+                                          id: "pk-3",
+                                          hostA: { username: "Hamza_official", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80", score: 5120 },
+                                          hostB: { username: "Shahzaib", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80", score: 4500 }
+                                        }
+                                      ].map((match) => (
+                                        <div
+                                          key={match.id}
+                                          onClick={() => setSelectedPkMatch(match)}
+                                          className="p-2 rounded-xl bg-purple-950/25 hover:bg-purple-900/30 border border-purple-500/10 hover:border-purple-500/30 flex items-center justify-between transition-all cursor-pointer"
+                                        >
+                                          <div className="flex items-center space-x-2 w-5/12 bg-transparent">
+                                            <img src={match.hostA.avatar} className="w-6 h-6 rounded-full object-cover border border-pink-500/40" />
+                                            <span className="text-[8.5px] font-black text-white truncate">{match.hostA.username}</span>
+                                          </div>
+                                          <div className="flex flex-col items-center justify-center w-2/12 bg-transparent">
+                                            <span className="text-[8px] bg-red-600 px-1 py-0.2 rounded font-black italic tracking-wide text-white scale-90">VS</span>
+                                            <span className="text-[7px] text-gray-400 font-mono mt-0.5">Live PK</span>
+                                          </div>
+                                          <div className="flex items-center space-x-2 justify-end w-5/12 bg-transparent">
+                                            <span className="text-[8.5px] font-black text-white truncate text-right">{match.hostB.username}</span>
+                                            <img src={match.hostB.avatar} className="w-6 h-6 rounded-full object-cover border border-blue-500/40" />
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-4 text-center py-2 bg-transparent">
+                                    <p className="text-[8.5px] text-gray-300">Choose host side to join the match battle room:</p>
+                                    <div className="grid grid-cols-2 gap-3 bg-transparent">
+                                      <button
+                                        onClick={() => {
+                                          setUserLiveCoHost({
+                                            username: selectedPkMatch.hostA.username,
+                                            avatar: selectedPkMatch.hostA.avatar,
+                                            fans: "125K fans",
+                                            level: 45
+                                          });
+                                          setUserLivePkActive(true);
+                                          setUserLivePkConnected(true);
+                                          setUserLivePkScoreMy(selectedPkMatch.hostA.score);
+                                          setUserLivePkScoreOther(selectedPkMatch.hostB.score);
+                                          setUserLivePkTimer(240);
+                                          setUserLiveShowPkMatchesModal(false);
+                                          setSelectedPkMatch(null);
+                                          alert(`Successfully joined ${selectedPkMatch.hostA.username}'s side of the PK battle room!`);
+                                        }}
+                                        className="p-3 rounded-xl bg-pink-900/40 hover:bg-pink-800/50 border border-pink-500/30 flex flex-col items-center space-y-2 transition-all cursor-pointer text-center"
+                                      >
+                                        <img src={selectedPkMatch.hostA.avatar} className="w-10 h-10 rounded-full border-2 border-pink-500 object-cover" />
+                                        <div className="text-center bg-transparent">
+                                          <span className="text-[8.5px] font-black text-white block truncate w-24">{selectedPkMatch.hostA.username}</span>
+                                          <span className="text-[7.5px] text-pink-300 font-bold block mt-0.5">Host A</span>
+                                        </div>
+                                      </button>
+                                      
+                                      <button
+                                        onClick={() => {
+                                          setUserLiveCoHost({
+                                            username: selectedPkMatch.hostB.username,
+                                            avatar: selectedPkMatch.hostB.avatar,
+                                            fans: "155K fans",
+                                            level: 50
+                                          });
+                                          setUserLivePkActive(true);
+                                          setUserLivePkConnected(true);
+                                          setUserLivePkScoreMy(selectedPkMatch.hostB.score);
+                                          setUserLivePkScoreOther(selectedPkMatch.hostA.score);
+                                          setUserLivePkTimer(240);
+                                          setUserLiveShowPkMatchesModal(false);
+                                          setSelectedPkMatch(null);
+                                          alert(`Successfully joined ${selectedPkMatch.hostB.username}'s side of the PK battle room!`);
+                                        }}
+                                        className="p-3 rounded-xl bg-blue-900/40 hover:bg-blue-800/50 border border-blue-500/30 flex flex-col items-center space-y-2 transition-all cursor-pointer text-center"
+                                      >
+                                        <img src={selectedPkMatch.hostB.avatar} className="w-10 h-10 rounded-full border-2 border-blue-500 object-cover" />
+                                        <div className="text-center bg-transparent">
+                                          <span className="text-[8.5px] font-black text-white block truncate w-24">{selectedPkMatch.hostB.username}</span>
+                                          <span className="text-[7.5px] text-blue-300 font-bold block mt-0.5">Host B</span>
+                                        </div>
+                                      </button>
+                                    </div>
+                                    <button
+                                      onClick={() => setSelectedPkMatch(null)}
+                                      className="text-[8px] text-purple-400 font-bold underline block mx-auto hover:text-purple-300 mt-2 bg-transparent"
+                                    >
+                                      ← Back to Matches list
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Explore active live hosts list modal */}
+                            {userLiveShowExploreModal && (
+                              <div className="absolute inset-x-4 bottom-20 z-40 bg-black/95 backdrop-blur-md border border-pink-500/30 rounded-2xl p-4 space-y-3 shadow-2xl animate-slide-up text-left max-h-[340px] overflow-y-auto">
+                                <div className="flex justify-between items-center border-b border-pink-500/20 pb-2 bg-transparent">
+                                  <h5 className="text-[10px] font-black text-pink-400 uppercase tracking-wider font-mono flex items-center space-x-1">
+                                    <span>🌍 SEHR LIVE Explore Lounge</span>
+                                  </h5>
+                                  <button onClick={() => setUserLiveShowExploreModal(false)} className="text-gray-400 hover:text-white text-xs">✕</button>
+                                </div>
+
+                                <div className="space-y-2 bg-transparent">
+                                  <p className="text-[8px] text-gray-400 bg-transparent">Join any trending live broadcast room active right now in Pakistan!</p>
+                                  <div className="grid grid-cols-2 gap-2 bg-transparent">
+                                    {[
+                                      {
+                                        id: "h1",
+                                        name: "Aisha_Khan 🌸",
+                                        avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&h=150&q=80",
+                                        title: "Sahr music room - beautiful tracks! 🎵",
+                                        viewers: "12.4K",
+                                        level: 35
+                                      },
+                                      {
+                                        id: "h2",
+                                        name: "Zain_Killer 🔥",
+                                        avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&h=150&q=80",
+                                        title: "High energy battle! Join now ⚡",
+                                        viewers: "8.5K",
+                                        level: 50
+                                      },
+                                      {
+                                        id: "h3",
+                                        name: "Ali_Shah_PK",
+                                        avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
+                                        title: "Friendly chit chat room! 🎤",
+                                        viewers: "14.1K",
+                                        level: 45
+                                      },
+                                      {
+                                        id: "h4",
+                                        name: "Tarkan_Lover 🇹🇷",
+                                        avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+                                        title: "Istanbul evening tunes! 🕌",
+                                        viewers: "9.2K",
+                                        level: 28
+                                      }
+                                    ].map((host) => (
+                                      <div
+                                        key={host.id}
+                                        onClick={() => {
+                                          setUserLiveCoHost({
+                                            username: host.name,
+                                            avatar: host.avatar,
+                                            fans: `${host.viewers} fans`,
+                                            level: host.level
+                                          });
+                                          setUserLivePkActive(false);
+                                          setUserLivePkConnected(true);
+                                          setUserLiveShowExploreModal(false);
+                                          alert(`Shifting to live room of @${host.name}! Welcome to the channel! 🎉`);
+                                        }}
+                                        className="p-2 rounded-xl bg-white/3 hover:bg-white/8 border border-white/5 hover:border-pink-500/25 flex flex-col text-left space-y-1.5 transition-all cursor-pointer"
+                                      >
+                                        <div className="flex items-center space-x-1.5 bg-transparent">
+                                          <img src={host.avatar} className="w-5 h-5 rounded-full object-cover border border-pink-500/20" />
+                                          <div className="min-w-0 flex-1 bg-transparent">
+                                            <span className="text-[8px] font-black text-white block truncate">{host.name}</span>
+                                            <span className="text-[6.5px] text-gray-400 font-mono block">Lvl {host.level}</span>
+                                          </div>
+                                        </div>
+                                        <p className="text-[7.5px] text-gray-300 font-medium line-clamp-1 leading-normal bg-transparent">{host.title}</p>
+                                        <div className="flex justify-between items-center text-[6.5px] text-pink-400 font-bold bg-transparent">
+                                          <span>🔥 ACTIVE</span>
+                                          <span className="text-gray-400 font-mono font-normal">👥 {host.viewers}</span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
                               </div>
                             )}
 
@@ -15805,7 +15951,7 @@ export default function App() {
                             {/* BOTTOM SYSTEM MENU (BLACK NAVIGATION RAIL) */}
                             <div className="bg-black border-t border-white/5 py-1 px-4 z-10 flex items-center justify-between text-center select-none">
                               {[
-                                { id: "flip", label: "Flip", icon: "📸" },
+                                { id: "camera", label: userLiveCam ? "Cam OFF" : "Cam ON", icon: userLiveCam ? "📹" : "❌" },
                                 { id: "mute", label: userLiveMic ? "Mute" : "Unmute", icon: userLiveMic ? "🔇" : "🎙️" },
                                 { id: "beauty", label: "Beauty", icon: "🪄" },
                                 { id: "music", label: "Music", icon: "🎵" },
@@ -15817,8 +15963,9 @@ export default function App() {
                                 <button
                                   key={btn.id}
                                   onClick={() => {
-                                    if (btn.id === "flip") {
-                                      setUserLiveBgIndex(prev => (prev + 1) % USER_LIVE_BG_IMAGES.length);
+                                    if (btn.id === "camera") {
+                                      setUserLiveCam(!userLiveCam);
+                                      alert(userLiveCam ? "📹 Camera Feed is now OFF (Privacy Mode Active)" : "📹 Camera Feed is now ON");
                                     } else if (btn.id === "mute") {
                                       setUserLiveMic(!userLiveMic);
                                       alert(userLiveMic ? "🎙️ Broadcast Mic is now MUTED" : "🎙️ Broadcast Mic is now LIVE / UNMUTED");
@@ -15827,45 +15974,7 @@ export default function App() {
                                     } else if (btn.id === "music") {
                                       setUserLiveShowMusicModal(!userLiveShowMusicModal);
                                     } else if (btn.id === "pk") {
-                                      if (!userLivePkConnected && !userLivePkActive) {
-                                        setUserLivePkInvitePanelOpen(!userLivePkInvitePanelOpen);
-                                      } else if (userLivePkConnected && !userLivePkActive) {
-                                        setUserLivePkActive(true);
-                                        setUserLivePkScoreMy(12560);
-                                        setUserLivePkScoreOther(9820);
-                                        setUserLivePkTimer(272);
-                                        setUserLiveMessages(prev => [
-                                          ...prev,
-                                          {
-                                            id: "ul-pk-start-" + Date.now(),
-                                            username: "System ⚔️",
-                                            message: `PK Battle match with ${userLiveCoHost?.username || "Hamza"} has started! Show your support! 🎁⚔️`,
-                                            vipLevel: 0,
-                                            userLevel: 0,
-                                            isSystem: true,
-                                            isFlagged: false,
-                                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                          }
-                                        ]);
-                                        alert(`⚔️ PK Battle with ${userLiveCoHost?.username || "Hamza"} has started! Match timer: 04:32`);
-                                      } else if (userLivePkActive) {
-                                        setUserLivePkActive(false);
-                                        setUserLivePkConnected(true);
-                                        setUserLiveMessages(prev => [
-                                          ...prev,
-                                          {
-                                            id: "ul-pk-end-" + Date.now(),
-                                            username: "System ⚔️",
-                                            message: "PK Battle finished. Still co-hosting split-screen.",
-                                            vipLevel: 0,
-                                            userLevel: 0,
-                                            isSystem: true,
-                                            isFlagged: false,
-                                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                          }
-                                        ]);
-                                        alert("PK Battle ended. Returning to split-screen co-hosting.");
-                                      }
+                                      setUserLiveShowPkMatchesModal(true);
                                     } else if (btn.id === "chat") {
                                       setUserLiveChatVisible(!userLiveChatVisible);
                                     } else if (btn.id === "settings") {

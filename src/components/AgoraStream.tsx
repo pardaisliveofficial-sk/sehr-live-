@@ -388,40 +388,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         </div>
       )}
 
-      {/* 3. ABSOLUTE SCI-FI WATERMARK ANALYTICS HUD OVERLAY (For both real & mock) */}
-      <div className="absolute bottom-3 left-3 z-20 flex flex-col space-y-1 text-left select-none pointer-events-none">
-        {/* Signal Active Status Badge */}
-        <div className="bg-black/65 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/10 flex items-center space-x-1.5 shadow-md w-fit">
-          <span className={`w-1.5 h-1.5 rounded-full animate-ping ${isSimulated ? "bg-cyan-400" : "bg-emerald-400"}`}></span>
-          <span className="text-[7.5px] font-black text-white tracking-widest uppercase font-mono">
-            {isSimulated ? "AGORA SIM_GATE" : "AGORA WEB_RTC"}
-          </span>
-        </div>
-
-        {/* Real-time telemetry indicators */}
-        <div className="bg-[#0b0a14]/90 backdrop-blur-md border border-white/5 rounded-lg p-1.5 flex flex-col space-y-0.5 text-[6.5px] font-mono text-gray-400 w-[145px] shadow-lg">
-          <div className="flex justify-between items-center">
-            <span className="flex items-center space-x-0.5"><Signal className="w-2 h-2 text-pink-400" /> <span>SECURE:</span></span>
-            <span className="text-white font-bold uppercase">WSS-AES-256</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="flex items-center space-x-0.5"><Video className="w-2 h-2 text-indigo-400" /> <span>RESOLUTION:</span></span>
-            <span className="text-white font-bold font-mono">1080p @ {fps}fps</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="flex items-center space-x-0.5"><Mic className="w-2 h-2 text-emerald-400" /> <span>LATENCY:</span></span>
-            <span className="text-cyan-400 font-bold font-mono">{latency}ms (Upt)</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="flex items-center space-x-0.5"><Wifi className="w-2 h-2 text-yellow-400" /> <span>BITRATE:</span></span>
-            <span className="text-yellow-400 font-bold font-mono">{bitrate} kbps</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="flex items-center space-x-0.5"><AlertCircle className="w-2 h-2 text-red-400" /> <span>PKT LOSS:</span></span>
-            <span className="text-red-400 font-bold font-mono">{packetLoss}</span>
-          </div>
-        </div>
-      </div>
+      {/* Telemetry overlay removed for clean, premium Solo Live UI */}
     </div>
   );
 };
