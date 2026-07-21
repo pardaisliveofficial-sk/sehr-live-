@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { ReelsView } from "./components/ReelsView";
 import { AgoraStream } from "./components/AgoraStream";
+import { AgoraPartyAudio } from "./components/AgoraPartyAudio";
 import {
   Tv,
   Mic,
@@ -682,7 +683,13 @@ export default function App() {
     const savedUser = localStorage.getItem("sehr_user_profile");
     if (savedUser) {
       try {
-        return JSON.parse(savedUser);
+        const parsed = JSON.parse(savedUser);
+        return {
+          ...DEFAULT_USER,
+          ...parsed,
+          coins: typeof parsed?.coins === "number" ? parsed.coins : (DEFAULT_USER.coins ?? 0),
+          diamonds: typeof parsed?.diamonds === "number" ? parsed.diamonds : (DEFAULT_USER.diamonds ?? 0)
+        };
       } catch (e) {
         return DEFAULT_USER;
       }
@@ -1775,16 +1782,7 @@ export default function App() {
     reelStartTimeRef.current = now;
   }, [currentReelIndex, reelsTab, clientView]);
 
-  useEffect(() => {
-    const handleHardwareBack = (e: any) => {
-      e.preventDefault();
-      goBack();
-    };
-    document.addEventListener("backbutton", handleHardwareBack);
-    return () => {
-      document.removeEventListener("backbutton", handleHardwareBack);
-    };
-  }, [viewHistory]);
+
 
   const [walletTab, setWalletTab] = useState<"creator_center" | "user_wallet">("creator_center");
   const [coinPurchaseMethod, setCoinPurchaseMethod] = useState<"online" | "offline">("online");
@@ -1848,6 +1846,7 @@ export default function App() {
   const [currentBannerIndex, setCurrentBannerIndex] = useState<number>(0);
   const [invitedToSeat, setInvitedToSeat] = useState<{ partyId: string; seatId: number; hostName: string } | null>(null);
   const [showCreatePartyModal, setShowCreatePartyModal] = useState<boolean>(false);
+  const [showPartyExitConfirm, setShowPartyExitConfirm] = useState<boolean>(false);
   const [showCreateActionSheet, setShowCreateActionSheet] = useState<boolean>(false);
   const [partyCategory, setPartyCategory] = useState<string>("all");
   
@@ -3039,6 +3038,126 @@ export default function App() {
   
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const [userLiveShowExitOptions, setUserLiveShowExitOptions] = useState<boolean>(false);
+
+  // 🚪 APP EXIT NAVIGATION & BACK EVENT INTERCEPTOR SYSTEM
+  const [showExitConfirmDialog, setShowExitConfirmDialog] = useState<boolean>(false);
+  const [isAppExited, setIsAppExited] = useState<boolean>(false);
+  const lastBackTimeRef = useRef<number>(0);
+
+  const handleBackNavigation = () => {
+    // 1. If Exit dialog is already visible: dismiss it (Requirement 8)
+    if (showExitConfirmDialog) {
+      setShowExitConfirmDialog(false);
+      return;
+    }
+
+    // 2. Dismiss secondary active sheet or modal overlay views (Requirement 1 & 4)
+    if (showStoryViewerModal) {
+      setShowStoryViewerModal(false);
+      return;
+    }
+    if (showCreateStoryModal) {
+      setShowCreateStoryModal(false);
+      return;
+    }
+    if (isEditingProfile) {
+      setIsEditingProfile(false);
+      return;
+    }
+    if (showCreateActionSheet) {
+      setShowCreateActionSheet(false);
+      return;
+    }
+    if (showRequestsSheet) {
+      setShowRequestsSheet(false);
+      return;
+    }
+    if (showPartyExitConfirm) {
+      setShowPartyExitConfirm(false);
+      return;
+    }
+    if (userLiveShowExitOptions) {
+      setUserLiveShowExitOptions(false);
+      return;
+    }
+    if (giftTargetUser) {
+      setGiftTargetUser(null);
+      return;
+    }
+
+    // 3. For live rooms / party rooms, show internal leaving confirm options or leave room
+    if (clientView === "party-room" || clientView === "live-room") {
+      setShowPartyExitConfirm(true);
+      return;
+    }
+    if (clientView === "user-live") {
+      setUserLiveShowExitOptions(true);
+      return;
+    }
+
+    // 4. Connect Device Back with App Navigation (pop history) (Requirement 1 & 2)
+    if (viewHistory.length > 1) {
+      const prevView = viewHistory[viewHistory.length - 2];
+      if (prevView !== clientView) {
+        setClientView(prevView as any);
+        return;
+      }
+    }
+
+    // 5. If on another bottom tab or root tab (reels, DM, profile, stream), return to feed/Home first (Requirement 7)
+    if (clientView !== "feed") {
+      setClientView("feed");
+      return;
+    }
+
+    // 6. Root/Home screen back handling: show elegant Exit confirmation dialog (Requirement 3 & 4)
+    setShowExitConfirmDialog(true);
+  };
+
+  const triggerBack = () => {
+    const now = Date.now();
+    if (now - lastBackTimeRef.current < 200) return; // Ignore rapid double clicks
+    lastBackTimeRef.current = now;
+    handleBackNavigation();
+  };
+
+  useEffect(() => {
+    // Push initial dummy states to ensure back button can be intercepted
+    window.history.pushState({ appState: "sehrlive" }, "");
+    window.history.pushState({ appState: "sehrlive" }, "");
+
+    const handlePopState = (e: PopStateEvent) => {
+      // Intercept the back navigation
+      triggerBack();
+      // Re-push state so that the back button remains interceptable
+      window.history.pushState({ appState: "sehrlive" }, "");
+    };
+
+    const handleHardwareBack = (e: any) => {
+      e.preventDefault();
+      triggerBack();
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    document.addEventListener("backbutton", handleHardwareBack);
+    
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      document.removeEventListener("backbutton", handleHardwareBack);
+    };
+  }, [
+    clientView, 
+    viewHistory,
+    showExitConfirmDialog,
+    showStoryViewerModal,
+    showCreateStoryModal,
+    isEditingProfile,
+    showCreateActionSheet,
+    showRequestsSheet,
+    showPartyExitConfirm,
+    userLiveShowExitOptions,
+    giftTargetUser
+  ]);
   const [userLivePkActive, setUserLivePkActive] = useState<boolean>(false);
   const [userLivePkConnected, setUserLivePkConnected] = useState<boolean>(false);
   const [userLivePkInvitePanelOpen, setUserLivePkInvitePanelOpen] = useState<boolean>(false);
@@ -7476,7 +7595,7 @@ export default function App() {
                       };
 
                       return (
-                        <div className="flex-1 flex flex-col justify-between bg-gradient-to-b from-[#0e0720] via-[#0a0414] to-[#040108] relative pb-4 select-none">
+                        <div className="w-full h-full flex flex-col bg-gradient-to-b from-[#0e0720] via-[#0a0414] to-[#040108] relative select-none overflow-hidden pb-3">
                           {/* 👑 FLOATING HOST INVITATION TOAST BAR */}
                           {activeInvite && (
                             <div className="absolute top-14 inset-x-3 z-50 bg-[#12121a]/95 border-2 border-pink-500 rounded-2xl p-3 shadow-2xl flex items-center justify-between animate-slide-up text-left">
@@ -7504,179 +7623,181 @@ export default function App() {
                             </div>
                           )}
 
-                          {/* 🎵 ROOM HEADER INFO BOX */}
-                          <div className="flex items-center justify-between p-3 border-b border-white/5 bg-[#12121a]/60 backdrop-blur-md">
-                            <div className="flex items-center space-x-2.5 bg-transparent text-left max-w-[70%]">
-                              <img src={party.hostAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"} className="w-9 h-9 rounded-full object-cover border border-[#ff007f]" alt="Host" />
-                              <div className="bg-transparent leading-tight truncate">
-                                <h4 className="text-[11px] font-bold text-white uppercase truncate flex items-center space-x-1">
-                                  <span>{party.title}</span>
-                                  <span className="text-[7.5px] bg-[#ff007f] text-white px-1 py-0.5 rounded ml-1 tracking-wider uppercase font-black font-mono">LIVE LOUNGE</span>
-                                </h4>
-                                <p className="text-[8.5px] text-[#ff007f] font-mono mt-0.5">Host: @{party.hostUsername} • 🎙️ {party.category}</p>
+                          {/* UPPER AREA: HEADER + 12-SEAT LOUNGE (UPPER 55%) */}
+                          <div className="flex flex-col bg-transparent shrink-0">
+                            {/* 🎵 ROOM HEADER INFO BOX */}
+                            <div className="flex items-center justify-between p-2 px-3 border-b border-white/5 bg-[#12121a]/60 backdrop-blur-md">
+                              <div className="flex items-center space-x-2 bg-transparent text-left max-w-[70%]">
+                                <img src={party.hostAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"} className="w-8 h-8 rounded-full object-cover border border-[#ff007f]" alt="Host" />
+                                <div className="bg-transparent leading-none truncate">
+                                  <h4 className="text-[10px] font-bold text-white uppercase truncate flex items-center space-x-1 bg-transparent">
+                                    <span>{party.title}</span>
+                                    <span className="text-[7.5px] bg-[#ff007f] text-white px-1 py-0.5 rounded ml-1 tracking-wider uppercase font-black font-mono">LIVE LOUNGE</span>
+                                  </h4>
+                                  <p className="text-[8.5px] text-[#ff007f] font-mono mt-0.5 bg-transparent">Host: @{party.hostUsername} • 🎙️ {party.category}</p>
+                                </div>
+                              </div>
+
+                              {/* Header Actions */}
+                              <div className="flex items-center space-x-1.5 bg-transparent shrink-0">
+                                {isHostOfRoom && (
+                                  <button
+                                    onClick={() => setShowRequestsSheet(true)}
+                                    className="relative bg-[#20102a] border border-pink-500/30 hover:border-pink-500 p-1 rounded-xl text-pink-400 hover:text-pink-300 transition-all cursor-pointer flex items-center justify-center w-7.5 h-7.5 shadow-md"
+                                    title="Seat Join Requests"
+                                  >
+                                    <span className="text-xs">🎙️</span>
+                                    {activeRequests.length > 0 && (
+                                      <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[7px] font-black rounded-full w-3.5 h-3.5 flex items-center justify-center border border-[#12121a]">
+                                        {activeRequests.length}
+                                      </span>
+                                    )}
+                                  </button>
+                                )}
+                                
+                                <button
+                                  onClick={() => setShowPartyExitConfirm(true)}
+                                  className="bg-red-500 hover:bg-red-600 text-white p-1 rounded-xl border border-white/10 transition-colors cursor-pointer flex items-center justify-center w-7.5 h-7.5 shadow-lg"
+                                  title="Leave or End Party"
+                                >
+                                  <X className="w-3.5 h-3.5 text-white" />
+                                </button>
                               </div>
                             </div>
 
-                            {/* Header Actions */}
-                            <div className="flex items-center space-x-2 bg-transparent shrink-0">
-                              {isHostOfRoom && (
-                                <button
-                                  onClick={() => setShowRequestsSheet(true)}
-                                  className="relative bg-[#20102a] border border-pink-500/30 hover:border-pink-500 p-1.5 rounded-xl text-pink-400 hover:text-pink-300 transition-all cursor-pointer flex items-center justify-center w-8 h-8 shadow-md"
-                                  title="Seat Join Requests"
-                                >
-                                  <span>🎙️</span>
-                                  {activeRequests.length > 0 && (
-                                    <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[7px] font-black rounded-full w-4 h-4 flex items-center justify-center border border-[#12121a]">
-                                      {activeRequests.length}
-                                    </span>
-                                  )}
-                                </button>
-                              )}
-                              
-                              <button
-                                onClick={() => {
-                                  if (isHostOfRoom) {
-                                    const confirmClose = window.confirm("Host Warning: Close or leave this party audio room?");
-                                    if (confirmClose) {
-                                      // Close party
-                                      fetch(`/api/v1/parties/${party.id}/close`, { method: "POST" }).then(() => {
-                                        setActivePartyId(null);
-                                        setClientView("feed");
-                                      });
-                                    }
-                                  } else {
-                                    handleLeaveParty(party.id);
-                                  }
-                                }}
-                                className="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-xl border border-white/10 transition-colors cursor-pointer flex items-center justify-center w-8 h-8 shadow-lg"
-                                title="Leave Room"
-                              >
-                                ❌
-                              </button>
-                            </div>
-                          </div>
+                            {/* 🎙️ 12-SEAT LOUNGE AUDIOGRID AREA (3 ROWS OF 4 SEATS) */}
+                            <div className="px-3 py-1.5 space-y-2 bg-transparent">
+                              <div className="grid grid-cols-4 gap-x-1.5 gap-y-2.5 bg-black/40 border border-[#303040]/20 rounded-2xl p-2.5 shadow-2xl relative overflow-hidden">
+                                {/* Background ambient aesthetic light */}
+                                <div className="absolute -top-12 -left-12 w-28 h-28 rounded-full bg-[#ff007f]/5 blur-3xl pointer-events-none" />
+                                <div className="absolute -bottom-12 -right-12 w-28 h-28 rounded-full bg-purple-500/5 blur-3xl pointer-events-none" />
 
-                          {/* 🎙️ 12-SEAT LOUNGE AUDIOGRID AREA (3 ROWS OF 4 SEATS) */}
-                          <div className="p-3.5 space-y-4">
-                            <div className="grid grid-cols-4 gap-x-2 gap-y-4 bg-black/40 border border-[#303040]/20 rounded-2xl p-4 shadow-2xl relative overflow-hidden">
-                              {/* Background ambient aesthetic light */}
-                              <div className="absolute -top-12 -left-12 w-28 h-28 rounded-full bg-[#ff007f]/5 blur-3xl pointer-events-none" />
-                              <div className="absolute -bottom-12 -right-12 w-28 h-28 rounded-full bg-purple-500/5 blur-3xl pointer-events-none" />
+                                {(() => {
+                                  const fullSeats = Array.from({ length: 12 }, (_, i) => {
+                                    const sId = i + 1;
+                                    const found = party.seats?.find((s: any) => s.id === sId);
+                                    return found || { id: sId, name: null, avatar: null, isMuted: false };
+                                  });
 
-                              {(() => {
-                                const fullSeats = Array.from({ length: 12 }, (_, i) => {
-                                  const sId = i + 1;
-                                  const found = party.seats?.find((s: any) => s.id === sId);
-                                  return found || { id: sId, name: null, avatar: null, isMuted: false };
-                                });
-
-                                return fullSeats.map((seat) => {
-                                  const isOccupied = !!seat.name;
-                                  const isMe = seat.name === user.username;
-                                  const seatIsMuted = seat.isMuted;
-                                  return (
-                                    <div 
-                                      key={seat.id} 
-                                      className="flex flex-col items-center space-y-1 relative bg-transparent"
-                                    >
-                                      {/* Seat Node circle frame */}
+                                  return fullSeats.map((seat) => {
+                                    const isOccupied = !!seat.name;
+                                    const isMe = seat.name === user.username;
+                                    const seatIsMuted = seat.isMuted;
+                                    return (
                                       <div 
-                                        onClick={() => handleSeatClick(seat.id, seat.name)}
-                                        className={`w-14 h-14 rounded-full p-[2px] cursor-pointer relative transition-transform duration-300 hover:scale-105 active:scale-95 ${
-                                          isOccupied 
-                                            ? isMe 
-                                              ? "bg-gradient-to-tr from-[#ff007f] to-cyan-400 shadow-[0_0_12px_rgba(255,0,127,0.4)]"
-                                              : seat.id === 1 
-                                                ? "bg-gradient-to-tr from-amber-400 via-pink-500 to-[#ff007f] shadow-[0_0_12px_rgba(251,191,36,0.3)] animate-pulse"
-                                                : "bg-[#3a206a] border border-[#ff007f]/40"
-                                            : "bg-[#18122c] border border-dashed border-gray-600/55 hover:border-[#ff007f]/50"
-                                        }`}
+                                        key={seat.id} 
+                                        className="flex flex-col items-center space-y-0.5 relative bg-transparent"
                                       >
-                                        <div className="w-full h-full rounded-full overflow-hidden border border-[#0e0720] flex items-center justify-center bg-transparent">
-                                          {isOccupied ? (
-                                            <img src={seat.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"} className="w-full h-full object-cover" alt={seat.name} />
-                                          ) : (
-                                            <div className="flex flex-col items-center justify-center bg-transparent text-gray-500">
-                                              <span className="text-[10px] bg-transparent font-black">🎙️</span>
-                                              <span className="text-[7.5px] bg-transparent font-sans text-gray-500 font-bold uppercase tracking-widest mt-0.5">+{seat.id}</span>
+                                        {/* Seat Node circle frame */}
+                                        <div 
+                                          onClick={() => handleSeatClick(seat.id, seat.name)}
+                                          className={`w-11.5 h-11.5 rounded-full p-[1.5px] cursor-pointer relative transition-transform duration-300 hover:scale-105 active:scale-95 ${
+                                            isOccupied 
+                                              ? isMe 
+                                                ? "bg-gradient-to-tr from-[#ff007f] to-cyan-400 shadow-[0_0_8px_rgba(255,0,127,0.4)]"
+                                                : seat.id === 1 
+                                                  ? "bg-gradient-to-tr from-amber-400 via-pink-500 to-[#ff007f] shadow-[0_0_8px_rgba(251,191,36,0.3)] animate-pulse"
+                                                  : "bg-[#3a206a] border border-[#ff007f]/40"
+                                              : "bg-[#18122c] border border-dashed border-gray-600/55 hover:border-[#ff007f]/50"
+                                          }`}
+                                        >
+                                          <div className="w-full h-full rounded-full overflow-hidden border border-[#0e0720] flex items-center justify-center bg-transparent">
+                                            {isOccupied ? (
+                                              <img src={seat.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"} className="w-full h-full object-cover" alt={seat.name} />
+                                            ) : (
+                                              <div className="flex flex-col items-center justify-center bg-transparent text-gray-500">
+                                                <span className="text-[9px] bg-transparent font-black leading-none">🎙️</span>
+                                                <span className="text-[7px] bg-transparent font-sans text-gray-500 font-bold uppercase tracking-widest mt-0.5">+{seat.id}</span>
+                                              </div>
+                                            )}
+                                          </div>
+
+                                          {/* Seat badge label overlays */}
+                                          {isOccupied && seat.id === 1 && (
+                                            <span className="absolute -top-1 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-400 to-pink-500 text-black text-[5.5px] font-black px-1 rounded-full uppercase tracking-wider font-sans border border-black/10">HOST</span>
+                                          )}
+
+                                          {/* Soundwave equalizer indicator overlay if talking & unmuted */}
+                                          {isOccupied && !seatIsMuted && (
+                                            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-[#ff007f] text-white rounded-full px-1 py-0.5 flex items-center space-x-0.5 text-[4.5px] font-black uppercase tracking-wider border border-black animate-pulse">
+                                              <span className="w-0.5 h-1 bg-white rounded-full animate-bounce"></span>
+                                              <span className="w-0.5 h-2 bg-white rounded-full animate-bounce delay-75"></span>
+                                              <span className="w-0.5 h-1 bg-white rounded-full animate-bounce delay-150"></span>
+                                            </div>
+                                          )}
+
+                                          {/* Muted indicator overlay */}
+                                          {isOccupied && seatIsMuted && (
+                                            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-gray-800 border border-white/10 rounded-full w-3.5 h-3.5 flex items-center justify-center shadow">
+                                              <span className="text-[6px] text-red-500 leading-none">🎙️⃠</span>
                                             </div>
                                           )}
                                         </div>
 
-                                        {/* Seat badge label overlays */}
-                                        {isOccupied && seat.id === 1 && (
-                                          <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-400 to-pink-500 text-black text-[6.5px] font-black px-1 rounded-full uppercase tracking-wider font-sans border border-black/10">HOST</span>
-                                        )}
-
-                                        {/* Soundwave equalizer indicator overlay if talking & unmuted */}
-                                        {isOccupied && !seatIsMuted && (
-                                          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-[#ff007f] text-white rounded-full px-1 py-0.5 flex items-center space-x-0.5 text-[5px] font-black uppercase tracking-wider border border-black animate-pulse">
-                                            <span className="w-0.5 h-1.5 bg-white rounded-full animate-bounce"></span>
-                                            <span className="w-0.5 h-2.5 bg-white rounded-full animate-bounce delay-75"></span>
-                                            <span className="w-0.5 h-1.5 bg-white rounded-full animate-bounce delay-150"></span>
-                                          </div>
-                                        )}
-
-                                        {/* Muted indicator overlay */}
-                                        {isOccupied && seatIsMuted && (
-                                          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-gray-800 border border-white/10 rounded-full w-4 h-4 flex items-center justify-center shadow">
-                                            <span className="text-[7px] text-red-500 leading-none">🎙️⃠</span>
-                                          </div>
-                                        )}
+                                        {/* Seated occupant name label */}
+                                        <p className="text-[8px] font-semibold text-gray-300 truncate max-w-[50px] text-center font-sans tracking-tight">
+                                          {isOccupied ? (isMe ? "You" : seat.name) : `Seat ${seat.id}`}
+                                        </p>
                                       </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
 
-                                      {/* Seated occupant name label */}
-                                      <p className="text-[8.5px] font-semibold text-gray-300 truncate max-w-[62px] text-center font-sans tracking-tight">
-                                        {isOccupied ? (isMe ? "You" : seat.name) : `Seat ${seat.id}`}
+                              {/* 🎙️ AGORA REAL-TIME VOICE PIPELINE CONTROLLER (The Live Audio Launch part) */}
+                              <AgoraPartyAudio
+                                partyId={party.id}
+                                channelName={`party-${party.id}`}
+                                userRole={isHostOfRoom ? "host" : (mySeatedSeat ? "speaker" : "listener")}
+                                isMuted={mySeatedSeat ? mySeatedSeat.isMuted : true}
+                                username={user.username}
+                                avatar={user.avatar}
+                              />
+                            </div>
+                          </div>
+
+                          {/* LOWER AREA: COMMENTS & BOTTOM CONTROL ACTIONS BAR (LOWER 45%) */}
+                          <div className="flex-1 min-h-0 flex flex-col justify-between bg-transparent select-none pb-1">
+                            {/* 💬 INTERACTIVE COMMENTS TIMELINE CHAT STREAM */}
+                            <div className="flex-1 min-h-[140px] m-3 mt-1.5 bg-black/35 border border-[#303040]/25 rounded-2xl flex flex-col justify-between overflow-hidden">
+                              <div className="flex-1 overflow-y-auto space-y-1.5 scrollbar-thin text-left p-2.5">
+                                {/* Welcome system instructions message */}
+                                <div className="bg-[#1a0f30]/40 border border-pink-500/10 rounded-xl p-2.5 space-y-1">
+                                  <p className="text-[9px] font-black text-[#ff007f] uppercase tracking-wider font-mono bg-transparent">🎙️ Sahr Live Audio Lounge Carnival</p>
+                                  <p className="text-[7.5px] text-gray-400 leading-snug font-sans bg-transparent">
+                                    Welcome to this interactive 12-seat audio party! Click any empty seat to request or join the mic session. Viewers can send premium visual gifts, exchange seating, or text real-time messages. Keep Sahr guidelines intact!
+                                  </p>
+                                </div>
+
+                                {party.comments?.map((comment: any) => {
+                                  if (comment.isSystem) {
+                                    return (
+                                      <div key={comment.id} className="text-[8px] font-black text-pink-400 font-mono italic leading-relaxed py-0.5 bg-transparent">
+                                        {comment.message}
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <div 
+                                      key={comment.id}
+                                      onClick={() => {
+                                        if (comment.username !== user.username) {
+                                          setGiftTargetUser(comment.username);
+                                        }
+                                      }}
+                                      className="bg-black/20 hover:bg-white/5 p-1 px-2 rounded-lg flex items-start space-x-1.5 max-w-[95%] transition-all cursor-pointer leading-snug"
+                                    >
+                                      <span className="text-[7.5px] font-bold text-[#ff007f] font-mono whitespace-nowrap bg-transparent uppercase">Lv.{comment.userLevel || 1}</span>
+                                      <p className="text-[8.5px] bg-transparent text-gray-200">
+                                        <span className="font-bold text-[#66fcf1] mr-1 uppercase font-mono">@{comment.username}:</span>
+                                        {comment.message}
                                       </p>
                                     </div>
                                   );
-                                });
-                              })()}
-                            </div>
-                          </div>
-
-                          {/* 💬 INTERACTIVE COMMENTS TIMELINE CHAT STREAM */}
-                          <div className="flex-1 min-h-[140px] max-h-[180px] p-3 mx-3.5 bg-black/35 border border-[#303040]/25 rounded-2xl flex flex-col justify-between overflow-hidden">
-                            <div className="flex-1 overflow-y-auto space-y-1.5 scrollbar-thin text-left p-1 pr-1.5">
-                              {/* Welcome system instructions message */}
-                              <div className="bg-[#1a0f30]/40 border border-pink-500/10 rounded-xl p-2.5 space-y-1">
-                                <p className="text-[9px] font-black text-[#ff007f] uppercase tracking-wider font-mono">🎙️ Sahr Live Audio Lounge Carnival</p>
-                                <p className="text-[7.5px] text-gray-400 leading-snug font-sans">
-                                  Welcome to this interactive 12-seat audio party! Click any empty seat to request or join the mic session. Viewers can send premium visual gifts, exchange seating, or text real-time messages. Keep Sahr guidelines intact!
-                                </p>
+                                })}
                               </div>
-
-                              {party.comments?.map((comment: any) => {
-                                if (comment.isSystem) {
-                                  return (
-                                    <div key={comment.id} className="text-[8px] font-black text-pink-400 font-mono italic leading-relaxed py-0.5 bg-transparent">
-                                      {comment.message}
-                                    </div>
-                                  );
-                                }
-
-                                return (
-                                  <div 
-                                    key={comment.id}
-                                    onClick={() => {
-                                      if (comment.username !== user.username) {
-                                        setGiftTargetUser(comment.username);
-                                      }
-                                    }}
-                                    className="bg-black/20 hover:bg-white/5 p-1 px-2 rounded-lg flex items-start space-x-1.5 max-w-[95%] transition-all cursor-pointer leading-snug"
-                                  >
-                                    <span className="text-[7.5px] font-bold text-[#ff007f] font-mono whitespace-nowrap bg-transparent uppercase">Lv.{comment.userLevel || 1}</span>
-                                    <p className="text-[8.5px] bg-transparent text-gray-200">
-                                      <span className="font-bold text-[#66fcf1] mr-1 uppercase font-mono">@{comment.username}:</span>
-                                      {comment.message}
-                                    </p>
-                                  </div>
-                                );
-                              })}
                             </div>
-                          </div>
 
                           {/* 🎙️ ACTIVE SEAT POPUP INTERACTION ACTION DROPDOWNS */}
                           {activeSeatMenu && (() => {
@@ -7930,7 +8051,7 @@ export default function App() {
                           )}
 
                           {/* ⌨️ INTERACTIVE BOTTOM CONTROL ACTIONS ROW */}
-                          <div className="p-3 border-t border-white/5 bg-[#12121a]/90 backdrop-blur-md flex items-center space-x-2">
+                          <div className="px-3 pt-1 flex items-center space-x-2 shrink-0 bg-transparent">
                             {/* Message input */}
                             <form 
                               onSubmit={(e) => {
@@ -8000,6 +8121,71 @@ export default function App() {
                               <span className="text-sm">🎁</span>
                             </button>
                           </div>
+                        </div> {/* End of LOWER AREA container */}
+
+                          {/* 🚪 PORTABLE EXIT & END PARTY CONFIRMATION DIALOG MODAL (Iframe Safe) */}
+                          {showPartyExitConfirm && (
+                            <div className="absolute inset-0 bg-black/85 backdrop-blur-md z-999 flex items-center justify-center p-4 animate-fade-in select-none">
+                              <div className="bg-[#120a24]/95 border-2 border-red-500 rounded-3xl p-6 w-full max-w-xs shadow-2xl relative animate-pop-gift text-left space-y-4">
+                                <div className="flex items-center space-x-2 border-b border-white/10 pb-2 bg-transparent">
+                                  <span className="text-xl">🚪</span>
+                                  <div className="bg-transparent">
+                                    <h3 className="text-xs font-black text-white uppercase tracking-wider font-mono">Exit Audio Lounge</h3>
+                                    <p className="text-[8.5px] text-red-400 font-mono uppercase tracking-widest">Choose how to leave</p>
+                                  </div>
+                                </div>
+                                
+                                <p className="text-[9.5px] text-gray-300 font-sans leading-relaxed bg-transparent">
+                                  {isHostOfRoom 
+                                    ? "Aap is room ke Host hain. Aap room ko chhor sakte hain (dusre log baat karte rahenge) ya room ko mukammal taur par band kar sakte hain."
+                                    : "Kya aap is audio lounge se bahar jana chahte hain?"
+                                  }
+                                </p>
+
+                                <div className="space-y-2 pt-1 bg-transparent">
+                                  {/* Leave Party (Both Host and Users can do this) */}
+                                  <button
+                                    onClick={async () => {
+                                      setShowPartyExitConfirm(false);
+                                      await handleLeaveParty(party.id);
+                                    }}
+                                    className="w-full py-2.5 bg-[#20102a] border border-pink-500/30 hover:border-pink-500 text-white hover:text-pink-400 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-95 cursor-pointer text-center"
+                                  >
+                                    🚪 Leave Party
+                                  </button>
+
+                                  {/* End Party (Host only) */}
+                                  {isHostOfRoom && (
+                                    <button
+                                      onClick={async () => {
+                                        setShowPartyExitConfirm(false);
+                                        try {
+                                          await fetch(`/api/v1/parties/${party.id}/close`, { method: "POST" });
+                                          setActivePartyId(null);
+                                          setClientView("feed");
+                                        } catch (err) {
+                                          console.error("Error closing party:", err);
+                                          setActivePartyId(null);
+                                          setClientView("feed");
+                                        }
+                                      }}
+                                      className="w-full py-2.5 bg-gradient-to-r from-red-500 to-pink-600 hover:opacity-90 text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all shadow-lg active:scale-95 cursor-pointer text-center"
+                                    >
+                                      🛑 End Party (Close Room)
+                                    </button>
+                                  )}
+
+                                  {/* Cancel option */}
+                                  <button
+                                    onClick={() => setShowPartyExitConfirm(false)}
+                                    className="w-full py-2 bg-transparent text-gray-400 hover:text-white text-[9.5px] font-bold uppercase tracking-wider transition-all cursor-pointer text-center"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })()}
@@ -10295,12 +10481,12 @@ export default function App() {
                                 <div className="flex items-center space-x-3 mt-0.5">
                                   <div className="flex items-center space-x-1">
                                     <Coins className="w-3 h-3 text-yellow-400" />
-                                    <span className="text-[10px] font-mono font-black text-white">{user.coins.toLocaleString()}</span>
+                                    <span className="text-[10px] font-mono font-black text-white">{(user.coins ?? 0).toLocaleString()}</span>
                                   </div>
                                   <div className="flex items-center space-x-1">
                                     <DollarSign className="w-3 h-3 text-cyan-400" />
-                                    <span className="text-[10px] font-mono font-black text-white">{user.diamonds.toLocaleString()}</span>
-                                    <span className="text-[7px] text-gray-400">(${((user.diamonds / 100)).toFixed(1)} USD)</span>
+                                    <span className="text-[10px] font-mono font-black text-white">{(user.diamonds ?? 0).toLocaleString()}</span>
+                                    <span className="text-[7px] text-gray-400">(${(((user.diamonds ?? 0) / 100)).toFixed(1)} USD)</span>
                                   </div>
                                 </div>
                               </div>
@@ -18070,65 +18256,67 @@ export default function App() {
                     })()}
 
                     {/* CLIENT FOOTER NAVIGATION BAR */}
-                    <footer className="bg-[#1e1e2d] border-t border-[#303040] py-2 px-3 pb-3 safe-padding-bottom flex items-center justify-between text-xs text-gray-400">
-                      {/* Home (Party Hub) */}
-                      <button
-                        onClick={() => setClientView("feed")}
-                        className={`flex flex-col items-center flex-1 py-1 ${clientView === "feed" ? "text-[#ff007f]" : "hover:text-white"}`}
-                      >
-                        <HomeIcon className="w-4 h-4 mb-0.5" />
-                        <span className="text-[8px] font-bold">Home</span>
-                      </button>
+                    {!(clientView === "party-room" || clientView === "live-room" || clientView === "user-live" || clientView === "camera-prep") && (
+                      <footer className="bg-[#1e1e2d] border-t border-[#303040] py-2 px-3 pb-3 safe-padding-bottom flex items-center justify-between text-xs text-gray-400">
+                        {/* Home (Party Hub) */}
+                        <button
+                          onClick={() => setClientView("feed")}
+                          className={`flex flex-col items-center flex-1 py-1 ${clientView === "feed" ? "text-[#ff007f]" : "hover:text-white"}`}
+                        >
+                          <HomeIcon className="w-4 h-4 mb-0.5" />
+                          <span className="text-[8px] font-bold">Home</span>
+                        </button>
 
-                      {/* Reels */}
-                      <button
-                        onClick={() => setClientView("reels")}
-                        className={`flex flex-col items-center flex-1 py-1 ${clientView === "reels" ? "text-yellow-400" : "hover:text-white"}`}
-                      >
-                        <Film className="w-4 h-4 mb-0.5" />
-                        <span className="text-[8px] font-bold">Reels</span>
-                      </button>
+                        {/* Reels */}
+                        <button
+                          onClick={() => setClientView("reels")}
+                          className={`flex flex-col items-center flex-1 py-1 ${clientView === "reels" ? "text-yellow-400" : "hover:text-white"}`}
+                        >
+                          <Film className="w-4 h-4 mb-0.5" />
+                          <span className="text-[8px] font-bold">Reels</span>
+                        </button>
 
-                      {/* Create (+) */}
-                      <button
-                        onClick={() => setShowCreateActionSheet(true)}
-                        className="flex flex-col items-center flex-1 py-1"
-                        title="Create"
-                      >
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-r from-[#ff007f] via-[#7b2cbf] to-[#66fcf1] p-[2px] shadow-lg shadow-[#ff007f]/20 hover:scale-110 active:scale-95 transition-all">
-                          <div className="w-full h-full rounded-full bg-[#1e1e2d] flex items-center justify-center text-white">
-                            <Plus className="w-5 h-5 text-[#ff007f]" />
+                        {/* Create (+) */}
+                        <button
+                          onClick={() => setShowCreateActionSheet(true)}
+                          className="flex flex-col items-center flex-1 py-1"
+                          title="Create"
+                        >
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-r from-[#ff007f] via-[#7b2cbf] to-[#66fcf1] p-[2px] shadow-lg shadow-[#ff007f]/20 hover:scale-110 active:scale-95 transition-all">
+                            <div className="w-full h-full rounded-full bg-[#1e1e2d] flex items-center justify-center text-white">
+                              <Plus className="w-5 h-5 text-[#ff007f]" />
+                            </div>
                           </div>
-                        </div>
-                      </button>
+                        </button>
 
-                      {/* Stream (Video Live, PK, Solo Live) */}
-                      <button
-                        onClick={() => setClientView("stream")}
-                        className={`flex flex-col items-center flex-1 py-1 ${clientView === "stream" ? "text-[#a855f7]" : "hover:text-white"}`}
-                      >
-                        <Tv className="w-4 h-4 mb-0.5" />
-                        <span className="text-[8px] font-bold">Stream</span>
-                      </button>
+                        {/* Stream (Video Live, PK, Solo Live) */}
+                        <button
+                          onClick={() => setClientView("stream")}
+                          className={`flex flex-col items-center flex-1 py-1 ${clientView === "stream" ? "text-[#a855f7]" : "hover:text-white"}`}
+                        >
+                          <Tv className="w-4 h-4 mb-0.5" />
+                          <span className="text-[8px] font-bold">Stream</span>
+                        </button>
 
-                      {/* DM (Chat messages) */}
-                      <button
-                        onClick={() => setClientView("chat")}
-                        className={`flex flex-col items-center flex-1 py-1 ${clientView === "chat" ? "text-indigo-400" : "hover:text-white"}`}
-                      >
-                        <MessageSquare className="w-4 h-4 mb-0.5" />
-                        <span className="text-[8px] font-bold">DM</span>
-                      </button>
+                        {/* DM (Chat messages) */}
+                        <button
+                          onClick={() => setClientView("chat")}
+                          className={`flex flex-col items-center flex-1 py-1 ${clientView === "chat" ? "text-indigo-400" : "hover:text-white"}`}
+                        >
+                          <MessageSquare className="w-4 h-4 mb-0.5" />
+                          <span className="text-[8px] font-bold">DM</span>
+                        </button>
 
-                      {/* Profile */}
-                      <button
-                        onClick={() => setClientView("profile")}
-                        className={`flex flex-col items-center flex-1 py-1 ${clientView === "profile" ? "text-[#66fcf1]" : "hover:text-white"}`}
-                      >
-                        <User className="w-4 h-4 mb-0.5" />
-                        <span className="text-[8px] font-bold">Profile</span>
-                      </button>
-                    </footer>
+                        {/* Profile */}
+                        <button
+                          onClick={() => setClientView("profile")}
+                          className={`flex flex-col items-center flex-1 py-1 ${clientView === "profile" ? "text-[#66fcf1]" : "hover:text-white"}`}
+                        >
+                          <User className="w-4 h-4 mb-0.5" />
+                          <span className="text-[8px] font-bold">Profile</span>
+                        </button>
+                      </footer>
+                    )}
 
                     {/* ===================================================================== */}
                     {/* 🚫 REPORT & BLOCK CONTEXT MODAL OVERLAY */}
@@ -21541,6 +21729,221 @@ export default function App() {
       {/* GIFT HISTORY MODAL */}
       {showGiftHistoryModal && (
         <GiftHistoryModal onClose={() => setShowGiftHistoryModal(false)} />
+      )}
+
+      {/* 🎙️ CREATE PARTY ROOM MODAL */}
+      {showCreatePartyModal && (
+        <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-999 p-4 animate-fade-in select-none">
+          <div className="bg-[#120a24]/95 border-2 border-pink-500 rounded-3xl p-5 w-full max-w-sm shadow-2xl relative animate-pop-gift text-left max-h-[90vh] overflow-y-auto scrollbar-thin">
+            <button
+              onClick={() => setShowCreatePartyModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors cursor-pointer w-6 h-6 flex items-center justify-center rounded-full bg-white/5"
+            >
+              ✕
+            </button>
+
+            <div className="border-b border-white/10 pb-3 flex items-center space-x-2 bg-transparent">
+              <span className="text-xl">🎙️</span>
+              <div className="bg-transparent">
+                <h3 className="text-xs font-black text-white uppercase tracking-wider font-mono">Create Your Audio Lounge</h3>
+                <p className="text-[8.5px] text-pink-400 font-mono uppercase tracking-widest">Start a 12-seat Party Room</p>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-4 bg-transparent">
+              {/* Room name */}
+              <div className="space-y-1 bg-transparent">
+                <label className="text-[8.5px] font-black uppercase text-gray-300 font-mono">Room Name (Title) *</label>
+                <input
+                  type="text"
+                  value={partyFormName}
+                  onChange={(e) => setPartyFormName(e.target.value)}
+                  placeholder="e.g. Sahr Night Mehfil 🎙️"
+                  className="w-full bg-black/40 border border-white/10 focus:border-pink-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                />
+              </div>
+
+              {/* Category & Language in grid */}
+              <div className="grid grid-cols-2 gap-3 bg-transparent">
+                <div className="space-y-1 bg-transparent">
+                  <label className="text-[8.5px] font-black uppercase text-gray-300 font-mono">Category</label>
+                  <select
+                    value={partyFormCategory}
+                    onChange={(e) => setPartyFormCategory(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 focus:border-pink-500 rounded-xl px-2 py-2 text-xs text-white focus:outline-none cursor-pointer"
+                  >
+                    <option value="Music" className="bg-[#120a24]">🎵 Music</option>
+                    <option value="Chat" className="bg-[#120a24]">💬 Chat</option>
+                    <option value="Gaming" className="bg-[#120a24]">🎮 Gaming</option>
+                    <option value="Poetry" className="bg-[#120a24]">📜 Poetry</option>
+                    <option value="Dating" className="bg-[#120a24]">❤️ Dating</option>
+                    <option value="Debate" className="bg-[#120a24]">🔥 Debate</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1 bg-transparent">
+                  <label className="text-[8.5px] font-black uppercase text-gray-300 font-mono">Language</label>
+                  <select
+                    value={partyFormLanguage}
+                    onChange={(e) => setPartyFormLanguage(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 focus:border-pink-500 rounded-xl px-2 py-2 text-xs text-white focus:outline-none cursor-pointer"
+                  >
+                    <option value="Urdu" className="bg-[#120a24]">Urdu</option>
+                    <option value="Hindi" className="bg-[#120a24]">Hindi</option>
+                    <option value="English" className="bg-[#120a24]">English</option>
+                    <option value="Punjabi" className="bg-[#120a24]">Punjabi</option>
+                    <option value="Sindhi" className="bg-[#120a24]">Sindhi</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="space-y-1 bg-transparent">
+                <label className="text-[8.5px] font-black uppercase text-gray-300 font-mono">Room Tagline / Description</label>
+                <input
+                  type="text"
+                  value={partyFormDescription}
+                  onChange={(e) => setPartyFormDescription(e.target.value)}
+                  placeholder="Welcome rules, descriptions etc..."
+                  className="w-full bg-black/40 border border-white/10 focus:border-pink-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                />
+              </div>
+
+              {/* Privacy option */}
+              <div className="space-y-2 bg-transparent">
+                <div className="flex items-center justify-between bg-transparent">
+                  <label className="text-[8.5px] font-black uppercase text-gray-300 font-mono">Privacy Status</label>
+                  <div className="flex items-center space-x-2 bg-transparent">
+                    <button
+                      type="button"
+                      onClick={() => setPartyFormIsPublic(true)}
+                      className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                        partyFormIsPublic ? "bg-emerald-500 text-black" : "bg-[#221a36] text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      Public
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPartyFormIsPublic(false)}
+                      className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                        !partyFormIsPublic ? "bg-red-500 text-white" : "bg-[#221a36] text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      Private
+                    </button>
+                  </div>
+                </div>
+
+                {!partyFormIsPublic && (
+                  <div className="space-y-1 bg-transparent animate-slide-up">
+                    <label className="text-[8px] font-bold uppercase text-red-400 font-mono">Set Room Password</label>
+                    <input
+                      type="password"
+                      value={partyFormPassword}
+                      onChange={(e) => setPartyFormPassword(e.target.value)}
+                      placeholder="Enter room password..."
+                      className="w-full bg-black/40 border border-red-500/30 focus:border-red-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Submit action */}
+              <button
+                onClick={handleCreateParty}
+                className="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-90 text-white text-[10.5px] font-black uppercase tracking-wider rounded-xl transition-all shadow-lg active:scale-95 cursor-pointer font-sans text-center"
+              >
+                🚀 Create Your Party Lounge
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚪 SYSTEM EXIT APP CONFIRMATION MODAL (Android Style, Highly polished) */}
+      {showExitConfirmDialog && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fade-in select-none">
+          <div className="bg-[#12121e] border border-[#ff007f]/30 rounded-3xl p-5 w-full max-w-sm shadow-[0_0_25px_rgba(255,0,127,0.15)] relative animate-pop-gift text-left space-y-4">
+            <div className="flex items-center space-x-3 border-b border-[#303040]/50 pb-3 bg-transparent">
+              <span className="text-2xl">🚪</span>
+              <div className="bg-transparent">
+                <h3 className="text-xs font-black text-white uppercase tracking-wider font-mono">Exit App / Bahar Niklein</h3>
+                <p className="text-[7.5px] text-pink-500 font-mono uppercase tracking-widest">Sahr Live Confirmation</p>
+              </div>
+            </div>
+
+            <div className="space-y-1 bg-transparent">
+              <p className="text-[10px] text-gray-200 font-sans font-semibold leading-relaxed">
+                Are you sure you want to exit the app?
+              </p>
+              <p className="text-[9px] text-gray-400 font-sans leading-relaxed">
+                Kya aap yaqeenan Sehr Live band karna chahte hain? Aapki live conversations aur status disconnect ho jayenge.
+              </p>
+            </div>
+
+            <div className="flex space-x-2 pt-2 bg-transparent">
+              <button
+                type="button"
+                onClick={() => setShowExitConfirmDialog(false)}
+                className="flex-1 bg-white/5 hover:bg-white/10 text-gray-300 font-black text-[9.5px] py-2.5 rounded-xl transition-all cursor-pointer uppercase tracking-wider border border-white/5 text-center"
+              >
+                No / Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowExitConfirmDialog(false);
+                  setIsAppExited(true);
+                  window.close();
+                }}
+                className="flex-1 bg-gradient-to-r from-pink-600 via-[#ff007f] to-purple-600 text-white font-black text-[9.5px] py-2.5 rounded-xl hover:scale-103 active:scale-97 transition-all cursor-pointer uppercase tracking-wider text-center shadow-lg shadow-pink-500/20"
+              >
+                Yes / Exit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🌟 APP EXITED SPLASH SCREEN (Perfect fallback for window.close blocked by browser) */}
+      {isAppExited && (
+        <div className="fixed inset-0 bg-[#0e0720] z-[10000] flex flex-col items-center justify-center p-6 text-center select-none animate-fade-in">
+          <div className="space-y-6 max-w-xs bg-transparent">
+            {/* Glowing Icon */}
+            <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-[#ff007f] via-purple-600 to-cyan-400 p-[2px] mx-auto shadow-[0_0_30px_rgba(255,0,127,0.3)] animate-pulse">
+              <div className="w-full h-full rounded-3xl bg-[#0e0720] flex items-center justify-center">
+                <span className="text-3xl">🎙️</span>
+              </div>
+            </div>
+
+            <div className="space-y-2 bg-transparent">
+              <h2 className="text-sm font-black text-white uppercase tracking-widest font-mono">
+                Sehr Live
+              </h2>
+              <p className="text-[10px] text-gray-300 leading-relaxed font-sans">
+                App successfully closed. Thank you for hanging out on Sahr Live!
+              </p>
+              <p className="text-[9px] text-[#ff007f] font-mono uppercase tracking-wider">
+                Mubarak! Aap app se bahar aa chuke hain.
+              </p>
+            </div>
+
+            <p className="text-[8px] text-gray-500 font-sans italic pt-4">
+              You can now safely close this window or tap anywhere to reload the app.
+            </p>
+            
+            <button
+              onClick={() => {
+                setIsAppExited(false);
+                setClientView("feed");
+              }}
+              className="mt-2 w-full py-2.5 bg-[#1a0f30] border border-pink-500/20 hover:border-pink-500 text-pink-400 font-bold text-[9px] uppercase tracking-widest rounded-xl transition-all cursor-pointer text-center"
+            >
+              🔄 Re-Launch Sahr Live
+            </button>
+          </div>
+        </div>
       )}
 
       {/* FOOTER */}

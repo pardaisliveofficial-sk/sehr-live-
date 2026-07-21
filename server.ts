@@ -816,7 +816,7 @@ app.post("/api/v1/parties", (req, res) => {
     status: "active",
     connectedViewers: [{ userId: hostUsername, username: hostUsername, avatar: hostAvatar || "", level: 1, vipLevel: 0 }],
     seats: [
-      { id: 1, name: `${hostUsername} (Host) 🎙️`, avatar: hostAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80", isMuted: false, isLocked: false },
+      { id: 1, name: hostUsername, avatar: hostAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80", isMuted: false, isLocked: false },
       { id: 2, name: null, avatar: null, isMuted: false, isLocked: false },
       { id: 3, name: null, avatar: null, isMuted: false, isLocked: false },
       { id: 4, name: null, avatar: null, isMuted: false, isLocked: false },
