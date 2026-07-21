@@ -3173,6 +3173,10 @@ export default function App() {
   const [userLivePkScoreMy, setUserLivePkScoreMy] = useState<number>(12560); // 12560 from reference image
   const [userLivePkScoreOther, setUserLivePkScoreOther] = useState<number>(9820); // 9820 from reference image
   const [userLiveInvitedHostId, setUserLiveInvitedHostId] = useState<string | null>(null);
+  const [userLiveInviteCountdown, setUserLiveInviteCountdown] = useState<number | null>(null);
+  const [userLiveInviteSearchQuery, setUserLiveInviteSearchQuery] = useState<string>("");
+  const [userLiveShowIncomingPkRequest, setUserLiveShowIncomingPkRequest] = useState<boolean>(false);
+  const [userLiveShowOutgoingPkRequest, setUserLiveShowOutgoingPkRequest] = useState<boolean>(false);
   const [userLiveGiftToasts, setUserLiveGiftToasts] = useState<Array<{ id: string; username: string; giftName: string; giftIcon: string; count: number; avatar: string }>>([
     { id: "ul-init-toast-1", username: "Shahzaib", giftName: "Rose", giftIcon: "🌹", count: 10, avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80" },
     { id: "ul-init-toast-2", username: "Awais Khan", giftName: "Lion", giftIcon: "🦁", count: 1, avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80" }
@@ -3222,6 +3226,31 @@ export default function App() {
   const [prepShowGalleryPicker, setPrepShowGalleryPicker] = useState<boolean>(false);
   const [prepTimerCountdown, setPrepTimerCountdown] = useState<number>(0);
   const [prepIsCountingDown, setPrepIsCountingDown] = useState<boolean>(false);
+
+  // 10-second invite countdown effect
+  useEffect(() => {
+    if (userLiveInviteCountdown === null) return;
+    if (userLiveInviteCountdown <= 0) {
+      alert("⌛ Invitation timed out! Host did not respond in time.");
+      setUserLiveInvitedHostId(null);
+      setUserLiveInviteCountdown(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setUserLiveInviteCountdown(prev => (prev !== null ? prev - 1 : null));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [userLiveInviteCountdown]);
+
+  // Simulate opponent (Host B) challenging User to PK after 15s in 1v1 split screen
+  useEffect(() => {
+    if (userLivePkConnected && !userLivePkActive && !userLiveShowIncomingPkRequest && !userLiveShowOutgoingPkRequest) {
+      const timer = setTimeout(() => {
+        setUserLiveShowIncomingPkRequest(true);
+      }, 15000);
+      return () => clearTimeout(timer);
+    }
+  }, [userLivePkConnected, userLivePkActive, userLiveShowIncomingPkRequest, userLiveShowOutgoingPkRequest]);
 
   // HTML references for auto-scrolling
   const chatEndRef = useRef<HTMLDivElement | null>(null);
@@ -13443,9 +13472,28 @@ export default function App() {
 
                                   {/* Navigation details (Center) */}
                                   <div className="flex flex-col items-center">
-                                    <span className="text-[7.5px] font-black uppercase text-pink-500 bg-pink-950/20 px-2 py-0.5 rounded-full border border-pink-500/25 tracking-wider animate-pulse">
+                                    <button
+                                      onClick={() => {
+                                        if (!userLivePkActive) {
+                                          if (!userLiveCoHost) {
+                                            setUserLiveCoHost({
+                                              username: "Hamza",
+                                              avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
+                                              fans: "125K fans",
+                                              level: 45
+                                            });
+                                            setUserLivePkConnected(true);
+                                          }
+                                          setUserLiveShowOutgoingPkRequest(true);
+                                        } else {
+                                          alert("PK Battle is already active!");
+                                        }
+                                      }}
+                                      className="text-[7.5px] font-black uppercase text-pink-500 bg-pink-950/20 px-2 py-0.5 rounded-full border border-pink-500/25 tracking-wider animate-pulse cursor-pointer hover:scale-105 active:scale-95 transition-all"
+                                      title={userLivePkActive ? "PK Battle Active" : "Click to Start PK!"}
+                                    >
                                       {userLivePkActive ? "⚔️ PK Battle" : "👥 1VS1 Lobby"}
-                                    </span>
+                                    </button>
                                     <span className="text-[6.5px] text-gray-500 font-mono mt-0.5">ROOM #3041</span>
                                   </div>
 
@@ -13474,146 +13522,265 @@ export default function App() {
 
                                 {/* MIDDLE 50%: BOTH HOSTS CAMERA split-screen & PK BARS & THEIR MVPs */}
                                 <div className="h-[50%] min-h-[260px] max-h-[310px] w-full bg-black relative flex flex-col shrink-0 overflow-hidden border-b border-white/5">
-                                  
-                                  {/* PK SCORE BARS (If PK Active) */}
-                                  {userLivePkActive && (
-                                    <div className="absolute top-0 inset-x-0 z-20 flex flex-col space-y-0.5 bg-black/40 py-1">
-                                      {/* Main PK Progress Bar */}
-                                      <div className="relative w-full h-5 flex items-center overflow-hidden border-y border-white/5">
-                                        {/* Left Broadcaster bar (Pink) */}
-                                        <div 
-                                          className="h-full bg-gradient-to-r from-pink-500 to-rose-600 flex items-center pl-2.5 transition-all duration-500"
-                                          style={{ width: `${(userLivePkScoreMy / (userLivePkScoreMy + userLivePkScoreOther)) * 100}%` }}
-                                        >
-                                          <span className="text-white text-[9px] font-black font-mono tracking-wider drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">
-                                            {userLivePkScoreMy}
-                                          </span>
-                                        </div>
-                                        
-                                        {/* Right Opponent bar (Blue) */}
-                                        <div 
-                                          className="h-full bg-gradient-to-l from-blue-600 to-cyan-500 flex items-center justify-end pr-2.5 flex-1 transition-all duration-500"
-                                        >
-                                          <span className="text-white text-[9px] font-black font-mono tracking-wider drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">
-                                            {userLivePkScoreOther}
-                                          </span>
-                                        </div>
+                                  {(() => {
+                                    const isMatchEnd = userLivePkTimer <= 15;
+                                    const isMyWinner = userLivePkScoreMy > userLivePkScoreOther;
+                                    const isOtherWinner = userLivePkScoreOther > userLivePkScoreMy;
+                                    const totalScore = userLivePkScoreMy + userLivePkScoreOther || 1;
+                                    const myPct = (userLivePkScoreMy / totalScore) * 100;
+                                    const otherPct = (userLivePkScoreOther / totalScore) * 100;
 
-                                        {/* PK Center badge & Timer */}
-                                        <div className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 flex flex-col items-center justify-center z-20">
-                                          <div className="bg-[#12111a] border border-white/10 rounded-b px-2 py-0.5 flex flex-col items-center -mt-0.5">
-                                            <span className="text-[10px] font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-cyan-400 italic">
-                                              PK
-                                            </span>
-                                            <span className="text-[7.5px] font-black text-white font-mono mt-0.5">
-                                              {formatTime(userLivePkTimer)}
-                                            </span>
+                                    return (
+                                      <>
+                                        {/* PK SCORE BARS (If PK Active) */}
+                                        {userLivePkActive && (
+                                          <div className="absolute top-0 inset-x-0 z-20 flex flex-col bg-transparent select-none">
+                                            {/* Main PK Progress Bar */}
+                                            <div className="relative w-full h-5 flex items-center overflow-hidden border-y border-white/5 bg-black/40">
+                                              {/* Left Opponent bar (Blue = Host B, always Left) */}
+                                              <div 
+                                                className="h-full bg-gradient-to-r from-blue-600 via-cyan-600 to-blue-500 flex items-center pl-3 transition-all duration-500 ease-out shrink-0"
+                                                style={{ width: `${otherPct}%` }}
+                                              >
+                                                <span className="text-white text-[9.5px] font-black font-mono tracking-wider drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,0.9)]">
+                                                  {userLivePkScoreOther}
+                                                </span>
+                                              </div>
+                                              
+                                              {/* Right Broadcaster bar (Red = Host A, always Right) */}
+                                              <div 
+                                                className="h-full bg-gradient-to-l from-red-600 via-rose-600 to-red-500 flex items-center justify-end pr-3 flex-1 transition-all duration-500 ease-out"
+                                              >
+                                                <span className="text-white text-[9.5px] font-black font-mono tracking-wider drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,0.9)]">
+                                                  {userLivePkScoreMy}
+                                                </span>
+                                              </div>
+
+                                              {/* Smooth tug-of-war battle flame indicator at split junction */}
+                                              <div 
+                                                className="absolute top-0 bottom-0 z-30 transition-all duration-500 ease-out"
+                                                style={{ left: `${otherPct}%` }}
+                                              >
+                                                <div className="relative h-full -translate-x-1/2 flex items-center justify-center">
+                                                  <div className="absolute w-8 h-8 bg-amber-500/30 rounded-full blur-md animate-ping"></div>
+                                                  <div className="w-5.5 h-5.5 rounded-full bg-gradient-to-b from-amber-400 to-red-600 border border-white flex items-center justify-center shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-pulse shrink-0">
+                                                    <span className="text-[9px] select-none">🔥</span>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            {/* Winning Streaks as transparent overlays on top of the videos */}
+                                            {/* Host B Winning Streak (Left) */}
+                                            <div className="absolute top-7 left-2 z-20 bg-blue-950/60 backdrop-blur-sm px-1.5 py-0.5 rounded border border-blue-500/30 text-[7px] font-black text-blue-300 flex items-center space-x-0.5 shadow-md">
+                                              <span>🔥</span>
+                                              <span>1x WIN</span>
+                                            </div>
+
+                                            {/* Host A Winning Streak (Right) */}
+                                            <div className="absolute top-7 right-2 z-20 bg-red-950/60 backdrop-blur-sm px-1.5 py-0.5 rounded border border-red-500/30 text-[7px] font-black text-red-300 flex items-center space-x-0.5 shadow-md">
+                                              <span>🔥</span>
+                                              <span>3x WIN</span>
+                                            </div>
+
+                                            {/* PK title and Timer in the center overlaying the live video */}
+                                            <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center justify-center bg-transparent select-none pointer-events-none">
+                                              <span className="text-[9.5px] font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-yellow-400 to-blue-500 uppercase italic drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,0.8)] animate-pulse">
+                                                ⚔️ PK BATTLE ⚔️
+                                              </span>
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setUserLivePkTimer(15);
+                                                }}
+                                                title="Click to Simulate Match End!"
+                                                className="text-[8px] font-black text-white font-mono bg-black/70 hover:bg-black/90 transition-colors border border-white/10 rounded-full px-2 py-0.5 mt-0.5 shadow-[0_1.5px_3px_rgba(0,0,0,0.7)] cursor-pointer pointer-events-auto"
+                                              >
+                                                {formatTime(userLivePkTimer)}
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* BOTH HOSTS VIEWPORT SPLIT */}
+                                        <div className="flex-1 w-full flex bg-black relative">
+                                          {/* Left Host: Host B (Opponent / Hamza) - ALWAYS LEFT */}
+                                          <div className="w-1/2 h-full relative border-r border-white/5 bg-[#0f1422] flex items-center justify-center">
+                                            <img
+                                              src={userLiveCoHost?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80"}
+                                              className="w-full h-full object-cover opacity-90"
+                                              alt="Opponent portrait"
+                                              referrerPolicy="no-referrer"
+                                            />
+
+                                            {/* Host B Supporters Row -> LEFT */}
+                                            <div className="absolute bottom-11 left-2 z-10 flex items-center space-x-1.5 select-none bg-transparent">
+                                              {[
+                                                { id: "sup-b1", name: "Ali", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=40&h=40&q=80" },
+                                                { id: "sup-b2", name: "Arooj", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=40&h=40&q=80" },
+                                                { id: "sup-b3", name: "Sehr", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=40&h=40&q=80" }
+                                              ].map((sup, idx) => {
+                                                const isMVP = isMatchEnd && isOtherWinner && idx === 0;
+                                                return (
+                                                  <div key={sup.id} className="relative bg-transparent">
+                                                    {isMVP && (
+                                                      <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[10px] animate-bounce z-20">👑</span>
+                                                    )}
+                                                    <img 
+                                                      src={sup.avatar} 
+                                                      className={`w-6 h-6 rounded-full object-cover shadow-md bg-black/40 ${isMVP ? 'border-2 border-yellow-400' : 'border border-white/20'}`} 
+                                                      alt={sup.name} 
+                                                    />
+                                                    {isMVP && (
+                                                      <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-[5.5px] text-yellow-400 font-extrabold font-mono tracking-wide bg-black/80 px-1 rounded border border-yellow-400/30 text-center select-none scale-90 z-20 shadow">
+                                                        MVP
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+
+                                            {/* Left label overlay inside camera */}
+                                            <div className="absolute bottom-4 left-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 flex items-center space-x-1 z-10 select-none">
+                                              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shrink-0"></span>
+                                              <span className="text-[7.5px] font-black text-white">{userLiveCoHost?.username || "Hamza"}</span>
+                                              <span className="text-[6.5px] text-cyan-400 font-bold font-mono">💎 {userLivePkScoreOther}</span>
+                                              <button className="w-3.5 h-3.5 rounded-full bg-blue-500 text-white text-[8px] flex items-center justify-center shadow hover:scale-115 active:scale-90 ml-0.5 cursor-pointer">+</button>
+                                            </div>
+
+                                            {/* WIN/LOSS Overlay Animations for Host B */}
+                                            {isMatchEnd && (
+                                              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none select-none overflow-hidden animate-fade-in">
+                                                {isOtherWinner ? (
+                                                  <div className="absolute inset-0 bg-gradient-to-b from-yellow-500/10 via-emerald-500/10 to-transparent flex flex-col items-center justify-center p-4">
+                                                    <div className="bg-emerald-600/90 text-white font-black text-xs px-3 py-1 rounded-full border border-emerald-400/40 shadow-lg flex items-center space-x-1.5 animate-bounce">
+                                                      <span>🎉 WIN 🎉</span>
+                                                    </div>
+                                                    <div className="flex space-x-1 mt-2 text-base">
+                                                      <span className="animate-pulse delay-75">✨</span>
+                                                      <span className="animate-bounce">🥳</span>
+                                                      <span className="animate-pulse delay-150">🎉</span>
+                                                      <span className="animate-bounce delay-100">🏆</span>
+                                                    </div>
+                                                  </div>
+                                                ) : isMyWinner ? (
+                                                  <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-red-950/15 to-transparent flex flex-col items-center justify-center p-4">
+                                                    <div className="bg-gray-800/90 text-gray-300 font-black text-xs px-3 py-1 rounded-full border border-gray-600/40 shadow-lg flex items-center space-x-1.5 animate-pulse">
+                                                      <span>😢 LOSS 😢</span>
+                                                    </div>
+                                                    <div className="flex space-x-1 mt-2 text-base grayscale">
+                                                      <span className="animate-pulse">😭</span>
+                                                      <span className="animate-bounce">💔</span>
+                                                      <span className="animate-pulse">🤧</span>
+                                                    </div>
+                                                  </div>
+                                                ) : (
+                                                  <div className="absolute inset-0 bg-black/20 flex flex-col items-center justify-center p-4">
+                                                    <div className="bg-gray-600/90 text-white font-black text-xs px-3 py-1 rounded-full border border-gray-400/40 shadow-lg flex items-center space-x-1 animate-pulse">
+                                                      <span>🤝 DRAW 🤝</span>
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+
+                                          {/* Right Host: Host A (Broadcaster/You) - ALWAYS RIGHT */}
+                                          <div className="w-1/2 h-full relative bg-[#171324] flex items-center justify-center">
+                                            {userLiveCam ? (
+                                              <img
+                                                src={USER_LIVE_BG_IMAGES[userLiveBgIndex]}
+                                                className="w-full h-full object-cover opacity-90 transition-all duration-300"
+                                                style={{
+                                                  filter: `brightness(${userLiveBeauty.brightness}%) contrast(105%) saturate(110%) blur(${userLiveBeauty.smooth > 80 ? '0.5px' : '0px'})`,
+                                                  transform: `scaleX(${userLiveCamFlipped ? -1 : 1}) rotate(${userLiveCamRotation}deg)`
+                                                }}
+                                                alt="Broadcaster portrait"
+                                                referrerPolicy="no-referrer"
+                                              />
+                                            ) : (
+                                              <div className="flex flex-col items-center space-y-1">
+                                                <CameraOff className="w-5 h-5 text-gray-500" />
+                                                <span className="text-[7px] text-gray-500 uppercase tracking-widest">Cam Muted</span>
+                                              </div>
+                                            )}
+
+                                            {/* Host A Supporters Row -> RIGHT */}
+                                            <div className="absolute bottom-11 right-2 z-10 flex items-center space-x-1.5 select-none bg-transparent">
+                                              {[
+                                                { id: "sup-a1", name: "Gifter1", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=40&h=40&q=80" },
+                                                { id: "sup-a2", name: "Gifter2", avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=40&h=40&q=80" },
+                                                { id: "sup-a3", name: "Gifter3", avatar: "https://images.unsplash.com/photo-1527983359383-4758693f760c?auto=format&fit=crop&w=40&h=40&q=80" }
+                                              ].map((sup, idx) => {
+                                                const isMVP = isMatchEnd && isMyWinner && idx === 0;
+                                                return (
+                                                  <div key={sup.id} className="relative bg-transparent">
+                                                    {isMVP && (
+                                                      <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[10px] animate-bounce z-20">👑</span>
+                                                    )}
+                                                    <img 
+                                                      src={sup.avatar} 
+                                                      className={`w-6 h-6 rounded-full object-cover shadow-md bg-black/40 ${isMVP ? 'border-2 border-yellow-400' : 'border border-white/20'}`} 
+                                                      alt={sup.name} 
+                                                    />
+                                                    {isMVP && (
+                                                      <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-[5.5px] text-yellow-400 font-extrabold font-mono tracking-wide bg-black/80 px-1 rounded border border-yellow-400/30 text-center select-none scale-90 z-20 shadow">
+                                                        MVP
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+
+                                            {/* Right label overlay inside camera */}
+                                            <div className="absolute bottom-4 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 flex items-center space-x-1 z-10 select-none">
+                                              <span className="w-1.5 h-1.5 bg-pink-500 rounded-full animate-ping shrink-0"></span>
+                                              <span className="text-[7.5px] font-black text-white">Hoorain</span>
+                                              <span className="text-[6.5px] text-yellow-400 font-bold font-mono">💎 {userLivePkScoreMy}</span>
+                                            </div>
+
+                                            {/* WIN/LOSS Overlay Animations for Host A */}
+                                            {isMatchEnd && (
+                                              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none select-none overflow-hidden animate-fade-in">
+                                                {isMyWinner ? (
+                                                  <div className="absolute inset-0 bg-gradient-to-b from-yellow-500/10 via-emerald-500/10 to-transparent flex flex-col items-center justify-center p-4">
+                                                    <div className="bg-emerald-600/90 text-white font-black text-xs px-3 py-1 rounded-full border border-emerald-400/40 shadow-lg flex items-center space-x-1.5 animate-bounce">
+                                                      <span>🎉 WIN 🎉</span>
+                                                    </div>
+                                                    <div className="flex space-x-1 mt-2 text-base">
+                                                      <span className="animate-pulse delay-75">✨</span>
+                                                      <span className="animate-bounce">🥳</span>
+                                                      <span className="animate-pulse delay-150">🎉</span>
+                                                      <span className="animate-bounce delay-100">🏆</span>
+                                                    </div>
+                                                  </div>
+                                                ) : isOtherWinner ? (
+                                                  <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-red-950/15 to-transparent flex flex-col items-center justify-center p-4">
+                                                    <div className="bg-gray-800/90 text-gray-300 font-black text-xs px-3 py-1 rounded-full border border-gray-600/40 shadow-lg flex items-center space-x-1.5 animate-pulse">
+                                                      <span>😢 LOSS 😢</span>
+                                                    </div>
+                                                    <div className="flex space-x-1 mt-2 text-base grayscale">
+                                                      <span className="animate-pulse">😭</span>
+                                                      <span className="animate-bounce">💔</span>
+                                                      <span className="animate-pulse">🤧</span>
+                                                    </div>
+                                                  </div>
+                                                ) : (
+                                                  <div className="absolute inset-0 bg-black/20 flex flex-col items-center justify-center p-4">
+                                                    <div className="bg-gray-600/90 text-white font-black text-xs px-3 py-1 rounded-full border border-gray-400/40 shadow-lg flex items-center space-x-1 animate-pulse">
+                                                      <span>🤝 DRAW 🤝</span>
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            )}
                                           </div>
                                         </div>
-                                      </div>
-
-                                      {/* Win streaks indicator */}
-                                      <div className="flex justify-between px-3 text-[7px] font-black text-white bg-transparent">
-                                        <div className="bg-black/55 px-1.5 py-0.2 rounded-full border border-pink-500/20 flex items-center space-x-1">
-                                          <span className="text-yellow-400 uppercase">WIN</span>
-                                          <span className="text-white">x3</span>
-                                        </div>
-                                        <div className="bg-black/55 px-1.5 py-0.2 rounded-full border border-blue-500/20 flex items-center space-x-1">
-                                          <span className="text-yellow-400 uppercase">WIN</span>
-                                          <span className="text-white">x1</span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* BOTH HOSTS VIEWPORT SPLIT */}
-                                  <div className="flex-1 w-full flex bg-black relative">
-                                    {/* Left Host (Broadcaster/You) */}
-                                    <div className="w-1/2 h-full relative border-r border-white/5 bg-[#171324] flex items-center justify-center">
-                                      {userLiveCam ? (
-                                        <img
-                                          src={USER_LIVE_BG_IMAGES[userLiveBgIndex]}
-                                          className="w-full h-full object-cover opacity-90 transition-all duration-300"
-                                          style={{
-                                            filter: `brightness(${userLiveBeauty.brightness}%) contrast(105%) saturate(110%) blur(${userLiveBeauty.smooth > 80 ? '0.5px' : '0px'})`,
-                                            transform: `scaleX(${userLiveCamFlipped ? -1 : 1}) rotate(${userLiveCamRotation}deg)`
-                                          }}
-                                          alt="Broadcaster portrait"
-                                          referrerPolicy="no-referrer"
-                                        />
-                                      ) : (
-                                        <div className="flex flex-col items-center space-y-1">
-                                          <CameraOff className="w-5 h-5 text-gray-500" />
-                                          <span className="text-[7px] text-gray-500 uppercase tracking-widest">Cam Muted</span>
-                                        </div>
-                                      )}
-
-                                      {/* Left label overlay inside camera */}
-                                      <div className="absolute bottom-4 left-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 flex items-center space-x-1 z-10 select-none">
-                                        <span className="w-1.5 h-1.5 bg-pink-500 rounded-full animate-ping"></span>
-                                        <span className="text-[7.5px] font-black text-white">Hoorain</span>
-                                        <span className="text-[6.5px] text-yellow-400 font-bold font-mono">💎 {userLivePkScoreMy}</span>
-                                      </div>
-                                    </div>
-
-                                    {/* Right Host (Opponent Co-host) */}
-                                    <div className="w-1/2 h-full relative bg-[#0f1422] flex items-center justify-center">
-                                      <img
-                                        src={userLiveCoHost?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80"}
-                                        className="w-full h-full object-cover opacity-90"
-                                        alt="Opponent portrait"
-                                        referrerPolicy="no-referrer"
-                                      />
-
-                                      {/* Right label overlay inside camera */}
-                                      <div className="absolute bottom-4 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 flex items-center space-x-1 z-10 select-none">
-                                        <span className="text-[7.5px] font-black text-white">{userLiveCoHost?.username || "Hamza"}</span>
-                                        <span className="text-[6.5px] text-cyan-400 font-bold font-mono">💎 {userLivePkScoreOther}</span>
-                                        <button className="w-3.5 h-3.5 rounded-full bg-blue-500 text-white text-[8px] flex items-center justify-center shadow hover:scale-115 active:scale-90 ml-0.5">+</button>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* Dedicated Horizontal MVP Bar BELOW video panels */}
-                                  {userLivePkActive && (
-                                    <div className="flex-none flex flex-col">
-                                      {/* Thin Divider Line above MVP */}
-                                      <div className="h-[1px] bg-white/10 w-full"></div>
-
-                                      <div className="flex items-center justify-between px-3 py-1 bg-black/50 w-full text-white">
-                                        {/* Left Host MVP (You/Hoorain) */}
-                                        <div className="flex items-center space-x-1.5 bg-transparent">
-                                          <img 
-                                            src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=50&q=80" 
-                                            className="w-5 h-5 rounded-full object-cover border border-pink-500/50" 
-                                            alt="Left MVP" 
-                                          />
-                                          <div className="flex flex-col text-left bg-transparent">
-                                            <span className="text-[7.5px] font-black text-pink-400 leading-none">🏆 Shahzaib</span>
-                                            <span className="text-[6px] text-gray-400 font-mono mt-0.5 leading-none">💎 {Math.floor(userLivePkScoreMy * 0.75)}</span>
-                                          </div>
-                                        </div>
-
-                                        <span className="text-[6px] text-gray-500 font-black tracking-wider uppercase font-mono">MVP Arena</span>
-
-                                        {/* Right Host MVP (CoHost) */}
-                                        <div className="flex items-center space-x-1.5 bg-transparent">
-                                          <div className="flex flex-col text-right bg-transparent">
-                                            <span className="text-[7.5px] font-black text-indigo-400 leading-none">🏆 Awais</span>
-                                            <span className="text-[6px] text-gray-400 font-mono mt-0.5 leading-none">💎 {Math.floor(userLivePkScoreOther * 0.65)}</span>
-                                          </div>
-                                          <img 
-                                            src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=50&q=80" 
-                                            className="w-5 h-5 rounded-full object-cover border border-indigo-500/50" 
-                                            alt="Right MVP" 
-                                          />
-                                        </div>
-                                      </div>
-
-                                      {/* Thin Divider Line below MVP */}
-                                      <div className="h-[1px] bg-white/10 w-full"></div>
-                                    </div>
-                                  )}
+                                      </>
+                                    );
+                                  })()}
                                 </div>
 
                                 {/* LOWER 40% COMMENTS, LIVE INTERACTIONS AND INTERACTIVE BOTTOM RAIL */}
@@ -13643,7 +13810,7 @@ export default function App() {
                                   <div className="flex-1 flex justify-between items-end mb-2.5 relative z-10">
                                     {/* Left Comments Stream */}
                                     {userLiveChatVisible ? (
-                                      <div className="w-[58%] max-h-[160px] h-full overflow-y-auto space-y-1 flex flex-col justify-end pb-0.5 text-left scrollbar-none">
+                                      <div className="w-full max-h-[160px] h-full overflow-y-auto space-y-1 flex flex-col justify-end pb-0.5 text-left scrollbar-none">
                                         {/* Host Chat Moderation Lock Button */}
                                         <div className="flex justify-between items-center mb-1 bg-transparent px-1">
                                           <span className="text-[6.5px] text-gray-400 font-mono font-bold">HOST CHATROOM</span>
@@ -13832,7 +13999,7 @@ export default function App() {
                                         </div>
                                       </div>
                                     ) : (
-                                      <div className="w-[58%] h-8 bg-black/30 rounded-md border border-white/5 flex items-center justify-center">
+                                      <div className="w-full h-8 bg-black/30 rounded-md border border-white/5 flex items-center justify-center">
                                         <button 
                                           onClick={() => setUserLiveChatVisible(true)}
                                           className="text-[8.5px] text-gray-400 hover:text-white"
@@ -13841,58 +14008,14 @@ export default function App() {
                                         </button>
                                       </div>
                                     )}
-
-                                    {/* Right Controls Panel */}
-                                    <div className="w-[38%] flex flex-col items-end space-y-1.5 shrink-0 select-none">
-                                      {/* Supporters board card mini */}
-                                      <div className="bg-[#12111a]/90 border border-white/5 rounded-lg p-1.5 w-[95px] shadow">
-                                        <span className="text-[6.5px] font-black text-gray-400 uppercase tracking-wider block border-b border-white/5 pb-0.5 mb-1 font-mono">Supports</span>
-                                        <div className="space-y-0.5 text-[6px]">
-                                          <div className="flex items-center justify-between text-white">
-                                            <span className="truncate">Shahzaib</span>
-                                            <span className="text-yellow-400 font-mono">125K</span>
-                                          </div>
-                                          <div className="flex items-center justify-between text-white">
-                                            <span className="truncate">Awais</span>
-                                            <span className="text-yellow-400 font-mono">98K</span>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      {/* Double Tap Like heart sender */}
-                                      <div 
-                                        onClick={(e) => {
-                                          const heartId = Date.now().toString() + Math.random();
-                                          setActiveHearts(prev => [...prev, { id: heartId, left: 30 + Math.random() * 40 }]);
-                                          setTimeout(() => {
-                                            setActiveHearts(prev => prev.filter(h => h.id !== heartId));
-                                          }, 2000);
-                                          setUserLiveLikes(prev => prev + 1);
-                                        }}
-                                        className="flex flex-col items-center space-y-0.5 bg-gradient-to-r from-pink-950/50 to-purple-950/50 backdrop-blur-md p-1 rounded-lg border border-pink-500/20 w-[95px] text-center cursor-pointer hover:scale-105 active:scale-95 transition-all animate-pulse"
-                                      >
-                                        <span className="text-xs">👆 ❤️</span>
-                                        <span className="text-[6.5px] text-white font-black uppercase tracking-wider leading-none">DOUBLE TAP</span>
-                                        <span className="text-[5px] text-pink-400 font-mono leading-none mt-0.5">Sends Heart ❤️</span>
-                                      </div>
-
-                                      {/* Join Co-host action */}
-                                      <button
-                                        onClick={() => setUserLiveShowJoinRequestModal(true)}
-                                        className="bg-indigo-600/90 hover:bg-indigo-600 text-white text-[7.5px] font-black py-1 px-2 rounded-full shadow hover:scale-105 active:scale-95 transition-all flex items-center justify-center space-x-1 border border-indigo-400/20 w-[95px] uppercase tracking-wide font-mono"
-                                      >
-                                        <Users className="w-2 h-2 text-indigo-200" />
-                                        <span>Request Join</span>
-                                      </button>
-                                    </div>
                                   </div>
 
                                   {/* Bottom rail actions bar */}
-                                  <div className="bg-black/85 border border-white/5 rounded-full py-1 px-3 flex items-center justify-between text-center select-none shrink-0 gap-2">
-                                    {/* Chat Input */}
+                                  <div className="bg-black/80 backdrop-blur-md border border-white/5 rounded-full py-1.5 px-3.5 flex items-center justify-between text-center select-none shrink-0 gap-2 w-full z-15">
+                                    {/* Proper wide Chat Input */}
                                     <form
                                       onSubmit={handleUserLiveSendMessage}
-                                      className={`flex rounded-full border items-center px-2 py-0.5 max-w-[110px] flex-1 transition-colors ${
+                                      className={`flex rounded-full border items-center px-3 py-1 flex-1 transition-colors ${
                                         userLiveCommentsDisabled
                                           ? "bg-red-950/20 border-red-500/20"
                                           : "bg-white/5 border-white/10"
@@ -13904,7 +14027,7 @@ export default function App() {
                                         disabled={userLiveCommentsDisabled}
                                         value={userLiveChatInput}
                                         onChange={(e) => setUserLiveChatInput(e.target.value)}
-                                        className="bg-transparent text-white text-[8px] placeholder-gray-400 focus:outline-none flex-1 py-0.5 font-medium leading-none disabled:opacity-50"
+                                        className="bg-transparent text-white text-[8.5px] placeholder-gray-400 focus:outline-none flex-1 py-0.5 font-medium leading-none disabled:opacity-50"
                                       />
                                       {!userLiveCommentsDisabled && (
                                         <button 
@@ -13912,97 +14035,60 @@ export default function App() {
                                           className="text-[#ff007f] hover:text-[#ff007f]/80 ml-1 shrink-0 cursor-pointer"
                                           title="Send Comment"
                                         >
-                                          <Send className="w-2.5 h-2.5" />
+                                          <Send className="w-3.5 h-3.5" />
                                         </button>
                                       )}
                                     </form>
 
-                                    {/* System triggers list */}
-                                    <div className="flex items-center space-x-1 bg-transparent">
-                                      {[
-                                        { id: "bg", label: "🎨 BG", title: "Change stream background" },
-                                        { id: "cam", label: userLiveCam ? "🎥 CAM" : "🚫 CAM", title: "Toggle camera feed" },
-                                        { id: "mic", label: userLiveMic ? "🎤 MIC" : "🔇 MIC", title: "Toggle microphone mute" },
-                                        { id: "rotate", label: `🔄 ${userLiveCamRotation}°`, title: "Rotate camera angle" },
-                                        { id: "flip", label: "🪞 FLIP", title: "Mirror camera view" },
-                                        { id: "beauty", label: "✨ Filter", title: "Filters & Beauty enhancement" },
-                                        { id: "pk", label: userLivePkActive ? "⚔️ End PK" : "⚔️ Start PK", title: "Toggle PK Battle Match" }
-                                      ].map((btn) => (
-                                        <button
-                                          key={btn.id}
-                                          onClick={() => {
-                                            if (btn.id === "bg") {
-                                              setUserLiveBgIndex(prev => (prev + 1) % USER_LIVE_BG_IMAGES.length);
-                                            } else if (btn.id === "cam") {
-                                              setUserLiveCam(!userLiveCam);
-                                            } else if (btn.id === "mic") {
-                                              setUserLiveMic(!userLiveMic);
-                                            } else if (btn.id === "rotate") {
-                                              setUserLiveCamRotation(prev => (prev + 90) % 360);
-                                            } else if (btn.id === "flip") {
-                                              setUserLiveCamFlipped(!userLiveCamFlipped);
-                                            } else if (btn.id === "beauty") {
-                                              setUserLiveShowBeautyModal(!userLiveShowBeautyModal);
-                                            } else if (btn.id === "pk") {
-                                              if (!userLivePkConnected && !userLivePkActive) {
-                                                setUserLivePkInvitePanelOpen(!userLivePkInvitePanelOpen);
-                                              } else if (userLivePkConnected && !userLivePkActive) {
-                                                setUserLivePkActive(true);
-                                                setUserLivePkScoreMy(12560);
-                                                setUserLivePkScoreOther(9820);
-                                                setUserLivePkTimer(272);
-                                                setUserLiveMessages(prev => [
-                                                  ...prev,
-                                                  {
-                                                    id: "ul-pk-start-" + Date.now(),
-                                                    username: "System ⚔️",
-                                                    message: `PK Battle match with ${userLiveCoHost?.username || "Hamza"} has started! Show your support! 🎁⚔️`,
-                                                    vipLevel: 0,
-                                                    userLevel: 0,
-                                                    isSystem: true,
-                                                    isFlagged: false,
-                                                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                                  }
-                                                ]);
-                                                alert(`⚔️ PK Battle with ${userLiveCoHost?.username || "Hamza"} has started! Match timer: 04:32`);
-                                              } else if (userLivePkActive) {
-                                                setUserLivePkActive(false);
-                                                setUserLivePkConnected(true);
-                                                setUserLiveMessages(prev => [
-                                                  ...prev,
-                                                  {
-                                                    id: "ul-pk-end-btn-" + Date.now(),
-                                                    username: "System ⚔️",
-                                                    message: "PK Battle finished. Still co-hosting split-screen.",
-                                                    vipLevel: 0,
-                                                    userLevel: 0,
-                                                    isSystem: true,
-                                                    isFlagged: false,
-                                                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                                  }
-                                                ]);
-                                                alert("PK Battle ended. Returning to split-screen co-hosting.");
-                                              }
-                                            }
-                                          }}
-                                            className={`px-1.5 py-0.5 rounded text-[7px] font-black uppercase tracking-wider font-mono transition-all ${
-                                              btn.id === "pk" && (userLivePkActive || userLivePkConnected)
-                                                ? "bg-red-600 text-white hover:bg-red-500 animate-pulse border border-red-400/20"
-                                                : "bg-white/5 hover:bg-white/10 text-gray-200 hover:text-white border border-white/5"
-                                            }`}
-                                            title={btn.title}
-                                          >
-                                            {btn.label}
-                                          </button>
-                                        ))}
-
-                                      {/* Send Gift Action */}
+                                    {/* Consistent Host Controls */}
+                                    <div className="flex items-center space-x-1.5 bg-transparent shrink-0">
+                                      {/* Camera ON/OFF */}
                                       <button
-                                        onClick={() => setUserLiveShowGiftModal(true)}
-                                        className="bg-gradient-to-r from-yellow-500 to-amber-500 hover:scale-105 active:scale-95 text-black font-black text-[7px] px-1.5 py-0.5 rounded shadow uppercase tracking-wider font-mono animate-bounce"
-                                        title="Send virtual gifts"
+                                        onClick={() => {
+                                          setUserLiveCam(!userLiveCam);
+                                          alert(userLiveCam ? "📹 Camera Feed is now OFF (Privacy Mode Active)" : "📹 Camera Feed is now ON");
+                                        }}
+                                        className={`w-7.5 h-7.5 rounded-full flex items-center justify-center transition-all ${
+                                          userLiveCam ? "bg-[#ff007f] text-white" : "bg-white/10 text-gray-400 border border-white/5"
+                                        }`}
+                                        title={userLiveCam ? "Turn Camera OFF" : "Turn Camera ON"}
                                       >
-                                        🎁 Gift
+                                        {userLiveCam ? <Camera className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
+                                      </button>
+
+                                      {/* Mic ON/OFF */}
+                                      <button
+                                        onClick={() => {
+                                          setUserLiveMic(!userLiveMic);
+                                          alert(userLiveMic ? "🎙️ Broadcast Mic is now MUTED" : "🎙️ Broadcast Mic is now LIVE / UNMUTED");
+                                        }}
+                                        className={`w-7.5 h-7.5 rounded-full flex items-center justify-center transition-all ${
+                                          userLiveMic ? "bg-purple-600 text-white" : "bg-white/10 text-gray-400 border border-white/5"
+                                        }`}
+                                        title={userLiveMic ? "Mute Microphone" : "Unmute Microphone"}
+                                      >
+                                        {userLiveMic ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+                                      </button>
+
+                                      {/* Flip Camera */}
+                                      <button
+                                        onClick={() => {
+                                          setUserLiveCamFlipped(!userLiveCamFlipped);
+                                          alert("🔄 Camera view mirrored/flipped!");
+                                        }}
+                                        className="w-7.5 h-7.5 rounded-full bg-white/10 text-gray-200 hover:text-white border border-white/5 flex items-center justify-center transition-all active:scale-90"
+                                        title="Mirror Camera View"
+                                      >
+                                        <RefreshCw className="w-4 h-4 text-pink-400" />
+                                      </button>
+
+                                      {/* More (•••) */}
+                                      <button
+                                        onClick={() => setUserLiveShowMoreModal(true)}
+                                        className="w-7.5 h-7.5 rounded-full bg-white/10 text-gray-200 hover:text-white border border-white/5 flex items-center justify-center transition-all text-[9.5px] font-black"
+                                        title="More Options"
+                                      >
+                                        •••
                                       </button>
                                     </div>
                                   </div>
@@ -14163,55 +14249,93 @@ export default function App() {
                             </div>
 
                             {/* PK SCORE BARS (If PK Active) */}
-                            {userLivePkActive && (
-                              <div className="absolute top-24 left-0 right-0 z-20 flex flex-col space-y-1 animate-fade-in select-none">
-                                {/* The main bar spanning full width */}
-                                <div className="relative w-full h-8 flex items-center overflow-hidden border-y border-white/10 shadow-lg">
-                                  {/* Left side (broadcaster score bar - Pink from image) */}
-                                  <div 
-                                    className="h-full bg-gradient-to-r from-[#ff007f] via-pink-600 to-[#ff3385] flex items-center pl-3 transition-all duration-500"
-                                    style={{ width: `${(userLivePkScoreMy / (userLivePkScoreMy + userLivePkScoreOther)) * 100}%` }}
-                                  >
-                                    <span className="text-white text-[11px] font-black font-mono tracking-wider drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,0.8)]">
-                                      {userLivePkScoreMy}
-                                    </span>
-                                  </div>
-                                  
-                                  {/* Right side (opponent score bar - Blue from image) */}
-                                  <div 
-                                    className="h-full bg-gradient-to-l from-blue-600 via-cyan-500 to-[#0099ff] flex items-center justify-end pr-3 flex-1 transition-all duration-500"
-                                  >
-                                    <span className="text-white text-[11px] font-black font-mono tracking-wider drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,0.8)]">
-                                      {userLivePkScoreOther}
-                                    </span>
-                                  </div>
-
-                                  {/* PK Center Badge & Timer */}
-                                  <div className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 flex flex-col items-center justify-center z-20">
-                                    <div className="bg-[#12121a] border border-white/10 rounded-b-lg px-3 py-0.5 shadow-lg flex flex-col items-center -mt-1">
-                                      <span className="text-[13px] font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-white to-blue-400 italic tracking-wider leading-none">
-                                        PK
-                                      </span>
-                                      <span className="text-[8.5px] font-black text-white font-mono mt-0.5 tracking-wider">
-                                        {formatTime(userLivePkTimer)}
+                            {userLivePkActive && (() => {
+                              const totalScore = userLivePkScoreMy + userLivePkScoreOther || 1;
+                              const myPct = (userLivePkScoreMy / totalScore) * 100;
+                              return (
+                                <div className="absolute top-24 left-0 right-0 z-20 flex flex-col bg-black/60 py-1.5 border-b border-white/5 backdrop-blur-sm select-none animate-fade-in">
+                                  {/* Main PK Progress Bar */}
+                                  <div className="relative w-full h-5 flex items-center overflow-hidden border-y border-white/5 bg-black/40">
+                                    {/* Left Broadcaster bar (Red = Host A) */}
+                                    <div 
+                                      className="h-full bg-gradient-to-r from-red-600 via-rose-600 to-red-500 flex items-center pl-3 transition-all duration-500 ease-out shrink-0"
+                                      style={{ width: `${myPct}%` }}
+                                    >
+                                      <span className="text-white text-[9.5px] font-black font-mono tracking-wider drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,0.9)]">
+                                        {userLivePkScoreMy}
                                       </span>
                                     </div>
-                                  </div>
-                                </div>
+                                    
+                                    {/* Right Opponent bar (Blue = Host B) */}
+                                    <div 
+                                      className="h-full bg-gradient-to-l from-blue-600 via-cyan-600 to-blue-500 flex items-center justify-end pr-3 flex-1 transition-all duration-500 ease-out"
+                                    >
+                                      <span className="text-white text-[9.5px] font-black font-mono tracking-wider drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,0.9)]">
+                                        {userLivePkScoreOther}
+                                      </span>
+                                    </div>
 
-                                {/* Win Streaks row */}
-                                <div className="flex justify-between px-3 text-[7.5px] font-black text-white">
-                                  <div className="bg-black/50 backdrop-blur-sm border border-pink-500/25 px-2 py-0.5 rounded-full flex items-center space-x-1">
-                                    <span className="text-yellow-400 uppercase">WIN</span>
-                                    <span className="text-white">x 3</span>
+                                    {/* Smooth tug-of-war battle flame indicator at split junction */}
+                                    <div 
+                                      className="absolute top-0 bottom-0 z-30 transition-all duration-500 ease-out"
+                                      style={{ left: `${myPct}%` }}
+                                    >
+                                      <div className="relative h-full -translate-x-1/2 flex items-center justify-center">
+                                        <div className="absolute w-8 h-8 bg-amber-500/30 rounded-full blur-md animate-ping"></div>
+                                        <div className="w-5.5 h-5.5 rounded-full bg-gradient-to-b from-amber-400 to-red-600 border border-white flex items-center justify-center shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-pulse shrink-0">
+                                          <span className="text-[9px] select-none">🔥</span>
+                                        </div>
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="bg-black/50 backdrop-blur-sm border border-blue-500/25 px-2 py-0.5 rounded-full flex items-center space-x-1">
-                                    <span className="text-yellow-400 uppercase">WIN</span>
-                                    <span className="text-white">x 1</span>
+
+                                  {/* Row with Top 3 MVP supporters for EACH host & Win Streaks */}
+                                  <div className="flex items-center justify-between px-3 mt-1.5 bg-transparent">
+                                    {/* Host A MVPs (Red side) */}
+                                    <div className="flex items-center space-x-1 bg-transparent">
+                                      <div className="flex -space-x-1.5 bg-transparent shrink-0">
+                                        <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=40&h=40&q=80" className="w-4.5 h-4.5 rounded-full border border-red-500/50 object-cover" alt="MVP A1" />
+                                        <img src="https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=40&h=40&q=80" className="w-4.5 h-4.5 rounded-full border border-red-500/50 object-cover" alt="MVP A2" />
+                                        <img src="https://images.unsplash.com/photo-1527983359383-4758693f760c?auto=format&fit=crop&w=40&h=40&q=80" className="w-4.5 h-4.5 rounded-full border border-red-500/50 object-cover" alt="MVP A3" />
+                                      </div>
+                                      <span className="text-[6px] text-red-400 font-extrabold font-mono uppercase bg-red-950/30 px-1 rounded border border-red-500/10">MVP</span>
+                                    </div>
+
+                                    {/* Win streaks */}
+                                    <div className="flex items-center space-x-2 bg-transparent shrink-0">
+                                      <div className="bg-red-950/40 px-1.5 py-0.2 rounded border border-red-500/30 text-[6.5px] font-black text-red-300 flex items-center space-x-0.5">
+                                        <span>🔥</span>
+                                        <span>3x WIN</span>
+                                      </div>
+                                      <div className="bg-blue-950/40 px-1.5 py-0.2 rounded border border-blue-500/30 text-[6.5px] font-black text-blue-300 flex items-center space-x-0.5">
+                                        <span>🔥</span>
+                                        <span>1x WIN</span>
+                                      </div>
+                                    </div>
+
+                                    {/* Host B MVPs (Blue side) */}
+                                    <div className="flex items-center space-x-1 bg-transparent">
+                                      <span className="text-[6px] text-blue-400 font-extrabold font-mono uppercase bg-blue-950/30 px-1 rounded border border-blue-500/10">MVP</span>
+                                      <div className="flex -space-x-1.5 bg-transparent shrink-0">
+                                        <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=40&h=40&q=80" className="w-4.5 h-4.5 rounded-full border border-blue-500/50 object-cover" alt="MVP B1" />
+                                        <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=40&h=40&q=80" className="w-4.5 h-4.5 rounded-full border border-blue-500/50 object-cover" alt="MVP B2" />
+                                        <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=40&h=40&q=80" className="w-4.5 h-4.5 rounded-full border border-blue-500/50 object-cover" alt="MVP B3" />
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* PK title directly below the score bar and PK timer below the title */}
+                                  <div className="flex flex-col items-center justify-center mt-1 bg-transparent">
+                                    <span className="text-[9.5px] font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-yellow-400 to-blue-500 uppercase italic animate-pulse">
+                                      ⚔️ PK BATTLE ⚔️
+                                    </span>
+                                    <span className="text-[8px] font-black text-white font-mono bg-[#12111a] border border-white/10 rounded-full px-2 py-0.5 mt-0.5 shadow-[0_1px_3px_rgba(0,0,0,0.5)]">
+                                      {formatTime(userLivePkTimer)}
+                                    </span>
                                   </div>
                                 </div>
-                              </div>
-                            )}
+                              );
+                            })()}
 
                             {/* FLOATING ACTION HUD / MODALS */}
                             <div className="relative flex-1 flex flex-col justify-end pb-1 pr-1.5 pl-1.5">
@@ -14442,18 +14566,18 @@ export default function App() {
 
                             {/* 1vs1 PK Exit Options Modal */}
                             {userLiveShowExitOptions && (
-                              <div className="absolute inset-0 z-40 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                              <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
                                 <div className="bg-[#12111a] border border-red-500/30 rounded-2xl p-5 w-full max-w-[280px] text-center space-y-4 shadow-2xl animate-scale-in">
                                   {/* Warning Icon & Heading */}
                                   <div className="flex flex-col items-center space-y-2">
                                     <div className="w-12 h-12 rounded-full bg-red-950/45 border border-red-500/30 flex items-center justify-center animate-pulse">
                                       <span className="text-xl">⚠️</span>
                                     </div>
-                                    <h4 className="text-[14px] font-black text-white uppercase tracking-wider font-mono">
+                                    <h4 className="text-[13px] font-black text-white uppercase tracking-wider font-mono">
                                       1vs1 PK Exit Options
                                     </h4>
-                                    <p className="text-[9.5px] text-gray-400 font-sans leading-normal">
-                                      Kya aap PK/Co-host session disconnect krna chahty hain ya Live Stream mukamal khatam krna chahty hain?
+                                    <p className="text-[9px] text-gray-400 font-sans leading-normal">
+                                      Select an option to disconnect the current co-host session, end the PK battle, or close the live stream completely.
                                     </p>
                                   </div>
 
@@ -14472,7 +14596,7 @@ export default function App() {
                                           {
                                             id: "ul-cohost-disconnect-" + Date.now(),
                                             username: "System ⚔️",
-                                            message: "PK/Co-host disconnected. You have returned to Solo Live! All viewers have been shifted back successfully.",
+                                            message: "PK/Co-host disconnected. You have returned to Solo Live!",
                                             vipLevel: 0,
                                             userLevel: 0,
                                             isSystem: true,
@@ -14480,32 +14604,189 @@ export default function App() {
                                             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                                           }
                                         ]);
-                                        alert("Returned to Solo Live successfully! Opponent has returned to their solo channel and viewers have been shifted back with you.");
+                                        alert("Returned to Solo Live successfully!");
                                       }}
-                                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-2.5 px-3 rounded-xl text-[10px] uppercase tracking-wide transition-all active:scale-95 shadow-md flex items-center justify-center space-x-1.5"
+                                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-2.5 px-3 rounded-xl text-[9.5px] uppercase tracking-wide transition-all active:scale-95 shadow-md flex items-center justify-center space-x-1.5"
                                     >
                                       <span>🎥</span>
                                       <span>Return to Solo Live</span>
                                     </button>
 
-                                    {/* Option 2: End Live Stream Completely */}
+                                    {/* Option 2: End PK */}
+                                    <button
+                                      disabled={!userLivePkActive}
+                                      onClick={() => {
+                                        setUserLivePkActive(false);
+                                        setUserLiveShowExitOptions(false);
+                                        setUserLiveMessages(prev => [
+                                          ...prev,
+                                          {
+                                            id: "ul-pk-end-exit-" + Date.now(),
+                                            username: "System ⚔️",
+                                            message: "PK Battle ended. Stayed in 1v1 split-screen co-hosting.",
+                                            vipLevel: 0,
+                                            userLevel: 0,
+                                            isSystem: true,
+                                            isFlagged: false,
+                                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                          }
+                                        ]);
+                                        alert("PK Battle ended. Co-hosting session is still active!");
+                                      }}
+                                      className={`w-full font-black py-2.5 px-3 rounded-xl text-[9.5px] uppercase tracking-wide transition-all active:scale-95 shadow-md flex items-center justify-center space-x-1.5 ${
+                                        userLivePkActive
+                                          ? "bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black cursor-pointer"
+                                          : "bg-gray-800 text-gray-500 cursor-not-allowed opacity-50"
+                                      }`}
+                                    >
+                                      <span>⚔️</span>
+                                      <span>End PK Battle</span>
+                                    </button>
+
+                                    {/* Option 3: End Live Stream */}
                                     <button
                                       onClick={() => {
                                         setUserLiveShowExitOptions(false);
                                         handleEndUserLive();
                                       }}
-                                      className="w-full bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-500 hover:to-pink-500 text-white font-black py-2.5 px-3 rounded-xl text-[10px] uppercase tracking-wide transition-all active:scale-95 shadow-md flex items-center justify-center space-x-1.5"
+                                      className="w-full bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-500 hover:to-pink-500 text-white font-black py-2.5 px-3 rounded-xl text-[9.5px] uppercase tracking-wide transition-all active:scale-95 shadow-md flex items-center justify-center space-x-1.5"
                                     >
                                       <span>🛑</span>
                                       <span>End Live Stream</span>
                                     </button>
 
-                                    {/* Option 3: Cancel */}
+                                    {/* Cancel */}
                                     <button
                                       onClick={() => setUserLiveShowExitOptions(false)}
                                       className="w-full bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 font-bold py-2 rounded-xl text-[9px] uppercase tracking-wide transition-all active:scale-95"
                                     >
                                       Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Outgoing PK Battle Challenge Pending Modal */}
+                            {userLiveShowOutgoingPkRequest && (
+                              <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+                                <div className="bg-[#0f0e15] border border-pink-500/30 rounded-2xl p-5 w-full max-w-[280px] text-center space-y-4 shadow-2xl animate-scale-in text-left">
+                                  <div className="flex flex-col items-center space-y-2 text-center bg-transparent">
+                                    <div className="w-12 h-12 rounded-full bg-pink-950/45 border border-pink-500/30 flex items-center justify-center animate-bounce">
+                                      <span className="text-xl">⚔️</span>
+                                    </div>
+                                    <h4 className="text-[13px] font-black text-white uppercase tracking-wider font-mono">
+                                      Sending PK Challenge...
+                                    </h4>
+                                    <p className="text-[9px] text-gray-400 font-sans leading-normal">
+                                      Challenging <strong className="text-pink-400">{userLiveCoHost?.username || "co-host"}</strong> to a 1v1 PK Battle! Waiting for acceptance...
+                                    </p>
+                                  </div>
+
+                                  {/* Simulator options */}
+                                  <div className="p-2.5 bg-white/5 border border-white/10 rounded-xl space-y-2 text-center">
+                                    <span className="text-[8px] font-bold text-gray-400 block font-mono">TEST CHALLENGE RESPONSE</span>
+                                    <div className="flex space-x-2 bg-transparent">
+                                      <button
+                                        onClick={() => {
+                                          setUserLiveShowOutgoingPkRequest(false);
+                                          setUserLivePkActive(true);
+                                          setUserLivePkScoreMy(12560);
+                                          setUserLivePkScoreOther(9820);
+                                          setUserLivePkTimer(272);
+                                          setUserLiveMessages(prev => [
+                                            ...prev,
+                                            {
+                                              id: "ul-pk-start-" + Date.now(),
+                                              username: "System ⚔️",
+                                              message: `PK Battle match with ${userLiveCoHost?.username || "co-host"} has started! Show your support! 🎁⚔️`,
+                                              vipLevel: 0,
+                                              userLevel: 0,
+                                              isSystem: true,
+                                              isFlagged: false,
+                                              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                            }
+                                          ]);
+                                          alert("⚔️ Challenge Accepted! PK Battle has started!");
+                                        }}
+                                        className="flex-1 bg-green-600 hover:bg-green-500 text-white font-black py-1.5 rounded-lg text-[8px] uppercase tracking-wider transition-all cursor-pointer"
+                                      >
+                                        Accept PK
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setUserLiveShowOutgoingPkRequest(false);
+                                          alert("❌ Challenge Rejected by opponent.");
+                                        }}
+                                        className="flex-1 bg-red-600 hover:bg-red-500 text-white font-black py-1.5 rounded-lg text-[8px] uppercase tracking-wider transition-all cursor-pointer"
+                                      >
+                                        Reject PK
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    onClick={() => setUserLiveShowOutgoingPkRequest(false)}
+                                    className="w-full bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 font-bold py-1.5 rounded-xl text-[9px] uppercase tracking-wide transition-all active:scale-95 cursor-pointer"
+                                  >
+                                    Cancel Request
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Incoming PK Battle Challenge Request Modal */}
+                            {userLiveShowIncomingPkRequest && (
+                              <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+                                <div className="bg-[#0f0e15] border border-purple-500/30 rounded-2xl p-5 w-full max-w-[280px] text-center space-y-4 shadow-2xl animate-scale-in text-left">
+                                  <div className="flex flex-col items-center space-y-2 text-center bg-transparent">
+                                    <div className="w-12 h-12 rounded-full bg-purple-950/45 border border-purple-500/30 flex items-center justify-center animate-pulse">
+                                      <span className="text-xl">⚔️</span>
+                                    </div>
+                                    <h4 className="text-[13px] font-black text-white uppercase tracking-wider font-mono animate-pulse">
+                                      PK Battle Challenge!
+                                    </h4>
+                                    <p className="text-[9px] text-gray-400 font-sans leading-normal">
+                                      <strong className="text-purple-400">{userLiveCoHost?.username || "co-host"}</strong> has challenged you to a 1v1 PK Battle! Do you accept the challenge?
+                                    </p>
+                                  </div>
+
+                                  <div className="flex space-x-2 bg-transparent">
+                                    <button
+                                      onClick={() => {
+                                        setUserLiveShowIncomingPkRequest(false);
+                                        setUserLivePkActive(true);
+                                        setUserLivePkScoreMy(12560);
+                                        setUserLivePkScoreOther(9820);
+                                        setUserLivePkTimer(272);
+                                        setUserLiveMessages(prev => [
+                                          ...prev,
+                                          {
+                                            id: "ul-pk-start-" + Date.now(),
+                                            username: "System ⚔️",
+                                            message: `PK Battle match with ${userLiveCoHost?.username || "co-host"} has started! Show your support! 🎁⚔️`,
+                                            vipLevel: 0,
+                                            userLevel: 0,
+                                            isSystem: true,
+                                            isFlagged: false,
+                                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                          }
+                                        ]);
+                                        alert("⚔️ PK Battle has started! Go team go!");
+                                      }}
+                                      className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:scale-105 active:scale-95 text-white font-black py-2 rounded-xl text-[9px] uppercase tracking-wide transition-all shadow-md flex items-center justify-center space-x-1 cursor-pointer"
+                                    >
+                                      <span>⚔️</span>
+                                      <span>Accept</span>
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setUserLiveShowIncomingPkRequest(false);
+                                        alert("You rejected the PK challenge.");
+                                      }}
+                                      className="flex-1 bg-gradient-to-r from-red-600 to-pink-600 hover:scale-105 active:scale-95 text-white font-black py-2 rounded-xl text-[9px] uppercase tracking-wide transition-all shadow-md cursor-pointer"
+                                    >
+                                      Decline
                                     </button>
                                   </div>
                                 </div>
@@ -15625,6 +15906,83 @@ export default function App() {
                                   <button onClick={() => setUserLiveShowMoreModal(false)} className="text-gray-400 hover:text-white text-xs">✕</button>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2 text-[9px] bg-transparent">
+                                  {userLivePkConnected && !userLivePkActive && (
+                                    <button
+                                      onClick={() => {
+                                        setUserLiveShowMoreModal(false);
+                                        setUserLiveShowOutgoingPkRequest(true);
+                                      }}
+                                      className="col-span-2 p-2.5 rounded bg-gradient-to-r from-red-600 via-[#ff007f] to-purple-600 hover:from-red-500 hover:to-purple-500 text-white border border-red-500/20 text-center font-black text-[8.5px] uppercase tracking-wider animate-pulse cursor-pointer"
+                                    >
+                                      ⚔️ Start PK Battle Request
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => {
+                                      setUserLiveBgIndex(prev => (prev + 1) % USER_LIVE_BG_IMAGES.length);
+                                      alert("🎨 Background Theme Changed!");
+                                    }}
+                                    className="p-2 rounded bg-white/5 hover:bg-white/10 text-white border border-white/5 text-center font-bold text-[8px]"
+                                  >
+                                    🎨 Change Background
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setUserLiveCamRotation(prev => (prev + 90) % 360);
+                                    }}
+                                    className="p-2 rounded bg-white/5 hover:bg-white/10 text-white border border-white/5 text-center font-bold text-[8px]"
+                                  >
+                                    🔄 Rotate Camera
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setUserLiveShowBeautyModal(true);
+                                      setUserLiveShowMoreModal(false);
+                                    }}
+                                    className="p-2 rounded bg-white/5 hover:bg-white/10 text-white border border-white/5 text-center font-bold text-[8px] cursor-pointer"
+                                  >
+                                    ✨ Beauty & Filters
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setUserLiveShowMusicModal(true);
+                                      setUserLiveShowMoreModal(false);
+                                    }}
+                                    className="p-2 rounded bg-white/5 hover:bg-white/10 text-white border border-white/5 text-center font-bold text-[8px] cursor-pointer"
+                                  >
+                                    🎵 Studio Music
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setUserLiveShowSettingsModal(true);
+                                      setUserLiveShowMoreModal(false);
+                                    }}
+                                    className="p-2 rounded bg-white/5 hover:bg-white/10 text-white border border-white/5 text-center font-bold text-[8px] cursor-pointer"
+                                  >
+                                    ⚙️ Live Settings
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setUserLiveShowMoreModal(false);
+                                      if (!userLivePkActive) {
+                                        if (!userLiveCoHost) {
+                                          setUserLiveCoHost({
+                                            username: "Hamza",
+                                            avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
+                                            fans: "125K fans",
+                                            level: 45
+                                          });
+                                          setUserLivePkConnected(true);
+                                        }
+                                        setUserLiveShowOutgoingPkRequest(true);
+                                      } else {
+                                        alert("PK Battle is already active!");
+                                      }
+                                    }}
+                                    className="p-2 rounded bg-white/5 hover:bg-white/10 text-white border border-white/5 text-center font-bold text-[8px] cursor-pointer"
+                                  >
+                                    ⚔️ Start PK
+                                  </button>
                                   <button
                                     onClick={() => {
                                       alert("Platform audio noise reduction is now ACTIVE!");
@@ -15841,95 +16199,162 @@ export default function App() {
 
                             {/* PK INVITATION DRAWER (BOTTOM 50% OVERLAY) */}
                             {userLivePkInvitePanelOpen && (
-                              <div className="absolute bottom-0 inset-x-0 h-[50%] bg-[#0f0e15]/98 backdrop-blur-lg rounded-t-3xl border-t border-purple-500/20 z-35 p-4 flex flex-col justify-between animate-slide-up shadow-2xl">
+                              <div className="absolute bottom-0 inset-x-0 h-[50%] bg-[#0f0e15]/98 backdrop-blur-lg rounded-t-3xl border-t border-purple-500/20 z-35 p-4 flex flex-col justify-between animate-slide-up shadow-2xl text-left">
                                 {/* Header */}
                                 <div className="border-b border-white/5 pb-2">
-                                  <div className="flex justify-between items-center">
-                                    <div className="flex items-center space-x-2">
-                                      <span className="text-sm">⚔️</span>
+                                  <div className="flex justify-between items-center bg-transparent">
+                                    <div className="flex items-center space-x-2 bg-transparent">
+                                      <Users className="w-4 h-4 text-purple-400" />
                                       <h3 className="text-[11.5px] font-black text-white uppercase tracking-wider font-mono">Invite Co-Hosts</h3>
                                     </div>
                                     <button 
-                                      onClick={() => setUserLivePkInvitePanelOpen(false)}
-                                      className="w-5 h-5 rounded-full bg-white/5 text-gray-400 flex items-center justify-center hover:bg-white/10 text-[9.5px]"
+                                      onClick={() => {
+                                        setUserLivePkInvitePanelOpen(false);
+                                        setUserLiveInviteSearchQuery("");
+                                      }}
+                                      className="w-5 h-5 rounded-full bg-white/5 text-gray-400 flex items-center justify-center hover:bg-white/10 text-[9.5px] cursor-pointer"
                                     >
                                       ✕
                                     </button>
                                   </div>
-                                  <p className="text-[8.5px] text-gray-400 mt-1 text-left leading-normal">
-                                    Send a PK battle co-host request. Once accepted, split-screen is activated but PK timer matches remain pending until you start them.
+                                  <p className="text-[8.5px] text-gray-400 mt-1 leading-normal">
+                                    Send a co-host request. Only available Solo Live hosts are shown. Accepted co-hosts join in 1v1 mode.
                                   </p>
                                 </div>
 
+                                {/* Search Bar */}
+                                <div className="my-2 relative bg-transparent">
+                                  <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400 text-xs">
+                                    🔍
+                                  </span>
+                                  <input
+                                    type="text"
+                                    placeholder="Search host by name or ID..."
+                                    value={userLiveInviteSearchQuery}
+                                    onChange={(e) => setUserLiveInviteSearchQuery(e.target.value)}
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-8 py-1.5 text-[9px] text-white focus:outline-none focus:border-purple-500/50 transition-colors font-medium placeholder-gray-500"
+                                  />
+                                  {userLiveInviteSearchQuery && (
+                                    <button
+                                      onClick={() => setUserLiveInviteSearchQuery("")}
+                                      className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-white text-[9px]"
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Simulation controls if invited */}
+                                {userLiveInvitedHostId && (
+                                  <div className="my-1 bg-purple-950/40 border border-purple-500/20 p-2 rounded-xl flex items-center justify-between animate-fade-in">
+                                    <div className="flex flex-col text-left bg-transparent">
+                                      <span className="text-[8.5px] font-black text-purple-300">⏳ Simulating Invited Host Response</span>
+                                      <span className="text-[7px] text-gray-400">Host has {userLiveInviteCountdown}s to Accept or Reject</span>
+                                    </div>
+                                    <div className="flex items-center space-x-1.5 bg-transparent">
+                                      <button
+                                        onClick={() => {
+                                          const host = [
+                                            { id: "h-ali", username: "Ali_Shah_PK", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80", fans: "125K fans", level: 45 },
+                                            { id: "h-awais", username: "Awais_Khan", avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80", fans: "155.6K fans", level: 50 }
+                                          ].find(h => h.id === userLiveInvitedHostId) || { id: "h-ali", username: "Ali_Shah_PK", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80", fans: "125K fans", level: 45 };
+                                          
+                                          setUserLiveCoHost({
+                                            username: host.username,
+                                            avatar: host.avatar,
+                                            fans: host.fans,
+                                            level: host.level
+                                          });
+                                          setUserLivePkConnected(true);
+                                          setUserLivePkInvitePanelOpen(false);
+                                          setUserLiveInvitedHostId(null);
+                                          setUserLiveInviteCountdown(null);
+                                          setUserLiveInviteSearchQuery("");
+                                          setUserLiveMessages(prev => [
+                                            ...prev,
+                                            {
+                                              id: "ul-cohost-joined-" + Date.now(),
+                                              username: "System 👥",
+                                              message: `${host.username} accepted co-host join request! Connected successfully in 1v1 mode.`,
+                                              vipLevel: 0,
+                                              userLevel: 0,
+                                              isSystem: true,
+                                              isFlagged: false,
+                                              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                            }
+                                          ]);
+                                          alert(`🎉 ${host.username} accepted co-host request! Connected in 1v1 mode.`);
+                                        }}
+                                        className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[8px] font-bold cursor-pointer"
+                                      >
+                                        Accept
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          alert("❌ Host rejected the invite.");
+                                          setUserLiveInvitedHostId(null);
+                                          setUserLiveInviteCountdown(null);
+                                        }}
+                                        className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded text-[8px] font-bold cursor-pointer"
+                                      >
+                                        Reject
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
                                 {/* Host scrollable container */}
-                                <div className="flex-1 overflow-y-auto my-2 pr-1 space-y-2.5 max-h-[140px] scrollbar-thin">
+                                <div className="flex-1 overflow-y-auto my-1 pr-1 space-y-2 max-h-[110px] scrollbar-thin">
                                   {[
-                                    { id: "h-ali", username: "Ali_Shah_PK", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80", fans: "125K fans", level: 45, flag: "🇵🇰" },
-                                    { id: "h-hamza", username: "Hamza_official", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80", fans: "98.2K fans", level: 32, flag: "🇵🇰" },
-                                    { id: "h-awais", username: "Awais_Khan", avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80", fans: "155.6K fans", level: 50, flag: "🇵🇰" },
-                                    { id: "h-arooj", username: "Arooj_Sehr", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80", fans: "82K fans", level: 24, flag: "🇵🇰" }
-                                  ].map((host) => {
+                                    { id: "h-ali", username: "Ali_Shah_PK", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80", fans: "125K fans", level: 45, flag: "🇵🇰", inPkBattle: false },
+                                    { id: "h-hamza", username: "Hamza_official", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80", fans: "98.2K fans", level: 32, flag: "🇵🇰", inPkBattle: true },
+                                    { id: "h-awais", username: "Awais_Khan", avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80", fans: "155.6K fans", level: 50, flag: "🇵🇰", inPkBattle: false },
+                                    { id: "h-arooj", username: "Arooj_Sehr", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80", fans: "82K fans", level: 24, flag: "🇵🇰", inPkBattle: true }
+                                  ]
+                                  .filter(host => !host.inPkBattle && (
+                                    !userLiveInviteSearchQuery ||
+                                    host.username.toLowerCase().includes(userLiveInviteSearchQuery.toLowerCase()) ||
+                                    host.id.toLowerCase().includes(userLiveInviteSearchQuery.toLowerCase())
+                                  ))
+                                  .map((host) => {
                                     const isInvited = userLiveInvitedHostId === host.id;
                                     return (
                                       <div 
                                         key={host.id}
-                                        className="flex items-center justify-between bg-white/3 border border-white/5 p-2 rounded-xl"
+                                        className="flex items-center justify-between bg-white/3 border border-white/5 p-2 rounded-xl animate-fade-in"
                                       >
-                                        <div className="flex items-center space-x-2.5 text-left">
+                                        <div className="flex items-center space-x-2.5 text-left bg-transparent">
                                           <div className="relative shrink-0">
                                             <img src={host.avatar} className="w-8 h-8 rounded-full object-cover border border-purple-500/30" />
-                                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border border-black animate-pulse"></span>
+                                            <span className="absolute bottom-0 right-0 w-2 bg-green-500 rounded-full border border-black animate-pulse"></span>
                                           </div>
-                                          <div className="flex flex-col">
-                                            <div className="flex items-center space-x-1">
+                                          <div className="flex flex-col bg-transparent">
+                                            <div className="flex items-center space-x-1 bg-transparent">
                                               <span className="text-[9px] font-black text-white">{host.username}</span>
                                               <span className="text-[7px] bg-purple-900/50 text-purple-300 px-1 rounded-full font-mono font-bold">Lvl {host.level}</span>
                                             </div>
-                                            <span className="text-[7.5px] text-gray-400 font-mono">{host.fans} • {host.flag} Pakistan</span>
+                                            <span className="text-[7.5px] text-gray-400 font-mono bg-transparent">{host.fans} • {host.flag} Pakistan</span>
                                           </div>
                                         </div>
 
                                         <button
-                                          disabled={isInvited}
+                                          disabled={userLiveInvitedHostId !== null}
                                           onClick={() => {
                                             setUserLiveInvitedHostId(host.id);
-                                            
-                                            // Simulate automated opponent acceptance behavior after 2.5 seconds
-                                            setTimeout(() => {
-                                              setUserLiveCoHost({
-                                                username: host.username,
-                                                avatar: host.avatar,
-                                                fans: host.fans,
-                                                level: host.level
-                                              });
-                                              setUserLivePkConnected(true);
-                                              setUserLivePkInvitePanelOpen(false);
-                                              setUserLiveMessages(prev => [
-                                                ...prev,
-                                                {
-                                                  id: "ul-cohost-joined-" + Date.now(),
-                                                  username: "System ⚔️",
-                                                  message: `${host.username} accepted co-host join request! Click PK bottom icon to start timer match.`,
-                                                  vipLevel: 0,
-                                                  userLevel: 0,
-                                                  isSystem: true,
-                                                  isFlagged: false,
-                                                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                                }
-                                              ]);
-                                              alert(`🎉 ${host.username} has joined your live stream co-hosting session! Match is pending. Tap PK icon to start Battle!`);
-                                            }, 2500);
+                                            setUserLiveInviteCountdown(10);
                                           }}
-                                          className={`px-3 py-1.5 rounded-full text-[8.5px] font-black uppercase tracking-wider font-mono transition-all ${
+                                          className={`px-3 py-1.5 rounded-full text-[8.5px] font-black uppercase tracking-wider font-mono transition-all cursor-pointer ${
                                             isInvited
-                                              ? "bg-purple-900/20 text-purple-400 border border-purple-500/20 cursor-not-allowed flex items-center space-x-1"
-                                              : "bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] text-white hover:scale-105 active:scale-95"
+                                              ? "bg-purple-900/20 text-purple-400 border border-purple-500/20 flex items-center space-x-1"
+                                              : userLiveInvitedHostId !== null
+                                                ? "bg-gray-800 text-gray-500 border border-white/5 cursor-not-allowed opacity-50"
+                                                : "bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] text-white hover:scale-105 active:scale-95"
                                           }`}
                                         >
                                           {isInvited ? (
                                             <>
                                               <span className="w-1.5 h-1.5 border border-purple-400 border-t-transparent rounded-full animate-spin"></span>
-                                              <span>Invited</span>
+                                              <span>{userLiveInviteCountdown}s</span>
                                             </>
                                           ) : (
                                             "Invite"
@@ -15953,11 +16378,8 @@ export default function App() {
                               {[
                                 { id: "camera", label: userLiveCam ? "Cam OFF" : "Cam ON", icon: userLiveCam ? "📹" : "❌" },
                                 { id: "mute", label: userLiveMic ? "Mute" : "Unmute", icon: userLiveMic ? "🔇" : "🎙️" },
-                                { id: "beauty", label: "Beauty", icon: "🪄" },
-                                { id: "music", label: "Music", icon: "🎵" },
-                                { id: "pk", label: "PK", icon: "⚔️", primary: true },
-                                { id: "chat", label: "Chat", icon: "💬" },
-                                { id: "settings", label: "Settings", icon: "⚙️" },
+                                { id: "flip", label: "Flip Cam", icon: "🔄" },
+                                { id: "cohost", label: "Co-Hosts", icon: "👥", primary: true },
                                 { id: "more", label: "More", icon: "•••" }
                               ].map((btn) => (
                                 <button
@@ -15969,24 +16391,19 @@ export default function App() {
                                     } else if (btn.id === "mute") {
                                       setUserLiveMic(!userLiveMic);
                                       alert(userLiveMic ? "🎙️ Broadcast Mic is now MUTED" : "🎙️ Broadcast Mic is now LIVE / UNMUTED");
-                                    } else if (btn.id === "beauty") {
-                                      setUserLiveShowBeautyModal(!userLiveShowBeautyModal);
-                                    } else if (btn.id === "music") {
-                                      setUserLiveShowMusicModal(!userLiveShowMusicModal);
-                                    } else if (btn.id === "pk") {
-                                      setUserLiveShowPkMatchesModal(true);
-                                    } else if (btn.id === "chat") {
-                                      setUserLiveChatVisible(!userLiveChatVisible);
-                                    } else if (btn.id === "settings") {
-                                      setUserLiveShowSettingsModal(true);
+                                    } else if (btn.id === "flip") {
+                                      setUserLiveCamFlipped(!userLiveCamFlipped);
+                                      alert("🔄 Camera view mirrored/flipped!");
+                                    } else if (btn.id === "cohost") {
+                                      setUserLivePkInvitePanelOpen(true);
                                     } else if (btn.id === "more") {
                                       setUserLiveShowMoreModal(true);
                                     }
                                   }}
                                   className={`flex flex-col items-center justify-center transition-all ${
                                     btn.primary
-                                      ? "w-10 h-10 -mt-4 bg-gradient-to-tr from-[#ff007f] to-purple-600 rounded-full border border-pink-400/40 shadow-lg scale-110 z-20 hover:scale-125 flex items-center justify-center text-white"
-                                      : "hover:bg-white/5 p-1 rounded-lg"
+                                      ? "w-10 h-10 -mt-4 bg-gradient-to-tr from-[#ff007f] to-purple-600 rounded-full border border-pink-400/40 shadow-lg scale-110 z-20 hover:scale-125 flex items-center justify-center text-white cursor-pointer"
+                                      : "hover:bg-white/5 p-1 rounded-lg cursor-pointer"
                                   }`}
                                 >
                                   <span className={btn.primary ? "text-base text-white font-bold" : "text-sm text-gray-200"}>{btn.icon}</span>
