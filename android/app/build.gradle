@@ -18,11 +18,15 @@ android {
     }
     signingConfigs {
         release {
-            storeFile file(System.getenv("RELEASE_STORE_FILE") ?: "release.keystore")
-            storePassword System.getenv("RELEASE_STORE_PASSWORD") ?: "android"
+            storeFile file(System.getenv("RELEASE_STORE_FILE") ?: "release-key.jks")
+            storePassword System.getenv("RELEASE_STORE_PASSWORD") ?: "android123"
             keyAlias System.getenv("RELEASE_KEY_ALIAS") ?: "release"
-            keyPassword System.getenv("RELEASE_KEY_PASSWORD") ?: "android"
-            storeType "PKCS12"
+            keyPassword System.getenv("RELEASE_KEY_PASSWORD") ?: "android123"
+            if (System.getenv("RELEASE_STORE_TYPE")) {
+                storeType System.getenv("RELEASE_STORE_TYPE")
+            } else {
+                storeType "JKS"
+            }
         }
     }
     buildTypes {

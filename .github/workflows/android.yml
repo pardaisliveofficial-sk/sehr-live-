@@ -76,54 +76,64 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           mkdir -p android/app
+          # Remove any existing temporary or leftover keystore files to start clean
+          rm -f android/app/release.keystore android/app/release-key.jks android/app/*.p12
+
           KEYSTORE_VALID=false
 
           if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
             echo "Decoding custom release keystore secret..."
-            echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
-            STORE_PASS="${RELEASE_STORE_PASSWORD:-android}"
+            echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > android/app/release-custom.keystore
+            STORE_PASS="${RELEASE_STORE_PASSWORD:-android123}"
             KEY_ALIAS="${RELEASE_KEY_ALIAS:-release}"
-            KEY_PASS="${RELEASE_KEY_PASSWORD:-android}"
+            KEY_PASS="${RELEASE_KEY_PASSWORD:-android123}"
 
-            if keytool -list -keystore android/app/release.keystore -storetype PKCS12 -storepass "$STORE_PASS" > /dev/null 2>&1; then
-              echo "✅ Custom release keystore validated successfully (PKCS12)!"
+            if [ -s android/app/release-custom.keystore ] && keytool -list -keystore android/app/release-custom.keystore -storepass "$STORE_PASS" > /dev/null 2>&1; then
+              echo "✅ Custom release keystore validated successfully!"
               KEYSTORE_VALID=true
-              echo "RELEASE_STORE_FILE=release.keystore" >> $GITHUB_ENV
+              echo "RELEASE_STORE_FILE=release-custom.keystore" >> $GITHUB_ENV
               echo "RELEASE_STORE_PASSWORD=$STORE_PASS" >> $GITHUB_ENV
               echo "RELEASE_KEY_ALIAS=$KEY_ALIAS" >> $GITHUB_ENV
               echo "RELEASE_KEY_PASSWORD=$KEY_PASS" >> $GITHUB_ENV
             else
-              echo "⚠️ Custom release keystore validation failed. Falling back to temporary PKCS12 keystore..."
-              rm -f android/app/release.keystore
+              echo "⚠️ Custom release keystore secret invalid or empty. Falling back to temporary JKS keystore..."
+              rm -f android/app/release-custom.keystore
             fi
           fi
 
           if [ "$KEYSTORE_VALID" != "true" ]; then
-            echo "Generating temporary build-time PKCS12 keystore..."
+            echo "Generating temporary build-time JKS keystore..."
+            rm -f android/app/release-key.jks
             keytool -genkeypair -v \
-              -keystore android/app/release.keystore \
-              -storetype PKCS12 \
+              -keystore android/app/release-key.jks \
+              -storetype JKS \
+              -storepass android123 \
+              -keypass android123 \
               -alias release \
               -keyalg RSA \
               -keysize 2048 \
               -validity 10000 \
-              -storepass android \
-              -keypass android \
-              -dname "CN=SehrLive Build, O=SehrLive, C=US"
+              -dname "CN=Sehr Live, OU=Mobile, O=Sehr Live, L=City, ST=State, C=PK"
 
-            echo "RELEASE_STORE_FILE=release.keystore" >> $GITHUB_ENV
-            echo "RELEASE_STORE_PASSWORD=android" >> $GITHUB_ENV
+            echo "RELEASE_STORE_FILE=release-key.jks" >> $GITHUB_ENV
+            echo "RELEASE_STORE_PASSWORD=android123" >> $GITHUB_ENV
             echo "RELEASE_KEY_ALIAS=release" >> $GITHUB_ENV
-            echo "RELEASE_KEY_PASSWORD=android" >> $GITHUB_ENV
+            echo "RELEASE_KEY_PASSWORD=android123" >> $GITHUB_ENV
+            echo "RELEASE_STORE_TYPE=JKS" >> $GITHUB_ENV
           fi
 
-          FINAL_STORE_PASS="android"
-          if [ "$KEYSTORE_VALID" = "true" ]; then
-            FINAL_STORE_PASS="${RELEASE_STORE_PASSWORD:-android}"
+          echo "Validating keystore existence and size..."
+          TARGET_KS="${RELEASE_STORE_FILE:-release-key.jks}"
+          TARGET_PASS="${RELEASE_STORE_PASSWORD:-android123}"
+          TARGET_ALIAS="${RELEASE_KEY_ALIAS:-release}"
+
+          if [ ! -s "android/app/$TARGET_KS" ]; then
+            echo "❌ Error: Keystore file android/app/$TARGET_KS is missing or empty!"
+            exit 1
           fi
 
           echo "Validating final release keystore with keytool..."
-          keytool -list -v -keystore android/app/release.keystore -storetype PKCS12 -storepass "$FINAL_STORE_PASS"
+          keytool -list -v -keystore "android/app/$TARGET_KS" -storepass "$TARGET_PASS" -alias "$TARGET_ALIAS"
 
       - name: Build Android Release APK (Signed)
         run: |
