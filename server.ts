@@ -177,7 +177,7 @@ const handleAgoraTokenRequest = (req: any, res: any) => {
       return res.status(400).json({ error: "channelName is required" });
     }
 
-    const appId = process.env.AGORA_APP_ID || "";
+    const appId = process.env.AGORA_APP_ID || "e229e7019f204362a265637207604f35";
     const appCertificate = process.env.AGORA_APP_CERTIFICATE || "";
 
     const agoraUid = uid ? Number(uid) : 0;
@@ -189,7 +189,7 @@ const handleAgoraTokenRequest = (req: any, res: any) => {
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
-    let token = "";
+    let token: string | null = null;
     if (appId && appCertificate) {
       try {
         token = RtcTokenBuilder.buildTokenWithUid(
@@ -204,16 +204,14 @@ const handleAgoraTokenRequest = (req: any, res: any) => {
         console.log(`[SEHR-LIVE AGORA] Generated REAL token for channel ${channelName}, uid ${agoraUid}`);
       } catch (err: any) {
         console.error("[SEHR-LIVE AGORA] RtcTokenBuilder failed:", err);
-        return res.status(500).json({ error: "Failed to generate token: " + err.message });
       }
     } else {
-      console.warn("[SEHR-LIVE AGORA] AGORA_APP_ID or AGORA_APP_CERTIFICATE not configured. Using mock token for dev.");
-      token = `mock-token-${channelName}-${agoraUid}-${resolvedRole}`;
+      console.log(`[SEHR-LIVE AGORA] Certificate not set. Using testing mode with App ID for channel ${channelName}`);
     }
 
     return res.json({
       token,
-      appId: appId || "MOCK_AGORA_APP_ID",
+      appId,
       channelName,
       uid: agoraUid,
       expiresAt: privilegeExpiredTs
@@ -1012,17 +1010,38 @@ app.post("/api/v1/parties/:id/leave", (req, res) => {
     }
     party.participantCount = party.connectedViewers ? party.connectedViewers.length : 0;
     
-    // Clean up from seats
+    // Clean up from seats immediately
     party.seats = party.seats.map((seat: any) => {
       if (seat.name === username || (seat.name && seat.name.startsWith(username))) {
-        return { ...seat, name: null, avatar: null };
+        return { ...seat, name: null, avatar: null, isMuted: false };
       }
       return seat;
     });
 
+    if (party.lastSeen && username) {
+      delete party.lastSeen[username];
+    }
+
+    console.log(`[SEHR-LIVE PARTY] User ${username} left party ${id}. Seats cleared immediately.`);
     saveDatabase();
     syncDocument("parties", id, party);
     res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+
+// Party Room User Heartbeat to prevent stale/ghost seats
+app.post("/api/v1/parties/:id/heartbeat", (req, res) => {
+  const { id } = req.params;
+  const { username } = req.body;
+  if (!username) return res.status(400).json({ error: "username is required" });
+  
+  const party = dbData.parties?.find((p: any) => p.id === id);
+  if (party) {
+    if (!party.lastSeen) party.lastSeen = {};
+    party.lastSeen[username] = Date.now();
+    res.json({ status: "ok" });
   } else {
     res.status(404).json({ error: "Party Room not found" });
   }
@@ -2512,5 +2531,38 @@ async function startServer() {
     console.log(`Sehr Live Server running on http://0.0.0.0:${PORT}`);
   });
 }
+
+// Periodic background cleaner for ghost users in party room seats
+setInterval(() => {
+  if (!dbData.parties || !Array.isArray(dbData.parties)) return;
+  const now = Date.now();
+  let changed = false;
+
+  dbData.parties.forEach((party: any) => {
+    if (!party.seats || party.status === "ended") return;
+    const lastSeen = party.lastSeen || {};
+
+    party.seats.forEach((seat: any) => {
+      if (seat.name) {
+        const username = seat.name;
+        const lastTs = lastSeen[username];
+        
+        // If seat occupant hasn't sent a heartbeat for more than 12 seconds
+        if (lastTs && (now - lastTs > 12000)) {
+          console.log(`[SEHR-LIVE AUTO-PRUNE] Seat occupant ${username} on Seat ${seat.id} in party ${party.id} timed out. Clearing seat.`);
+          seat.name = null;
+          seat.avatar = null;
+          seat.isMuted = false;
+          delete lastSeen[username];
+          changed = true;
+        }
+      }
+    });
+  });
+
+  if (changed) {
+    saveDatabase();
+  }
+}, 5000);
 
 startServer();

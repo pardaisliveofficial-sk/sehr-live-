@@ -6,7 +6,7 @@ import AgoraRTC, {
 } from "agora-rtc-sdk-ng";
 import { Mic, MicOff, Radio, Users, ShieldAlert, Volume2, Wifi } from "lucide-react";
 
-// Set warning level for console clean-up in production
+// Set log level for console clean-up
 AgoraRTC.setLogLevel(3);
 
 interface AgoraPartyAudioProps {
@@ -16,8 +16,18 @@ interface AgoraPartyAudioProps {
   isMuted: boolean;
   username: string;
   avatar: string;
-  onStatusChange?: (status: "idle" | "connecting" | "connected" | "error" | "simulated", details?: string) => void;
+  onStatusChange?: (status: "idle" | "connecting" | "connected" | "error", details?: string) => void;
 }
+
+// Generate deterministic numeric UID for Agora from username
+const getNumericUid = (str: string): number => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return (Math.abs(hash) % 200000000) + 10000;
+};
 
 export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
   partyId,
@@ -34,13 +44,12 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
   const [activeSpeakers, setActiveSpeakers] = useState<string[]>([]);
   
   // Status states
-  const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error" | "simulated">("idle");
+  const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [statusDetails, setStatusDetails] = useState<string>("Initializing...");
-  const [isSimulated, setIsSimulated] = useState<boolean>(false);
   
   // Audio statistics
   const [latency, setLatency] = useState<number>(24);
-  const [bitrate, setBitrate] = useState<number>(64); // kbps for audio
+  const [bitrate, setBitrate] = useState<number>(64);
   const [packetLoss, setPacketLoss] = useState<string>("0.0%");
 
   // Analytics tracker
@@ -80,7 +89,9 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
       setStatus("connecting");
       setStatusDetails("Fetching secure voice credentials...");
 
+      const numericUid = getNumericUid(username);
       let tokenData: any = null;
+
       try {
         const token = localStorage.getItem("sehr_auth_token");
         const res = await fetch("/api/v1/agora/token", {
@@ -92,7 +103,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
           body: JSON.stringify({
             channelName,
             role: userRole === "listener" ? "subscriber" : "publisher",
-            uid: Math.floor(100000 + Math.random() * 899999) // Clean 6-digit numeric UID
+            uid: numericUid
           })
         });
 
@@ -100,21 +111,15 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
           throw new Error(`Token API error: status ${res.status}`);
         }
         tokenData = await res.json();
-      } catch (err) {
-        console.warn("[AgoraPartyAudio] Failed to fetch secure token, falling back to local voice simulation mode.", err);
-        switchToSimulation("Local Voice Sandbox active.");
-        return;
-      }
-
-      // Check for mock credentials
-      if (!tokenData || tokenData.appId === "MOCK_AGORA_APP_ID" || tokenData.token.startsWith("mock-")) {
-        console.info("[AgoraPartyAudio] Mock credentials found. Starting voice channel simulator.");
-        switchToSimulation("Sandbox Environment (Real-time voice simulated)");
+      } catch (err: any) {
+        console.error("[AgoraPartyAudio] Failed to fetch token:", err);
+        setStatus("error");
+        setStatusDetails("Voice Token Error: " + (err.message || "Failed to connect"));
         return;
       }
 
       try {
-        setStatusDetails("Connecting to global WebRTC voice gateway...");
+        setStatusDetails("Connecting to WebRTC voice gateway...");
         
         // Live mode is required for host-audience dynamic role switching
         const agoraClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
@@ -129,28 +134,31 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
         await agoraClient.join(
           tokenData.appId,
           tokenData.channelName,
-          tokenData.token,
-          tokenData.uid
+          tokenData.token || null,
+          tokenData.uid || numericUid
         );
 
         if (isUnmounted) return;
 
         setStatus("connected");
-        setStatusDetails(`Connected to voice channel: ${channelName}`);
+        setStatusDetails("VOICE LIVE / CONNECTED");
 
         // Set up subscription listeners for other speakers
         const handleUserPublished = async (remoteUser: IAgoraRTCRemoteUser, mediaType: "audio" | "video") => {
           if (isUnmounted) return;
           if (mediaType === "audio") {
-            await agoraClient.subscribe(remoteUser, "audio");
-            if (isUnmounted) return;
-            if (remoteUser.audioTrack) {
-              remoteUser.audioTrack.play();
-              // Track active speaker uid for UI telemetry
-              setActiveSpeakers(prev => {
-                const uidStr = String(remoteUser.uid);
-                return prev.includes(uidStr) ? prev : [...prev, uidStr];
-              });
+            try {
+              await agoraClient.subscribe(remoteUser, "audio");
+              if (isUnmounted) return;
+              if (remoteUser.audioTrack) {
+                remoteUser.audioTrack.play();
+                setActiveSpeakers(prev => {
+                  const uidStr = String(remoteUser.uid);
+                  return prev.includes(uidStr) ? prev : [...prev, uidStr];
+                });
+              }
+            } catch (subErr) {
+              console.error("[AgoraPartyAudio] Error subscribing to remote audio:", subErr);
             }
           }
         };
@@ -176,16 +184,11 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
           }
         }
 
-      } catch (err) {
+      } catch (err: any) {
         console.error("[AgoraPartyAudio] WebRTC initialization failed:", err);
-        switchToSimulation("WebRTC Initialisation Error. Playing local simulation stream.");
+        setStatus("error");
+        setStatusDetails("WebRTC Error: " + (err.message || "Voice channel failed"));
       }
-    };
-
-    const switchToSimulation = (msg: string) => {
-      setIsSimulated(true);
-      setStatus("simulated");
-      setStatusDetails(msg);
     };
 
     initAgora();
@@ -198,11 +201,11 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
         activeClient.leave().catch(e => console.log("Error leaving client:", e));
       }
     };
-  }, [channelName]);
+  }, [channelName, username]);
 
   // Handle active speaker mic publication & role updates dynamically
   useEffect(() => {
-    if (isSimulated || !client) return;
+    if (!client || status !== "connected") return;
 
     let micTrack: IMicrophoneAudioTrack | null = null;
     let isTransitioning = false;
@@ -229,7 +232,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
           await audioTrack.setEnabled(!isMuted);
 
           await client.publish([audioTrack]);
-          setStatusDetails("Microphone live!");
+          setStatusDetails("VOICE LIVE / CONNECTED");
         } else {
           // Downgrade role to audience
           setStatusDetails("Reverting voice role to Listener...");
@@ -242,7 +245,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
           }
 
           await client.setClientRole("audience");
-          setStatusDetails("Listening in room...");
+          setStatusDetails("VOICE LIVE / CONNECTED");
         }
       } catch (err) {
         console.error("[AgoraPartyAudio] Dynamic role switch error:", err);
@@ -260,7 +263,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
         micTrack.close();
       }
     };
-  }, [userRole, client, isSimulated]);
+  }, [userRole, client, status]);
 
   // Handle dynamic mute / unmute updates
   useEffect(() => {
@@ -278,9 +281,9 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
       {/* Sleek horizontal status telemetry row */}
       <div className="flex items-center justify-between bg-transparent">
         <div className="flex items-center space-x-2 bg-transparent text-left">
-          <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isSimulated ? "bg-cyan-400" : "bg-emerald-400"}`}></span>
-          <p className="text-[7.5px] font-black uppercase text-gray-400 font-mono tracking-wider bg-transparent">
-            {isSimulated ? "Simulated Voice" : "Agora Voice"}
+          <span className={`w-1.5 h-1.5 rounded-full ${status === "connected" ? "bg-emerald-400 animate-pulse" : status === "connecting" ? "bg-amber-400 animate-ping" : "bg-red-400"}`}></span>
+          <p className="text-[7.5px] font-black uppercase text-gray-300 font-mono tracking-wider bg-transparent">
+            {status === "connected" ? "VOICE LIVE / CONNECTED" : status === "connecting" ? "VOICE CONNECTING..." : "VOICE DISCONNECTED"}
           </p>
           <span className="text-[7px] bg-[#ff007f]/10 text-[#ff007f] px-1.5 py-0.5 rounded-full font-black uppercase font-mono tracking-wider">
             {userRole}
@@ -304,7 +307,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
       <div className="text-[7.5px] font-mono text-gray-400 bg-black/30 border border-white/5 rounded-lg px-2 py-1 flex items-center justify-between">
         <div className="flex items-center space-x-1 bg-transparent truncate">
           <Radio className="w-2.5 h-2.5 text-pink-500 shrink-0" />
-          <span className="truncate max-w-[200px] text-gray-300">Status: {statusDetails}</span>
+          <span className="truncate max-w-[200px] text-gray-300">Channel: {channelName}</span>
         </div>
         <span className="text-[6.5px] text-cyan-400 font-mono font-bold shrink-0">
           {bitrate} kbps

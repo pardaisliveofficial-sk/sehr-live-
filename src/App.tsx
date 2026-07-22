@@ -1843,6 +1843,49 @@ export default function App() {
   // Party System states
   const [partiesList, setPartiesList] = useState<any[]>([]);
   const [activePartyId, setActivePartyId] = useState<string | null>(null);
+
+  // Party Room Navigation & Unload Auto-Cleanup Effect
+  const prevClientViewRef = useRef<string>(clientView);
+  useEffect(() => {
+    if (prevClientViewRef.current === "party-room" && clientView !== "party-room" && activePartyId) {
+      console.log(`[PARTY CLEANUP] User navigated from party-room to ${clientView}. Executing leave cleanup.`);
+      handleLeaveParty(activePartyId);
+    }
+    prevClientViewRef.current = clientView;
+  }, [clientView, activePartyId]);
+
+  // Heartbeat & Unload beacon listener while in active party room
+  useEffect(() => {
+    if (clientView !== "party-room" || !activePartyId || !user?.username) return;
+
+    const sendHeartbeat = () => {
+      fetch(`/api/v1/parties/${activePartyId}/heartbeat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: user.username })
+      }).catch(() => {});
+    };
+
+    sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 4000);
+
+    const handleWindowUnload = () => {
+      if (activePartyId && user?.username) {
+        const payload = JSON.stringify({ username: user.username });
+        const blob = new Blob([payload], { type: "application/json" });
+        navigator.sendBeacon(`/api/v1/parties/${activePartyId}/leave`, blob);
+      }
+    };
+
+    window.addEventListener("beforeunload", handleWindowUnload);
+    window.addEventListener("pagehide", handleWindowUnload);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("beforeunload", handleWindowUnload);
+      window.removeEventListener("pagehide", handleWindowUnload);
+    };
+  }, [clientView, activePartyId, user?.username]);
   const [promotionBanners, setPromotionBanners] = useState<any[]>([]);
   const [currentBannerIndex, setCurrentBannerIndex] = useState<number>(0);
   const [invitedToSeat, setInvitedToSeat] = useState<{ partyId: string; seatId: number; hostName: string } | null>(null);
@@ -5683,22 +5726,53 @@ export default function App() {
   };
 
   const handleLeaveParty = async (partyId: string) => {
+    // Optimistic local state update
+    setPartiesList(prev => prev.map(p => {
+      if (p.id === partyId) {
+        return {
+          ...p,
+          connectedViewers: (p.connectedViewers || []).filter((v: any) => v.username !== user.username),
+          seats: (p.seats || []).map((s: any) => {
+            if (s.name === user.username || (s.name && s.name.startsWith(user.username))) {
+              return { ...s, name: null, avatar: null, isMuted: false };
+            }
+            return s;
+          })
+        };
+      }
+      return p;
+    }));
+
     try {
       await fetch(`/api/v1/parties/${partyId}/leave`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: user.username })
       });
-      setActivePartyId(null);
-      setClientView("feed");
     } catch (e) {
       console.error("Error leaving party:", e);
-      setActivePartyId(null);
-      setClientView("feed");
+    } finally {
+      if (activePartyId === partyId) {
+        setActivePartyId(null);
+        if (clientView === "party-room") {
+          setClientView("feed");
+        }
+      }
     }
   };
 
   const handlePartyJoinSeat = async (partyId: string, seatId: number) => {
+    // Optimistic local state update
+    setPartiesList(prev => prev.map(p => {
+      if (p.id === partyId) {
+        return {
+          ...p,
+          seats: p.seats.map((s: any) => s.id === seatId ? { ...s, name: user.username, avatar: user.avatar } : s)
+        };
+      }
+      return p;
+    }));
+
     try {
       const response = await fetch(`/api/v1/parties/${partyId}/seats/join`, {
         method: "POST",
@@ -5715,6 +5789,17 @@ export default function App() {
   };
 
   const handlePartyLeaveSeat = async (partyId: string, seatId: number) => {
+    // Optimistic local state update
+    setPartiesList(prev => prev.map(p => {
+      if (p.id === partyId) {
+        return {
+          ...p,
+          seats: p.seats.map((s: any) => s.id === seatId ? { ...s, name: null, avatar: null, isMuted: false } : s)
+        };
+      }
+      return p;
+    }));
+
     try {
       const response = await fetch(`/api/v1/parties/${partyId}/seats/leave`, {
         method: "POST",
