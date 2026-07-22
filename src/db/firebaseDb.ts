@@ -111,7 +111,7 @@ export const dbDataCache: any = {
     gender: "Male",
     country: "Pakistan",
     language: "Urdu / Hinglish",
-    coins: 50000,
+    coins: 1000000,
     diamonds: 1200,
     vipLevel: 3,
     userLevel: 24,

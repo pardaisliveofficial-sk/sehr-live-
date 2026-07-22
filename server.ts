@@ -75,6 +75,29 @@ async function loadDatabase() {
     
     // Explicitly guarantee hosts array is clean on startup
     dbDataCache.hosts = [];
+
+    // Ensure all registered user accounts have at least 1M (1000000) coins for local testing
+    if (Array.isArray(dbDataCache.users)) {
+      dbDataCache.users.forEach((u: any) => {
+        if (!u.coins || u.coins < 1000000) {
+          u.coins = 1000000;
+          syncDocument("users", u.username, u);
+        }
+      });
+    }
+    if (dbDataCache.user && (!dbDataCache.user.coins || dbDataCache.user.coins < 1000000)) {
+      dbDataCache.user.coins = 1000000;
+      writeMetadata("user_profile", dbDataCache.user);
+    }
+    if (Array.isArray(dbDataCache.adminUsersList)) {
+      dbDataCache.adminUsersList.forEach((au: any) => {
+        if (!au.coins || au.coins < 1000000) {
+          au.coins = 1000000;
+          syncDocument("adminUsersList", au.username, au);
+        }
+      });
+    }
+    saveDatabase();
   } catch (e) {
     console.error("[SEHR-LIVE FIREBASE] Error loading database:", e);
   }
@@ -233,7 +256,7 @@ app.post("/api/v1/auth/google-login", (req, res) => {
       gender: "Male",
       country: "Pakistan",
       language: "Urdu / Hinglish",
-      coins: 25000, // starting gift coins for Google verified sign-ups
+      coins: 1000000, // starting gift coins (1M) for Google verified sign-ups
       diamonds: 0,
       vipLevel: 0,
       userLevel: 1,
@@ -320,7 +343,7 @@ app.post("/api/v1/auth/guest-login", (req, res) => {
     gender: "Male",
     country: "Pakistan",
     language: "Urdu / Hinglish",
-    coins: 5000, // starting gift coins for guest verified sign-ups
+    coins: 1000000, // starting gift coins (1M) for guest verified sign-ups
     diamonds: 0,
     vipLevel: 0,
     userLevel: 1,
@@ -424,7 +447,7 @@ app.post("/api/v1/auth/verify-otp", (req, res) => {
       gender: "Male",
       country: "Pakistan",
       language: "Urdu / Hinglish",
-      coins: 10000, // starting coins
+      coins: 1000000, // starting coins (1M)
       diamonds: 0,
       vipLevel: 0,
       userLevel: 1,

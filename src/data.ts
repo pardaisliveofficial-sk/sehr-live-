@@ -9,7 +9,7 @@ export const DEFAULT_USER: UserProfile = {
   gender: "Male",
   country: "Pakistan",
   language: "Urdu / Hinglish",
-  coins: 0,
+  coins: 1000000,
   diamonds: 0,
   vipLevel: 0,
   userLevel: 1,
