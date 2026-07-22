@@ -113,7 +113,7 @@ var dbDataCache = {
     gender: "Male",
     country: "Pakistan",
     language: "Urdu / Hinglish",
-    coins: 5e4,
+    coins: 1e6,
     diamonds: 1200,
     vipLevel: 3,
     userLevel: 24,
@@ -359,6 +359,27 @@ async function loadDatabase() {
       console.log("[SEHR-LIVE FIREBASE] Pre-populated in-memory cache with local database backup.");
     }
     dbDataCache.hosts = [];
+    if (Array.isArray(dbDataCache.users)) {
+      dbDataCache.users.forEach((u) => {
+        if (!u.coins || u.coins < 1e6) {
+          u.coins = 1e6;
+          syncDocument("users", u.username, u);
+        }
+      });
+    }
+    if (dbDataCache.user && (!dbDataCache.user.coins || dbDataCache.user.coins < 1e6)) {
+      dbDataCache.user.coins = 1e6;
+      writeMetadata("user_profile", dbDataCache.user);
+    }
+    if (Array.isArray(dbDataCache.adminUsersList)) {
+      dbDataCache.adminUsersList.forEach((au) => {
+        if (!au.coins || au.coins < 1e6) {
+          au.coins = 1e6;
+          syncDocument("adminUsersList", au.username, au);
+        }
+      });
+    }
+    saveDatabase();
   } catch (e) {
     console.error("[SEHR-LIVE FIREBASE] Error loading database:", e);
   }
@@ -475,8 +496,8 @@ app2.post("/api/v1/auth/google-login", (req, res) => {
       gender: "Male",
       country: "Pakistan",
       language: "Urdu / Hinglish",
-      coins: 25e3,
-      // starting gift coins for Google verified sign-ups
+      coins: 1e6,
+      // starting gift coins (1M) for Google verified sign-ups
       diamonds: 0,
       vipLevel: 0,
       userLevel: 1,
@@ -551,8 +572,8 @@ app2.post("/api/v1/auth/guest-login", (req, res) => {
     gender: "Male",
     country: "Pakistan",
     language: "Urdu / Hinglish",
-    coins: 5e3,
-    // starting gift coins for guest verified sign-ups
+    coins: 1e6,
+    // starting gift coins (1M) for guest verified sign-ups
     diamonds: 0,
     vipLevel: 0,
     userLevel: 1,
@@ -633,8 +654,8 @@ app2.post("/api/v1/auth/verify-otp", (req, res) => {
       gender: "Male",
       country: "Pakistan",
       language: "Urdu / Hinglish",
-      coins: 1e4,
-      // starting coins
+      coins: 1e6,
+      // starting coins (1M)
       diamonds: 0,
       vipLevel: 0,
       userLevel: 1,
