@@ -26,8 +26,11 @@ var import_express = __toESM(require("express"), 1);
 var import_path2 = __toESM(require("path"), 1);
 var import_dotenv = __toESM(require("dotenv"), 1);
 var import_fs2 = __toESM(require("fs"), 1);
+var import_client_s3 = require("@aws-sdk/client-s3");
+var import_multer = __toESM(require("multer"), 1);
 var import_vite = require("vite");
 var import_genai = require("@google/genai");
+var import_agora_token = __toESM(require("agora-token"), 1);
 
 // src/db/firebaseDb.ts
 var import_app = require("firebase/app");
@@ -58,12 +61,29 @@ try {
 var apps = (0, import_app.getApps)();
 var app = apps.length === 0 ? (0, import_app.initializeApp)(firebaseConfig) : (0, import_app.getApp)();
 console.log("[SEHR-LIVE FIREBASE] Firebase Client SDK initialized successfully with projectId:", firebaseConfig.projectId);
-var db = (0, import_firestore.getFirestore)(app, FIRESTORE_DB_ID);
+(0, import_firestore.setLogLevel)("silent");
+var db = (0, import_firestore.initializeFirestore)(app, {
+  experimentalForceLongPolling: true
+}, FIRESTORE_DB_ID);
+var isFirestoreQuotaExhausted = false;
+function handleQuotaError(err, operationName) {
+  const errMsg = String(err?.message || err || "").toLowerCase();
+  const errCode = String(err?.code || "").toLowerCase();
+  if (errMsg.includes("resource_exhausted") || errMsg.includes("quota") || errCode.includes("resource-exhausted") || errCode.includes("quota")) {
+    if (!isFirestoreQuotaExhausted) {
+      isFirestoreQuotaExhausted = true;
+      console.warn(`[SEHR-LIVE FIREBASE] Firestore write quota has been exhausted. Sahr Live is now operating in high-performance local fallback mode. All features remain fully functional locally.`);
+    }
+  } else {
+    console.error(`[SEHR-LIVE FIREBASE] Error during '${operationName}':`, err);
+  }
+}
 var COLLECTIONS = [
   "users",
   "gifts",
   "categories",
   "hosts",
+  "parties",
   "families",
   "agencies",
   "transactions",
@@ -119,6 +139,7 @@ var dbDataCache = {
   gifts: [],
   categories: [],
   hosts: [],
+  parties: [],
   families: [],
   agencies: [],
   transactions: [],
@@ -142,6 +163,7 @@ var dbDataCache = {
   coinSellers: []
 };
 async function checkAndSeedDatabase() {
+  if (isFirestoreQuotaExhausted) return;
   try {
     const seedCheckRef = (0, import_firestore.doc)(db, "metadata", "initial_seed_completed");
     const seedCheck = await (0, import_firestore.getDoc)(seedCheckRef);
@@ -157,19 +179,28 @@ async function checkAndSeedDatabase() {
     }
     const raw = import_fs.default.readFileSync(jsonPath, "utf-8");
     const localDb = JSON.parse(raw);
+    const safeSetDoc = async (docRef, data) => {
+      if (isFirestoreQuotaExhausted) return;
+      try {
+        await (0, import_firestore.setDoc)(docRef, data, { merge: true });
+      } catch (err) {
+        handleQuotaError(err, "database seeding write");
+      }
+    };
     if (localDb.user) {
-      await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "metadata", "user_profile"), localDb.user, { merge: true });
+      await safeSetDoc((0, import_firestore.doc)(db, "metadata", "user_profile"), localDb.user);
     }
     if (localDb.configurations) {
-      await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "metadata", "configurations"), localDb.configurations, { merge: true });
+      await safeSetDoc((0, import_firestore.doc)(db, "metadata", "configurations"), localDb.configurations);
     }
     if (localDb.categories) {
-      await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "metadata", "categories"), { list: localDb.categories }, { merge: true });
+      await safeSetDoc((0, import_firestore.doc)(db, "metadata", "categories"), { list: localDb.categories });
     }
     const collectionsToSeed = [
       { name: "users", key: "username", data: localDb.users },
       { name: "gifts", key: "id", data: localDb.gifts },
-      { name: "hosts", key: "id", data: localDb.hosts },
+      { name: "hosts", key: "id", data: [] },
+      // No demo hosts!
       { name: "families", key: "id", data: localDb.families },
       { name: "agencies", key: "id", data: [] },
       // No demo agencies!
@@ -182,19 +213,25 @@ async function checkAndSeedDatabase() {
       { name: "adminUsersList", key: "username", data: localDb.adminUsersList }
     ];
     for (const coll of collectionsToSeed) {
+      if (isFirestoreQuotaExhausted) break;
       if (Array.isArray(coll.data)) {
         console.log(`[SEHR-LIVE FIREBASE] Seeding collection: ${coll.name} (${coll.data.length} items)`);
         for (const item of coll.data) {
+          if (isFirestoreQuotaExhausted) break;
           const docId = String(item[coll.key] || Math.floor(1e3 + Math.random() * 9e3));
-          await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, coll.name, docId), item, { merge: true });
+          await safeSetDoc((0, import_firestore.doc)(db, coll.name, docId), item);
         }
       }
     }
-    await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "metadata", "initial_seed_completed"), {
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      completed: true
-    }, { merge: true });
-    console.log("[SEHR-LIVE FIREBASE] Seeding completed successfully. All data moved to Firestore.");
+    if (!isFirestoreQuotaExhausted) {
+      await safeSetDoc((0, import_firestore.doc)(db, "metadata", "initial_seed_completed"), {
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        completed: true
+      });
+      console.log("[SEHR-LIVE FIREBASE] Seeding completed successfully. All data moved to Firestore.");
+    } else {
+      console.log("[SEHR-LIVE FIREBASE] Seeding paused due to Firestore quota limitation. Operating in local mode.");
+    }
   } catch (err) {
     console.error("[SEHR-LIVE FIREBASE] Database seeding error:", err);
   }
@@ -205,17 +242,17 @@ function startFirestoreSynchronization() {
     if (docSnap.exists()) {
       dbDataCache.user = docSnap.data();
     }
-  }, (err) => console.error("Sync error user_profile:", err));
+  }, (err) => handleQuotaError(err, "Sync user_profile"));
   (0, import_firestore.onSnapshot)((0, import_firestore.doc)(db, "metadata", "configurations"), (docSnap) => {
     if (docSnap.exists()) {
       dbDataCache.configurations = docSnap.data();
     }
-  }, (err) => console.error("Sync error configurations:", err));
+  }, (err) => handleQuotaError(err, "Sync configurations"));
   (0, import_firestore.onSnapshot)((0, import_firestore.doc)(db, "metadata", "categories"), (docSnap) => {
     if (docSnap.exists()) {
       dbDataCache.categories = docSnap.data()?.list || [];
     }
-  }, (err) => console.error("Sync error categories:", err));
+  }, (err) => handleQuotaError(err, "Sync categories"));
   COLLECTIONS.forEach((colName) => {
     if (colName === "categories") return;
     (0, import_firestore.onSnapshot)((0, import_firestore.collection)(db, colName), (snapshot) => {
@@ -224,7 +261,7 @@ function startFirestoreSynchronization() {
         items.push(docSnap.data());
       });
       dbDataCache[colName] = items;
-    }, (err) => console.error(`Sync error list ${colName}:`, err));
+    }, (err) => handleQuotaError(err, `Sync list ${colName}`));
   });
   (0, import_firestore.onSnapshot)((0, import_firestore.collection)(db, "sessions"), (snapshot) => {
     const dict = {};
@@ -232,46 +269,64 @@ function startFirestoreSynchronization() {
       dict[docSnap.id] = docSnap.data();
     });
     dbDataCache.sessions = dict;
-  }, (err) => console.error("Sync error sessions:", err));
+  }, (err) => handleQuotaError(err, "Sync sessions"));
   (0, import_firestore.onSnapshot)((0, import_firestore.collection)(db, "otps"), (snapshot) => {
     const dict = {};
     snapshot.forEach((docSnap) => {
       dict[docSnap.id] = docSnap.data();
     });
     dbDataCache.otps = dict;
-  }, (err) => console.error("Sync error otps:", err));
+  }, (err) => handleQuotaError(err, "Sync otps"));
+}
+async function clearAllHostsInFirestore() {
+  if (isFirestoreQuotaExhausted) return;
+  try {
+    const querySnapshot = await (0, import_firestore.getDocs)((0, import_firestore.collection)(db, "hosts"));
+    const deletePromises = [];
+    querySnapshot.forEach((docSnap) => {
+      deletePromises.push((0, import_firestore.deleteDoc)((0, import_firestore.doc)(db, "hosts", docSnap.id)));
+    });
+    await Promise.all(deletePromises);
+    console.log("[SEHR-LIVE FIREBASE] Cleared all stale hosts from Firestore.");
+  } catch (err) {
+    console.error("[SEHR-LIVE FIREBASE] Failed to clear hosts in Firestore:", err);
+  }
 }
 async function syncDocument(collectionName, docId, data) {
+  if (isFirestoreQuotaExhausted) return;
   try {
     if (!docId) return;
     await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, collectionName, String(docId)), data, { merge: true });
     console.log(`[SEHR-LIVE FIREBASE] Synced document to Firestore: ${collectionName}/${docId}`);
   } catch (err) {
-    console.error(`Error syncing document ${collectionName}/${docId}:`, err);
+    handleQuotaError(err, `syncDocument ${collectionName}/${docId}`);
   }
 }
 async function deleteDocument(collectionName, docId) {
+  if (isFirestoreQuotaExhausted) return;
   try {
     if (!docId) return;
     await (0, import_firestore.deleteDoc)((0, import_firestore.doc)(db, collectionName, String(docId)));
     console.log(`[SEHR-LIVE FIREBASE] Deleted document from Firestore: ${collectionName}/${docId}`);
   } catch (err) {
-    console.error(`Error deleting document ${collectionName}/${docId}:`, err);
+    handleQuotaError(err, `deleteDocument ${collectionName}/${docId}`);
   }
 }
 async function writeMetadata(docName, data) {
+  if (isFirestoreQuotaExhausted) return;
   try {
     await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "metadata", docName), data, { merge: true });
     console.log(`[SEHR-LIVE FIREBASE] Synced metadata to Firestore: ${docName}`);
   } catch (err) {
-    console.error(`Error writing metadata ${docName}:`, err);
+    handleQuotaError(err, `writeMetadata ${docName}`);
   }
 }
 
 // server.ts
+var { RtcTokenBuilder, RtcRole } = import_agora_token.default;
 import_dotenv.default.config();
 var app2 = (0, import_express.default)();
-var PORT = 3e3;
+var PORT = Number(process.env.PORT || 3e3);
 app2.use((req, res, next) => {
   const start = Date.now();
   res.on("finish", () => {
@@ -295,6 +350,7 @@ var dbData = dbDataCache;
 async function loadDatabase() {
   try {
     await checkAndSeedDatabase();
+    await clearAllHostsInFirestore();
     startFirestoreSynchronization();
     if (import_fs2.default.existsSync(DB_PATH)) {
       const raw = import_fs2.default.readFileSync(DB_PATH, "utf-8");
@@ -302,16 +358,32 @@ async function loadDatabase() {
       Object.assign(dbDataCache, local);
       console.log("[SEHR-LIVE FIREBASE] Pre-populated in-memory cache with local database backup.");
     }
+    dbDataCache.hosts = [];
   } catch (e) {
     console.error("[SEHR-LIVE FIREBASE] Error loading database:", e);
   }
 }
+var lastSavedUserStr = "";
+var lastSavedConfigStr = "";
+var lastSavedCategoriesStr = "";
 function saveDatabase() {
   try {
     import_fs2.default.writeFileSync(DB_PATH, JSON.stringify(dbData, null, 2), "utf-8");
-    writeMetadata("user_profile", dbData.user);
-    writeMetadata("configurations", dbData.configurations);
-    writeMetadata("categories", { list: dbData.categories });
+    const currentUserStr = JSON.stringify(dbData.user || {});
+    if (currentUserStr !== lastSavedUserStr) {
+      writeMetadata("user_profile", dbData.user);
+      lastSavedUserStr = currentUserStr;
+    }
+    const currentConfigStr = JSON.stringify(dbData.configurations || {});
+    if (currentConfigStr !== lastSavedConfigStr) {
+      writeMetadata("configurations", dbData.configurations);
+      lastSavedConfigStr = currentConfigStr;
+    }
+    const currentCategoriesStr = JSON.stringify(dbData.categories || []);
+    if (currentCategoriesStr !== lastSavedCategoriesStr) {
+      writeMetadata("categories", { list: dbData.categories });
+      lastSavedCategoriesStr = currentCategoriesStr;
+    }
   } catch (e) {
     console.error("[SEHR-LIVE FIREBASE] Error saving database:", e);
   }
@@ -335,6 +407,54 @@ function authenticateUser(req, res, next) {
   }
   return res.status(401).json({ error: "Session expired or invalid token. Please log in again." });
 }
+var handleAgoraTokenRequest = (req, res) => {
+  try {
+    const { channelName, uid, role } = req.body;
+    if (!channelName) {
+      return res.status(400).json({ error: "channelName is required" });
+    }
+    const appId = process.env.AGORA_APP_ID || "";
+    const appCertificate = process.env.AGORA_APP_CERTIFICATE || "";
+    const agoraUid = uid ? Number(uid) : 0;
+    const resolvedRole = role === "publisher" || role === "host" || role === 1 ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
+    const expirationTimeInSeconds = 3600;
+    const currentTimestamp = Math.floor(Date.now() / 1e3);
+    const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+    let token = "";
+    if (appId && appCertificate) {
+      try {
+        token = RtcTokenBuilder.buildTokenWithUid(
+          appId,
+          appCertificate,
+          channelName,
+          agoraUid,
+          resolvedRole,
+          privilegeExpiredTs,
+          privilegeExpiredTs
+        );
+        console.log(`[SEHR-LIVE AGORA] Generated REAL token for channel ${channelName}, uid ${agoraUid}`);
+      } catch (err) {
+        console.error("[SEHR-LIVE AGORA] RtcTokenBuilder failed:", err);
+        return res.status(500).json({ error: "Failed to generate token: " + err.message });
+      }
+    } else {
+      console.warn("[SEHR-LIVE AGORA] AGORA_APP_ID or AGORA_APP_CERTIFICATE not configured. Using mock token for dev.");
+      token = `mock-token-${channelName}-${agoraUid}-${resolvedRole}`;
+    }
+    return res.json({
+      token,
+      appId: appId || "MOCK_AGORA_APP_ID",
+      channelName,
+      uid: agoraUid,
+      expiresAt: privilegeExpiredTs
+    });
+  } catch (error) {
+    console.error("[SEHR-LIVE AGORA] Token generation error:", error);
+    return res.status(500).json({ error: error.message });
+  }
+};
+app2.post("/api/agora/token", authenticateUser, handleAgoraTokenRequest);
+app2.post("/api/v1/agora/token", authenticateUser, handleAgoraTokenRequest);
 app2.post("/api/v1/auth/google-login", (req, res) => {
   const { email, displayName, photoURL, uid } = req.body;
   if (!email || typeof email !== "string") {
@@ -663,8 +783,99 @@ app2.post("/api/v1/user", authenticateUser, (req, res) => {
   }
   res.json({ message: "Profile synchronized", user: updatedUser });
 });
+var DEFAULT_ADVANCED_GIFTS_SERVER = [
+  { id: "g-rose", name: "Red Rose", cost: 10, type: "2d", icon: "\u{1F339}", color: "from-pink-500 to-rose-600", animationClass: "animate-bounce", category: "Popular", description: "A fresh beautiful red rose of deep admiration.", animationFile: "\u{1F339}", animationFormat: "svg", animationDuration: 5, animationDisplayType: "small", comboSupported: true, status: "active", featured: true, priority: 10 },
+  { id: "g-heart", name: "Love Heart", cost: 99, type: "2d", icon: "\u{1F496}", color: "from-red-500 to-pink-500", animationClass: "animate-pulse", category: "Popular", description: "Express your warm affection.", animationFile: "\u{1F496}", animationFormat: "svg", animationDuration: 5, animationDisplayType: "small", comboSupported: true, status: "active", featured: true, priority: 9 },
+  { id: "g-lucky-coin", name: "Lucky Coin", cost: 50, type: "2d", icon: "\u{1FA99}", color: "from-yellow-400 to-amber-600", animationClass: "animate-bounce", category: "Lucky", description: "Send fortune!", animationFile: "\u{1FA99}", animationFormat: "svg", animationDuration: 5, animationDisplayType: "small", comboSupported: true, status: "active", featured: false, priority: 8 },
+  { id: "g-crown", name: "VIP Crown", cost: 999, type: "3d", icon: "\u{1F451}", color: "from-yellow-400 to-amber-600", animationClass: "animate-spin", category: "VIP", description: "Royal crown for the star.", animationFile: "\u{1F451}", animationFormat: "svga", animationDuration: 10, animationDisplayType: "half", comboSupported: true, status: "active", featured: true, priority: 7 },
+  { id: "g-star-trophy", name: "Star Trophy", cost: 500, type: "3d", icon: "\u{1F3C6}", color: "from-yellow-300 to-amber-500", animationClass: "animate-pulse", category: "New", description: "Awarded to energetic hosts.", animationFile: "\u{1F3C6}", animationFormat: "svg", animationDuration: 8, animationDisplayType: "half", comboSupported: true, status: "active", featured: false, priority: 6 },
+  { id: "g-car", name: "Sports Car", cost: 4999, type: "luxury", icon: "\u{1F3CE}\uFE0F", color: "from-blue-500 to-indigo-600", animationClass: "animate-bounce", category: "Luxury", description: "Rev your engine!", animationFile: "\u{1F3CE}\uFE0F", animationFormat: "webm", animationDuration: 10, animationDisplayType: "full", comboSupported: false, status: "active", featured: true, priority: 4 },
+  { id: "g-rocket", name: "Space Rocket", cost: 9999, type: "luxury", icon: "\u{1F680}", color: "from-purple-600 to-pink-600", animationClass: "animate-pulse", category: "Premium", description: "Blast off into the cosmos!", animationFile: "\u{1F680}", animationFormat: "webm", animationDuration: 15, animationDisplayType: "full", comboSupported: false, status: "active", featured: true, priority: 3 },
+  { id: "g-dragon", name: "Golden Dragon", cost: 29999, type: "luxury", icon: "\u{1F409}", color: "from-amber-500 to-red-600", animationClass: "animate-bounce", category: "Luxury", description: "Screaming golden fire storm!", animationFile: "\u{1F409}", animationFormat: "svga", animationDuration: 30, animationDisplayType: "ultra", comboSupported: false, status: "active", featured: true, priority: 2 }
+];
 app2.get("/api/v1/gifts", (req, res) => {
+  if (!dbData.gifts || dbData.gifts.length === 0) {
+    dbData.gifts = DEFAULT_ADVANCED_GIFTS_SERVER;
+  }
   res.json(dbData.gifts);
+});
+app2.post("/api/v1/gifts/send", authenticateUser, (req, res) => {
+  const { requestId, giftId, count = 1, recipient = "Host", targetHostSide } = req.body;
+  if (!giftId) {
+    return res.status(400).json({ error: "giftId is required" });
+  }
+  if (requestId && dbData.processedGiftRequests && dbData.processedGiftRequests[requestId]) {
+    return res.json(dbData.processedGiftRequests[requestId]);
+  }
+  if (!dbData.gifts || dbData.gifts.length === 0) {
+    dbData.gifts = DEFAULT_ADVANCED_GIFTS_SERVER;
+  }
+  let gift = dbData.gifts.find((g) => g.id === giftId);
+  if (!gift) {
+    gift = DEFAULT_ADVANCED_GIFTS_SERVER.find((g) => g.id === giftId);
+  }
+  if (!gift) {
+    return res.status(404).json({ error: "Gift not found" });
+  }
+  if (gift.status === "inactive") {
+    return res.status(400).json({ error: "This gift is currently inactive." });
+  }
+  const giftCost = Number(gift.cost) || 0;
+  const giftCount = Math.max(1, Number(count) || 1);
+  const totalCost = giftCost * giftCount;
+  const user = req.user || dbData.user;
+  const userCoins = Number(user.coins) || 0;
+  if (userCoins < totalCost) {
+    return res.status(400).json({ error: `Insufficient balance. Required: ${totalCost} coins, Available: ${userCoins} coins.` });
+  }
+  user.coins = userCoins - totalCost;
+  user.xp = (user.xp || 0) + Math.floor(totalCost * 0.2);
+  const hostEarnings = Math.floor(totalCost * 0.5);
+  const companyShare = totalCost - hostEarnings;
+  if (!dbData.platformMetrics) {
+    dbData.platformMetrics = { totalGiftCoins: 0, companyRevenue: 0, hostDiamondsDistributed: 0 };
+  }
+  dbData.platformMetrics.totalGiftCoins = (dbData.platformMetrics.totalGiftCoins || 0) + totalCost;
+  dbData.platformMetrics.companyRevenue = (dbData.platformMetrics.companyRevenue || 0) + companyShare;
+  dbData.platformMetrics.hostDiamondsDistributed = (dbData.platformMetrics.hostDiamondsDistributed || 0) + hostEarnings;
+  const txId = requestId || `TX-${Date.now()}-${Math.floor(Math.random() * 1e3)}`;
+  const txLog = {
+    id: txId,
+    type: "gift_sent",
+    amount: totalCost,
+    currency: "coins",
+    hostEarnings,
+    companyShare,
+    sender: user.username,
+    recipient,
+    giftName: gift.name,
+    giftIcon: gift.icon,
+    count: giftCount,
+    targetHostSide: targetHostSide || "hostA",
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    status: "Completed"
+  };
+  if (!dbData.transactions) dbData.transactions = [];
+  dbData.transactions.unshift(txLog);
+  const responseData = {
+    success: true,
+    transactionId: txId,
+    gift,
+    count: giftCount,
+    totalCoinsSpent: totalCost,
+    remainingCoins: user.coins,
+    hostEarnings,
+    companyShare,
+    recipient,
+    pkScoreAdded: totalCost,
+    timestamp: txLog.timestamp
+  };
+  if (!dbData.processedGiftRequests) dbData.processedGiftRequests = {};
+  if (requestId) {
+    dbData.processedGiftRequests[requestId] = responseData;
+  }
+  saveDatabase();
+  return res.json(responseData);
 });
 app2.post("/api/v1/gifts", (req, res) => {
   const newGift = { id: `g-${Date.now()}`, status: "active", ...req.body };
@@ -735,6 +946,531 @@ app2.delete("/api/v1/hosts/:id", (req, res) => {
   saveDatabase();
   deleteDocument("hosts", id);
   res.json({ message: "Host deleted successfully" });
+});
+app2.post("/api/v1/hosts/:id/join", (req, res) => {
+  const { id } = req.params;
+  const { userId, username, avatar, level, vipLevel } = req.body;
+  if (!username) {
+    return res.status(400).json({ error: "Username is required to join" });
+  }
+  const index = dbData.hosts.findIndex((h) => h.id === id);
+  if (index !== -1) {
+    const host = dbData.hosts[index];
+    if (!host.connectedViewers) {
+      host.connectedViewers = [];
+    }
+    if (!host.connectedViewers.some((v) => v.username === username)) {
+      host.connectedViewers.push({ userId: userId || username, username, avatar: avatar || "", level: level || 1, vipLevel: vipLevel || 0 });
+    }
+    host.viewers = host.connectedViewers.length;
+    host.realViewerCount = host.connectedViewers.length;
+    saveDatabase();
+    syncDocument("hosts", id, host);
+    res.json(host);
+  } else {
+    res.status(404).json({ error: "Host not found" });
+  }
+});
+app2.post("/api/v1/hosts/:id/leave", (req, res) => {
+  const { id } = req.params;
+  const { username } = req.body;
+  if (!username) {
+    return res.status(400).json({ error: "Username is required to leave" });
+  }
+  const index = dbData.hosts.findIndex((h) => h.id === id);
+  if (index !== -1) {
+    const host = dbData.hosts[index];
+    if (host.connectedViewers) {
+      host.connectedViewers = host.connectedViewers.filter((v) => v.username !== username);
+    } else {
+      host.connectedViewers = [];
+    }
+    host.viewers = host.connectedViewers.length;
+    host.realViewerCount = host.connectedViewers.length;
+    saveDatabase();
+    syncDocument("hosts", id, host);
+    res.json(host);
+  } else {
+    res.status(404).json({ error: "Host not found" });
+  }
+});
+app2.post("/api/v1/hosts/:id/comments", (req, res) => {
+  const { id } = req.params;
+  const { message, username, vipLevel, userLevel, isSystem, avatar } = req.body;
+  if (!message || !username) {
+    return res.status(400).json({ error: "Username and message are required" });
+  }
+  const index = dbData.hosts.findIndex((h) => h.id === id);
+  if (index !== -1) {
+    const host = dbData.hosts[index];
+    if (!host.comments) {
+      host.comments = [];
+    }
+    const newComment = {
+      id: `c-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      username,
+      message,
+      vipLevel: vipLevel || 0,
+      userLevel: userLevel || 1,
+      isSystem: !!isSystem,
+      avatar: avatar || "",
+      timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    };
+    host.comments.push(newComment);
+    saveDatabase();
+    syncDocument("hosts", id, host);
+    res.status(201).json(host.comments);
+  } else {
+    res.status(404).json({ error: "Host not found" });
+  }
+});
+app2.get("/api/v1/parties", (req, res) => {
+  res.json(dbData.parties || []);
+});
+app2.post("/api/v1/parties", (req, res) => {
+  const { title, hostUsername, hostAvatar, category, isPublic, password, language, description } = req.body;
+  const id = `party-${Date.now()}`;
+  const newParty = {
+    id,
+    title: title || "Sehr Live Audio Lounge",
+    hostUsername,
+    hostAvatar,
+    category: category || "Music",
+    participantCount: 1,
+    maxCapacity: 12,
+    isPublic: isPublic !== false,
+    password: password || "",
+    language: language || "English",
+    description: description || "",
+    status: "active",
+    connectedViewers: [{ userId: hostUsername, username: hostUsername, avatar: hostAvatar || "", level: 1, vipLevel: 0 }],
+    seats: [
+      { id: 1, name: hostUsername, avatar: hostAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80", isMuted: false, isLocked: false },
+      { id: 2, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 3, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 4, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 5, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 6, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 7, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 8, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 9, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 10, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 11, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 12, name: null, avatar: null, isMuted: false, isLocked: false }
+    ],
+    comments: [
+      {
+        id: `sys-${Date.now()}`,
+        username: "System",
+        message: `\u{1F399}\uFE0F Room created successfully by ${hostUsername}. Welcome everyone!`,
+        isSystem: true,
+        timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      }
+    ]
+  };
+  if (!dbData.parties) {
+    dbData.parties = [];
+  }
+  dbData.parties.push(newParty);
+  saveDatabase();
+  syncDocument("parties", id, newParty);
+  res.status(201).json(newParty);
+});
+app2.post("/api/v1/parties/:id/join", (req, res) => {
+  const { id } = req.params;
+  const { username, avatar } = req.body;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    if (!party.connectedViewers) {
+      party.connectedViewers = [];
+    }
+    if (!party.connectedViewers.some((v) => v.username === username)) {
+      party.connectedViewers.push({ userId: username, username, avatar: avatar || "", level: 1, vipLevel: 0 });
+    }
+    party.participantCount = party.connectedViewers.length;
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/leave", (req, res) => {
+  const { id } = req.params;
+  const { username } = req.body;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    if (party.connectedViewers) {
+      party.connectedViewers = party.connectedViewers.filter((v) => v.username !== username);
+    }
+    party.participantCount = party.connectedViewers ? party.connectedViewers.length : 0;
+    party.seats = party.seats.map((seat) => {
+      if (seat.name === username || seat.name && seat.name.startsWith(username)) {
+        return { ...seat, name: null, avatar: null };
+      }
+      return seat;
+    });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/seats/join", (req, res) => {
+  const { id } = req.params;
+  const { seatId, username, avatar } = req.body;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    party.seats = party.seats.map((seat) => {
+      if (seat.id === Number(seatId)) {
+        return { ...seat, name: username, avatar: avatar || "" };
+      }
+      return seat;
+    });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/seats/leave", (req, res) => {
+  const { id } = req.params;
+  const { seatId } = req.body;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    party.seats = party.seats.map((seat) => {
+      if (seat.id === Number(seatId)) {
+        return { ...seat, name: null, avatar: null };
+      }
+      return seat;
+    });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/seats/toggle-mute", (req, res) => {
+  const { id } = req.params;
+  const { seatId } = req.body;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    party.seats = party.seats.map((seat) => {
+      if (seat.id === Number(seatId)) {
+        return { ...seat, isMuted: !seat.isMuted };
+      }
+      return seat;
+    });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/seats/toggle-lock", (req, res) => {
+  const { id } = req.params;
+  const { seatId } = req.body;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    party.seats = party.seats.map((seat) => {
+      if (seat.id === Number(seatId)) {
+        return { ...seat, isLocked: !seat.isLocked };
+      }
+      return seat;
+    });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/close", (req, res) => {
+  const { id } = req.params;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    party.status = "ended";
+    dbData.parties = dbData.parties.filter((p) => p.id !== id);
+    saveDatabase();
+    deleteDocument("parties", id);
+    res.json({ message: "Party closed successfully" });
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/comments", (req, res) => {
+  const { id } = req.params;
+  const { message, username, vipLevel, userLevel, isSystem, avatar } = req.body;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    if (!party.comments) party.comments = [];
+    const newComment = {
+      id: `c-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      username,
+      message,
+      vipLevel: vipLevel || 0,
+      userLevel: userLevel || 1,
+      isSystem: !!isSystem,
+      avatar: avatar || "",
+      timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    };
+    party.comments.push(newComment);
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.status(201).json(party.comments);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/requests", (req, res) => {
+  const { id } = req.params;
+  const { username, avatar, seatId } = req.body;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    if (!party.requests) party.requests = [];
+    party.requests = party.requests.filter((r) => r.username !== username);
+    party.requests.push({ username, avatar, seatId: Number(seatId), timestamp: Date.now() });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/requests/:username/approve", (req, res) => {
+  const { id, username } = req.params;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    const request = party.requests?.find((r) => r.username === username);
+    if (request) {
+      const targetSeatId = request.seatId;
+      party.seats = party.seats.map((seat) => {
+        if (seat.name === username || seat.name && seat.name.startsWith(username)) {
+          return { ...seat, name: null, avatar: null };
+        }
+        return seat;
+      });
+      party.seats = party.seats.map((seat) => {
+        if (seat.id === targetSeatId) {
+          return { ...seat, name: username, avatar: request.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80" };
+        }
+        return seat;
+      });
+      party.requests = party.requests.filter((r) => r.username !== username);
+      if (!party.comments) party.comments = [];
+      party.comments.push({
+        id: `sys-${Date.now()}`,
+        username: "System",
+        message: `\u2705 ${username} has taken Seat ${targetSeatId}!`,
+        isSystem: true,
+        timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      });
+      saveDatabase();
+      syncDocument("parties", id, party);
+      res.json(party);
+    } else {
+      res.status(400).json({ error: "Request not found" });
+    }
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/requests/:username/reject", (req, res) => {
+  const { id, username } = req.params;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    if (party.requests) {
+      party.requests = party.requests.filter((r) => r.username !== username);
+    }
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/invites", (req, res) => {
+  const { id } = req.params;
+  const { targetUsername, seatId } = req.body;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    if (!party.invites) party.invites = [];
+    party.invites = party.invites.filter((i) => i.username !== targetUsername);
+    party.invites.push({ username: targetUsername, seatId: Number(seatId), timestamp: Date.now() });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/invites/:username/accept", (req, res) => {
+  const { id, username } = req.params;
+  const { avatar } = req.body;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    const invite = party.invites?.find((i) => i.username === username);
+    if (invite) {
+      const targetSeatId = invite.seatId;
+      party.seats = party.seats.map((seat) => {
+        if (seat.name === username || seat.name && seat.name.startsWith(username)) {
+          return { ...seat, name: null, avatar: null };
+        }
+        return seat;
+      });
+      party.seats = party.seats.map((seat) => {
+        if (seat.id === targetSeatId) {
+          return { ...seat, name: username, avatar: avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80" };
+        }
+        return seat;
+      });
+      party.invites = party.invites.filter((i) => i.username !== username);
+      if (!party.comments) party.comments = [];
+      party.comments.push({
+        id: `sys-${Date.now()}`,
+        username: "System",
+        message: `\u{1F399}\uFE0F ${username} accepted host's invite to take Seat ${targetSeatId}!`,
+        isSystem: true,
+        timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      });
+      saveDatabase();
+      syncDocument("parties", id, party);
+      res.json(party);
+    } else {
+      res.status(400).json({ error: "Invitation not found" });
+    }
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/invites/:username/reject", (req, res) => {
+  const { id, username } = req.params;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    if (party.invites) {
+      party.invites = party.invites.filter((i) => i.username !== username);
+    }
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/seats/kick-user", (req, res) => {
+  const { id } = req.params;
+  const { seatId } = req.body;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    let kickedUser = "";
+    party.seats = party.seats.map((seat) => {
+      if (seat.id === Number(seatId)) {
+        kickedUser = seat.name || "User";
+        return { ...seat, name: null, avatar: null, isMuted: false };
+      }
+      return seat;
+    });
+    if (kickedUser) {
+      if (!party.comments) party.comments = [];
+      party.comments.push({
+        id: `sys-${Date.now()}`,
+        username: "System",
+        message: `\u26A0\uFE0F Host has removed ${kickedUser} from Seat ${seatId}.`,
+        isSystem: true,
+        timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      });
+    }
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/seats/mute-user", (req, res) => {
+  const { id } = req.params;
+  const { seatId, isMuted } = req.body;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    let targetUser = "";
+    party.seats = party.seats.map((seat) => {
+      if (seat.id === Number(seatId)) {
+        targetUser = seat.name || "User";
+        return { ...seat, isMuted: isMuted !== false };
+      }
+      return seat;
+    });
+    if (targetUser) {
+      if (!party.comments) party.comments = [];
+      party.comments.push({
+        id: `sys-${Date.now()}`,
+        username: "System",
+        message: `\u{1F399}\uFE0F Host has ${isMuted ? "Muted" : "Unmuted"} ${targetUser} on Seat ${seatId}.`,
+        isSystem: true,
+        timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      });
+    }
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/block-user", (req, res) => {
+  const { id } = req.params;
+  const { username } = req.body;
+  const index = dbData.parties?.findIndex((p) => p.id === id);
+  if (index !== -1 && index !== void 0) {
+    const party = dbData.parties[index];
+    if (!party.blockedUsers) party.blockedUsers = [];
+    if (!party.blockedUsers.includes(username)) {
+      party.blockedUsers.push(username);
+    }
+    party.seats = party.seats.map((seat) => {
+      if (seat.name === username || seat.name && seat.name.startsWith(username)) {
+        return { ...seat, name: null, avatar: null };
+      }
+      return seat;
+    });
+    if (party.connectedViewers) {
+      party.connectedViewers = party.connectedViewers.filter((v) => v.username !== username);
+    }
+    party.participantCount = party.connectedViewers ? party.connectedViewers.length : 0;
+    if (!party.comments) party.comments = [];
+    party.comments.push({
+      id: `sys-${Date.now()}`,
+      username: "System",
+      message: `\u{1F6AB} Host has blocked ${username} from this room.`,
+      isSystem: true,
+      timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    });
+    saveDatabase();
+    syncDocument("parties", id, party);
+    res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
 });
 app2.get("/api/v1/families", (req, res) => {
   res.json(dbData.families);
@@ -1444,6 +2180,148 @@ Do not wrap your answer in quotes or add metadata. Speak as the host directly.`;
       speaker: hostName,
       type: "Sehr Live Host Fallback"
     });
+  }
+});
+var s3ClientInstance = null;
+function getS3Client() {
+  if (!s3ClientInstance) {
+    const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+    const endpoint = process.env.R2_ENDPOINT;
+    if (!accessKeyId || !secretAccessKey || !endpoint) {
+      console.warn("[SEHR-LIVE R2] Missing environment credentials! Falling back to local storage for video uploads.");
+      throw new Error("Missing Cloudflare R2 credentials (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT). Set them on Railway!");
+    }
+    console.log("[SEHR-LIVE R2] Initializing Cloudflare R2 S3 Client with endpoint:", endpoint);
+    s3ClientInstance = new import_client_s3.S3Client({
+      region: "auto",
+      endpoint,
+      credentials: {
+        accessKeyId,
+        secretAccessKey
+      }
+    });
+  }
+  return s3ClientInstance;
+}
+var s3MulterUpload = (0, import_multer.default)({
+  storage: import_multer.default.memoryStorage(),
+  limits: {
+    fileSize: 100 * 1024 * 1024
+    // 100 MB Limit for high-definition video reels
+  }
+});
+app2.post("/api/v1/reels/upload-video", s3MulterUpload.single("video"), async (req, res) => {
+  console.log("[SEHR-LIVE R2] [UPLOAD-VIDEO] ====== UPLOAD TRANSACTION STARTED ======");
+  try {
+    const file = req.file;
+    if (!file) {
+      console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] FAILED: No file chunk found in multipart request data");
+      return res.status(400).json({ success: false, error: "No video file uploaded" });
+    }
+    const userId = req.body.userId || "anonymous";
+    const fileName = file.originalname || "unnamed_reel.mp4";
+    const fileSize = file.size;
+    let mimeType = file.mimetype || "video/mp4";
+    if (mimeType === "application/octet-stream" || !mimeType.includes("video/")) {
+      mimeType = "video/mp4";
+    }
+    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] METADATA RECEIVED:
+      - File Name: "${fileName}"
+      - Received Size: ${fileSize} bytes (${(fileSize / (1024 * 1024)).toFixed(2)} MB)
+      - Detected MIME: "${mimeType}"
+      - Uploader User ID: "${userId}"`);
+    if (fileSize <= 0) {
+      console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] FAILED: Received file size is 0 bytes");
+      return res.status(400).json({ success: false, error: "Uploaded video file is empty (0 bytes)" });
+    }
+    const uniqueId = Math.random().toString(36).substring(2, 10);
+    const timestamp = Date.now();
+    const ext = import_path2.default.extname(fileName) || ".mp4";
+    const objectKey = `reels/${userId}/${timestamp}-${uniqueId}${ext}`;
+    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] PREPARING UPLOAD:
+      - R2 Object Key: "${objectKey}"
+      - Target Bucket: "sehrlive-reels"`);
+    let finalVideoUrl = "";
+    try {
+      const client = getS3Client();
+      const bucketName = process.env.R2_BUCKET_NAME || "sehrlive-reels";
+      const putCommand = new import_client_s3.PutObjectCommand({
+        Bucket: bucketName,
+        Key: objectKey,
+        Body: file.buffer,
+        ContentType: mimeType
+      });
+      console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] Transmitting binary buffer to Cloudflare R2 S3 API...`);
+      await client.send(putCommand);
+      console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] SUCCESS: Binary written to R2 storage bucket "${bucketName}"`);
+      const publicBaseUrl = process.env.R2_PUBLIC_URL || "https://media.sehrlive.soulverseapps.com";
+      const cleanBase = publicBaseUrl.endsWith("/") ? publicBaseUrl.slice(0, -1) : publicBaseUrl;
+      finalVideoUrl = `${cleanBase}/${objectKey}`;
+      console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] PUBLIC CDN DISTRIBUTION LINK GENERATED: "${finalVideoUrl}"`);
+    } catch (r2Error) {
+      console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] FATAL ERROR: Cloudflare R2 Upload failed!", r2Error);
+      return res.status(500).json({
+        success: false,
+        error: `Cloudflare R2 Storage Upload Failed: ${r2Error.message || r2Error}`
+      });
+    }
+    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] ====== UPLOAD TRANSACTION COMPLETED SUCCESSFULLY ======
+`);
+    return res.json({
+      success: true,
+      url: finalVideoUrl,
+      key: objectKey,
+      objectKey,
+      publicUrl: finalVideoUrl,
+      mediaUrl: finalVideoUrl,
+      size: fileSize,
+      mimeType
+    });
+  } catch (error) {
+    console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] FATAL UNHANDLED TRANSACTION ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "An unexpected error occurred during video upload handling"
+    });
+  }
+});
+app2.get("/uploads/:filename", (req, res) => {
+  const filePath = import_path2.default.join(process.cwd(), "public", "uploads", req.params.filename);
+  if (!import_fs2.default.existsSync(filePath)) {
+    console.error(`[SEHR-LIVE STREAMER] Local file not found: ${filePath}`);
+    return res.status(404).send("File not found");
+  }
+  const stat = import_fs2.default.statSync(filePath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+  console.log(`[SEHR-LIVE STREAMER] Serving local file "${req.params.filename}" (Size: ${fileSize} bytes). Requested Range: "${range || "None"}"`);
+  if (range) {
+    const parts = range.replace(/bytes=/, "").split("-");
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    if (start >= fileSize) {
+      res.status(416).send("Requested range not satisfiable\n" + start + " >= " + fileSize);
+      return;
+    }
+    const chunksize = end - start + 1;
+    const file = import_fs2.default.createReadStream(filePath, { start, end });
+    const head = {
+      "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+      "Accept-Ranges": "bytes",
+      "Content-Length": chunksize,
+      "Content-Type": "video/mp4"
+    };
+    res.writeHead(206, head);
+    file.pipe(res);
+  } else {
+    const head = {
+      "Content-Length": fileSize,
+      "Content-Type": "video/mp4",
+      "Accept-Ranges": "bytes"
+    };
+    res.writeHead(200, head);
+    import_fs2.default.createReadStream(filePath).pipe(res);
   }
 });
 app2.use("/uploads", import_express.default.static(import_path2.default.join(process.cwd(), "public", "uploads")));

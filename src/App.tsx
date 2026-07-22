@@ -91,6 +91,7 @@ import {
 import { Gift, GiftType, ChatMessage, HostProfile, UserProfile, Family, Agency, Transaction, LiveAnnouncement, KycRequest, UserStory } from "./types";
 import { DEFAULT_USER, MOCK_GIFTS, MOCK_HOSTS, MOCK_FAMILIES, MOCK_AGENCIES, DAILY_MISSIONS, STATIC_COMMENTS_POOL } from "./data";
 import { getRankingData } from "./rankingData";
+import { dbDataCache } from "./db/firebaseDb";
 import { SehrLiveLogo } from "./components/SehrLiveLogo";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
@@ -13558,15 +13559,10 @@ export default function App() {
                                       onClick={() => {
                                         if (!userLivePkActive) {
                                           if (!userLiveCoHost) {
-                                            setUserLiveCoHost({
-                                              username: "Hamza",
-                                              avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
-                                              fans: "125K fans",
-                                              level: 45
-                                            });
-                                            setUserLivePkConnected(true);
+                                            setUserLivePkInvitePanelOpen(true);
+                                          } else {
+                                            setUserLiveShowOutgoingPkRequest(true);
                                           }
-                                          setUserLiveShowOutgoingPkRequest(true);
                                         } else {
                                           alert("PK Battle is already active!");
                                         }
@@ -16068,7 +16064,7 @@ export default function App() {
                                       if (!userLivePkActive) {
                                         if (!userLiveCoHost) {
                                           setUserLiveCoHost({
-                                            username: "Hamza",
+                                            username: userLiveCoHost?.username || "Host_B",
                                             avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
                                             fans: "125K fans",
                                             level: 45
@@ -16406,12 +16402,22 @@ export default function App() {
 
                                 {/* Host scrollable container */}
                                 <div className="flex-1 overflow-y-auto my-1 pr-1 space-y-2 max-h-[110px] scrollbar-thin">
-                                  {[
-                                    { id: "h-ali", username: "Ali_Shah_PK", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80", fans: "125K fans", level: 45, flag: "🇵🇰", inPkBattle: false },
-                                    { id: "h-hamza", username: "Hamza_official", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80", fans: "98.2K fans", level: 32, flag: "🇵🇰", inPkBattle: true },
-                                    { id: "h-awais", username: "Awais_Khan", avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80", fans: "155.6K fans", level: 50, flag: "🇵🇰", inPkBattle: false },
-                                    { id: "h-arooj", username: "Arooj_Sehr", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80", fans: "82K fans", level: 24, flag: "🇵🇰", inPkBattle: true }
-                                  ]
+                                  {(Array.isArray(dbDataCache?.users) && dbDataCache.users.length > 0 
+                                    ? dbDataCache.users 
+                                    : Array.isArray(dbDataCache?.hosts) && dbDataCache.hosts.length > 0 
+                                      ? dbDataCache.hosts 
+                                      : []
+                                  )
+                                  .filter((u: any) => (u.uid || u.uniqueId || u.username) !== (user.uid || user.uniqueId || user.username))
+                                  .map((u: any) => ({
+                                    id: String(u.uid || u.uniqueId || u.username || u.id),
+                                    username: String(u.username || u.name || u.fullName || "User"),
+                                    avatar: String(u.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80"),
+                                    fans: `${u.followersCount || u.fans || 0} fans`,
+                                    level: Number(u.level || u.userLevel || u.hostLevel || 1),
+                                    flag: "🇵🇰",
+                                    inPkBattle: false
+                                  }))
                                   .filter(host => !host.inPkBattle && (
                                     !userLiveInviteSearchQuery ||
                                     host.username.toLowerCase().includes(userLiveInviteSearchQuery.toLowerCase()) ||
