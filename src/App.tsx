@@ -4950,17 +4950,36 @@ export default function App() {
       console.error(e);
     }
 
-    // Track Gift combo
+    // Track Gift combo with full metadata for live screen display
+    let newComboCount = count;
     if (activeCombo && activeCombo.giftId === gift.id) {
-      setActiveCombo(prev => prev ? { ...prev, count: prev.count + count } : null);
-    } else {
-      setActiveCombo({ giftId: gift.id, count: count });
+      newComboCount = activeCombo.count + count;
     }
+    setActiveCombo({ 
+      giftId: gift.id, 
+      giftName: gift.name, 
+      giftIcon: gift.icon, 
+      count: newComboCount 
+    });
 
     if (comboTimeoutRef.current) clearTimeout(comboTimeoutRef.current);
     comboTimeoutRef.current = setTimeout(() => {
       setActiveCombo(null);
     }, 3000);
+
+    // Update real-time live stream gift toast overlay
+    const newGiftToast = {
+      id: "toast-" + Date.now() + "-" + Math.random(),
+      username: user.username,
+      giftName: gift.name,
+      giftIcon: gift.icon,
+      count: newComboCount,
+      avatar: user.avatarUrl || user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80"
+    };
+    setUserLiveGiftToasts(prev => [newGiftToast, ...prev.slice(0, 1)]);
+    setTimeout(() => {
+      setUserLiveGiftToasts(prev => prev.filter(t => t.id !== newGiftToast.id));
+    }, 4000);
 
     // If PK Battle is active: 1 Gift Coin Value = 1 PK Point!
     if (activeHost.category === "pk" || activeHost.category === "1v1") {
@@ -9462,57 +9481,10 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* Chat input box and Gift launcher */}
-                          <div className="flex items-center space-x-1.5">
+                          {/* Chat input box, Share button, and Gift launcher */}
+                          <div className="flex items-center space-x-2">
                             
-                            {/* VIEWER LIVE-ROOM FULLY ACTIVE INTERACTIVE CONTROL BUTTONS */}
-                            <div className="flex items-center space-x-1 shrink-0">
-                              <button
-                                onClick={() => {
-                                  setLiveRoomMusicPlaying(!liveRoomMusicPlaying);
-                                  alert(liveRoomMusicPlaying ? "🔇 Studio audio muted for viewer!" : "🔊 Studio audio fully activated for viewer!");
-                                }}
-                                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs transition-colors ${liveRoomMusicPlaying ? "bg-[#ff007f] text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"}`}
-                                title="Mute/Unmute Room Audio"
-                              >
-                                {liveRoomMusicPlaying ? "🔊" : "🔇"}
-                              </button>
-
-                              <button
-                                onClick={() => {
-                                  const dummyUrl = `https://sehrlive.app/broadcast/${activeHost.name.toLowerCase()}`;
-                                  navigator.clipboard?.writeText?.(dummyUrl);
-                                  alert(`🔗 Broadcast Shared!\n\nRoom link copied: ${dummyUrl}\n\nInviting your friends to watch together! 🚀`);
-                                }}
-                                className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:brightness-110 flex items-center justify-center text-xs text-white"
-                                title="Share Broadcast Room"
-                              >
-                                🔗
-                              </button>
-
-                              <button
-                                onClick={() => {
-                                  setPkScoreHost(prev => prev + 500);
-                                  alert("⚔️ Match Points Boosted! You sent +500 support points to your Host in this PK Battle!");
-                                }}
-                                className={`${activeHost.category === "pk" ? "flex" : "hidden"} w-7 h-7 rounded-full bg-gradient-to-r from-red-500 to-pink-500 hover:brightness-110 items-center justify-center text-xs text-white animate-pulse`}
-                                title="Support Host PK Points"
-                              >
-                                ⚔️
-                              </button>
-
-                              <button
-                                onClick={() => {
-                                  setUserLiveChatVisible(!userLiveChatVisible);
-                                  alert(userLiveChatVisible ? "🙈 Chat stream layer hidden. Immersive screen mode active!" : "👁️ Chat stream layer shown.");
-                                }}
-                                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs transition-colors ${userLiveChatVisible ? "bg-teal-600 text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"}`}
-                                title="Toggle Chat Stream Layer"
-                              >
-                                💬
-                              </button>
-                            </div>
-
+                            {/* 1. Comment bar */}
                             <form onSubmit={handleSendChatMessage} className="flex-1 flex bg-gray-900 rounded-full overflow-hidden border border-gray-800">
                               {commentsDisabled ? (
                                 <div className="flex-1 bg-red-950/20 px-3 py-1.5 text-[10px] text-red-300 italic flex items-center justify-center font-bold select-none">
@@ -9521,26 +9493,43 @@ export default function App() {
                               ) : (
                                 <input
                                   type="text"
-                                  placeholder={isAiMode ? "Type to translate & moderate..." : "Type live comment..."}
+                                  placeholder={isAiMode ? "Type to translate & moderate..." : "Say something..."}
                                   value={chatInput}
                                   onChange={(e) => setChatInput(e.target.value)}
-                                  className="flex-1 bg-transparent px-3 py-1.5 text-xs text-white focus:outline-none"
+                                  className="flex-1 bg-transparent px-3 py-1.5 text-xs text-white focus:outline-none placeholder-gray-400"
                                 />
                               )}
                               <button 
                                 type="submit" 
                                 disabled={commentsDisabled}
-                                className={`px-3 ${commentsDisabled ? "text-gray-600 cursor-not-allowed" : "text-[#ff007f] hover:text-[#ff007f]/80"}`}
+                                className={`px-3 flex items-center justify-center ${commentsDisabled ? "text-gray-600 cursor-not-allowed" : "text-[#ff007f] hover:text-[#ff007f]/80"}`}
+                                title="Send Comment"
                               >
                                 <Send className="w-3.5 h-3.5" />
                               </button>
                             </form>
 
-                            {/* Gift launcher drawer */}
-                            <div className="relative">
+                            {/* 2. Share Live */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const dummyUrl = `https://sehrlive.app/broadcast/${activeHost.name.toLowerCase()}`;
+                                navigator.clipboard?.writeText?.(dummyUrl);
+                                alert(`🔗 Broadcast Shared!\n\nRoom link copied: ${dummyUrl}\n\nInviting your friends to watch together! 🚀`);
+                              }}
+                              className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:brightness-110 flex items-center justify-center text-xs text-white shadow-md shrink-0 cursor-pointer"
+                              title="Share Live Room"
+                            >
+                              <Share2 className="w-4 h-4" />
+                            </button>
+
+                            {/* 3. Gift button */}
+                            <div className="relative shrink-0">
                               <button
+                                type="button"
                                 onClick={() => setViewerGiftDrawerOpen(!viewerGiftDrawerOpen)}
-                                className="w-8 h-8 rounded-full bg-gradient-to-r from-yellow-400 to-[#ff007f] flex items-center justify-center text-white shadow-md animate-pulse cursor-pointer"
+                                className="w-8 h-8 rounded-full bg-gradient-to-r from-yellow-400 via-amber-500 to-[#ff007f] flex items-center justify-center text-white shadow-md animate-pulse cursor-pointer"
+                                title="Send Virtual Gift"
                               >
                                 <GiftIcon className="w-4 h-4" />
                               </button>
@@ -15236,86 +15225,24 @@ export default function App() {
                               </div>
                             )}
 
-                            {/* 4. PREMIUM GIFT DRAWER */}
+                            {/* 4. PREMIUM GIFT DRAWER WITH COMPLETE COMBO SYSTEM */}
                             {userLiveShowGiftModal && (
-                              <div className="absolute inset-x-0 bottom-0 z-30 bg-black/95 backdrop-blur-md border-t border-white/10 rounded-t-3xl p-4 space-y-3 shadow-2xl animate-slide-up text-left">
-                                <div className="flex justify-between items-center border-b border-white/5 pb-2 bg-transparent">
-                                  <div className="space-y-0.5 bg-transparent">
-                                    <h5 className="text-[11px] font-black text-yellow-400 uppercase tracking-widest font-mono">🎁 Send Virtual Gifts</h5>
-                                    <p className="text-[7.5px] text-gray-400 font-mono">My Wallet Balance: <span className="text-yellow-400 font-bold">{user.coins} Coins</span></p>
-                                  </div>
-                                  <button onClick={() => setUserLiveShowGiftModal(false)} className="text-gray-400 hover:text-white text-xs">✕</button>
-                                </div>
-                                
-                                <div className="grid grid-cols-4 gap-2 overflow-y-auto max-h-[160px] py-1 bg-transparent">
-                                  {giftsList.map(gift => (
-                                    <button
-                                      key={gift.id}
-                                      onClick={() => {
-                                        if (user.coins < gift.cost) {
-                                          alert("Insufficient Coins! Please recharge in the Wallet module.");
-                                          return;
-                                        }
-                                        
-                                        // Deduct coins and credit diamonds
-                                        setUser(prev => ({
-                                          ...prev,
-                                          coins: prev.coins - gift.cost,
-                                          xp: prev.xp + Math.floor(gift.cost * 0.2)
-                                        }));
-                                        setUserLiveCoinsEarned(prev => prev + gift.cost);
-
-                                        // Add simulated message
-                                        setUserLiveMessages(prev => [
-                                          ...prev,
-                                          {
-                                            id: "ul-gift-sent-" + Date.now(),
-                                            username: user.username,
-                                            message: `sent [${gift.name} ${gift.icon}]! 🎁`,
-                                            vipLevel: user.vipLevel,
-                                            userLevel: user.userLevel,
-                                            isSystem: true,
-                                            isFlagged: false,
-                                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                          }
-                                        ]);
-
-                                        // Add dynamic gift toast on left
-                                        const newToast = {
-                                          id: "toast-" + Date.now(),
-                                          username: user.username,
-                                          giftName: gift.name,
-                                          giftIcon: gift.icon,
-                                          count: 1,
-                                          avatar: user.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80"
-                                        };
-                                        setUserLiveGiftToasts(prev => [newToast, ...prev.slice(0, 1)]);
-
-                                        // Clear toast after 4 seconds
-                                        setTimeout(() => {
-                                          setUserLiveGiftToasts(prev => prev.filter(t => t.id !== newToast.id));
-                                        }, 4000);
-
-                                        // Trigger fullscreen visual effect
-                                        setLuxuryGiftActive(gift);
-                                        setTimeout(() => setLuxuryGiftActive(null), 3000);
-
-                                        // If PK battle is active, increase PK score
-                                        if (userLivePkActive) {
-                                          setUserLivePkScoreMy(prev => prev + gift.cost * 5);
-                                        }
-
-                                        setUserLiveShowGiftModal(false);
-                                      }}
-                                      className="p-2 bg-white/5 hover:bg-pink-600/20 border border-white/5 rounded-xl flex flex-col items-center text-center transition-all"
-                                    >
-                                      <span className="text-xl mb-1">{gift.icon}</span>
-                                      <span className="text-[8px] font-black text-white truncate w-full">{gift.name}</span>
-                                      <span className="text-[7.5px] text-yellow-400 font-mono font-bold mt-0.5">{gift.cost} Co</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
+                              <ViewerGiftBox
+                                user={user}
+                                setUser={setUser}
+                                activeHostName={liveBroadcasterName}
+                                onClose={() => setUserLiveShowGiftModal(false)}
+                                giftsList={giftsList}
+                                categoriesList={categoriesList}
+                                recipient="Host"
+                                setRecipient={() => {}}
+                                guestSeats={[]}
+                                setGuestSeats={() => {}}
+                                onGiftSent={(gift, count, recipientName, isCombo) => {
+                                  handleSendGift(gift, count, recipientName, isCombo);
+                                }}
+                                onShowHistory={() => setShowGiftHistoryModal(true)}
+                              />
                             )}
 
                             {/* 5. FAN CLUB SUBSCRIPTION */}

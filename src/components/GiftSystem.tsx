@@ -369,12 +369,27 @@ export const ViewerGiftBox: React.FC<ViewerGiftBoxProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<string>("Popular");
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [selectedGift, setSelectedGift] = useState<Gift | null>(null);
+  const [selectedGift, setSelectedGift] = useState<Gift | null>(giftsList[0] || null);
   const [selectedCombo, setSelectedCombo] = useState<number>(1);
+  const [isCustomMode, setIsCustomMode] = useState<boolean>(false);
+  const [customComboInput, setCustomComboInput] = useState<string>("");
+  
+  // Tap combo state tracking
+  const [tapComboCount, setTapComboCount] = useState<number>(0);
+  const [comboTimerActive, setComboTimerActive] = useState<boolean>(false);
+  const comboTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const [favoriteGifts, setFavoriteGifts] = useState<string[]>(() => {
     const saved = localStorage.getItem("sehr_live_favs_v1");
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Cleanup combo timer on unmount
+  useEffect(() => {
+    return () => {
+      if (comboTimerRef.current) clearTimeout(comboTimerRef.current);
+    };
+  }, []);
 
   // Keep favorite state saved
   const toggleFavorite = (giftId: string, e: React.MouseEvent) => {
@@ -401,21 +416,43 @@ export const ViewerGiftBox: React.FC<ViewerGiftBoxProps> = ({
     return matchesSearch && matchesTab;
   });
 
+  // Combo options required by spec
+  const presetComboOptions = [1, 5, 10, 20, 50, 99, 100];
+
+  const handleSelectPreset = (num: number) => {
+    setIsCustomMode(false);
+    setSelectedCombo(num);
+  };
+
+  const handleCustomInputChange = (val: string) => {
+    setCustomComboInput(val);
+    const parsed = parseInt(val, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      setSelectedCombo(parsed);
+    } else {
+      setSelectedCombo(1);
+    }
+  };
+
   const handleSendPress = (isComboSend: boolean = false) => {
     if (!selectedGift) {
       alert("Please select a virtual gift to send first! 🎁");
       return;
     }
 
-    const totalCost = selectedGift.cost * selectedCombo;
-    if (user.coins < totalCost) {
-      alert(`❌ Insufficient Coins!\n\nYou need ${totalCost} coins to send this gift (${selectedCombo}x ${selectedGift.name}), but you only have ${user.coins} coins.\n\nPlease recharge in the Platform Recharge panel! 💎`);
+    const currentComboQty = Math.max(1, selectedCombo);
+    const totalCost = selectedGift.cost * currentComboQty;
+    const userCoinBalance = Number(user?.coins) || 0;
+
+    // VALIDATION against REAL user wallet coin balance
+    if (userCoinBalance < totalCost) {
+      alert(`❌ Insufficient Coins!\n\nGift: ${selectedGift.name} (${selectedGift.cost} Coins)\nQuantity: x${currentComboQty}\nTotal Required: ${totalCost.toLocaleString()} Coins\nAvailable Wallet Balance: ${userCoinBalance.toLocaleString()} Coins\n\nPlease recharge in the Wallet module! 💎`);
       return;
     }
 
     // Determine exact target name
-    let targetName = activeHostName;
-    if (recipient !== "Host") {
+    let targetName = activeHostName || "Host";
+    if (recipient && recipient !== "Host") {
       const seatMatch = recipient.match(/\d+/);
       const seatId = seatMatch ? parseInt(seatMatch[0], 10) : NaN;
       if (!Number.isNaN(seatId)) {
@@ -428,51 +465,77 @@ export const ViewerGiftBox: React.FC<ViewerGiftBoxProps> = ({
       }
     }
 
-    // Process gift sending logic
-    onGiftSent(selectedGift, selectedCombo, targetName, isComboSend);
+    // Update Tap Combo count logic
+    let nextTapCount = tapComboCount + currentComboQty;
+    if (!comboTimerActive) {
+      nextTapCount = currentComboQty;
+    }
+    setTapComboCount(nextTapCount);
+    setComboTimerActive(true);
 
-    // If normal single send, close gift box immediately.
-    // If COMBO send, keep gift box OPEN so viewer can send repeatedly!
-    if (!isComboSend) {
+    // Reset 3-second combo timeout timer
+    if (comboTimerRef.current) clearTimeout(comboTimerRef.current);
+    comboTimerRef.current = setTimeout(() => {
+      setComboTimerActive(false);
+      setTapComboCount(0);
+    }, 3000);
+
+    // Process gift sending logic
+    onGiftSent(selectedGift, currentComboQty, targetName, isComboSend);
+
+    // If single normal send without COMBO mode, close box after sending.
+    // If COMBO send, keep gift box open so user can keep tapping!
+    if (!isComboSend && currentComboQty === 1) {
       onClose();
     }
   };
 
-  const comboOptions = [1, 5, 10, 20, 50, 99, 299, 999];
+  const userCoins = Number(user?.coins) || 0;
+  const currentTotalCoins = selectedGift ? selectedGift.cost * selectedCombo : 0;
+  const hasEnoughCoins = userCoins >= currentTotalCoins;
 
   return (
-    <div className="absolute right-0 bottom-10 bg-gradient-to-b from-[#181826] to-[#0e0e15] border border-white/10 rounded-2xl p-3 shadow-[0_10px_35px_rgba(0,0,0,0.8)] w-72 z-50 animate-pop-gift flex flex-col max-h-[380px]">
+    <div className="absolute right-0 bottom-10 bg-gradient-to-b from-[#181826] to-[#0e0e15] border border-white/10 rounded-2xl p-3 shadow-[0_10px_35px_rgba(0,0,0,0.8)] w-80 z-50 animate-pop-gift flex flex-col max-h-[460px]">
       
-      {/* Header and Coin count */}
-      <div className="flex justify-between items-center mb-1 pb-1.5 border-b border-white/5 shrink-0 bg-transparent">
+      {/* Header, Coin count and Close button */}
+      <div className="flex justify-between items-center mb-1.5 pb-1.5 border-b border-white/5 shrink-0 bg-transparent">
         <div className="flex items-center space-x-1.5 bg-transparent">
           <GiftIcon className="w-3.5 h-3.5 text-[#ff007f] animate-pulse" />
-          <h4 className="text-[10px] uppercase tracking-widest text-[#66fcf1] font-black">Sehr Live Gift Box</h4>
+          <h4 className="text-[10px] uppercase tracking-widest text-[#66fcf1] font-black">SAHR PREMIUM GIFT</h4>
           {onShowHistory && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onShowHistory();
               }}
-              className="text-[8px] text-[#66fcf1] hover:text-[#ff007f] hover:underline font-bold transition-all ml-1 bg-white/5 px-1 py-0.2 rounded"
+              className="text-[8px] text-[#66fcf1] hover:text-[#ff007f] hover:underline font-bold transition-all ml-1 bg-white/5 px-1.5 py-0.5 rounded border border-white/5"
               title="View your gifting history log"
             >
               🕒 Log
             </button>
           )}
         </div>
-        <div className="flex items-center bg-[#ffe000]/10 border border-yellow-500/20 rounded-full px-2 py-0.5">
-          <span className="text-[8px] text-yellow-400 font-bold font-mono">💎 {user.coins} Coins</span>
+        <div className="flex items-center space-x-2">
+          <div className="flex items-center bg-[#ffe000]/10 border border-yellow-500/20 rounded-full px-2 py-0.5">
+            <span className="text-[8.5px] text-yellow-400 font-black font-mono">💎 {userCoins.toLocaleString()} Coins</span>
+          </div>
+          <button 
+            onClick={onClose} 
+            className="text-gray-400 hover:text-white text-xs font-black p-0.5 hover:bg-white/10 rounded transition-colors"
+            title="Close Gift Drawer"
+          >
+            ✕
+          </button>
         </div>
       </div>
 
       {/* Recipient Selection */}
       <div className="mb-1.5 bg-black/35 p-1 rounded-lg border border-white/5 shrink-0 flex items-center justify-between">
-        <span className="text-[7px] text-gray-400 font-black uppercase">Recipient:</span>
+        <span className="text-[7px] text-gray-400 font-black uppercase">Send To:</span>
         <select
           value={recipient}
           onChange={(e) => setRecipient(e.target.value)}
-          className="bg-[#12121a] text-white text-[8px] border border-gray-700/60 rounded px-1.5 py-0.5 max-w-[130px] font-medium"
+          className="bg-[#12121a] text-white text-[8px] border border-gray-700/60 rounded px-1.5 py-0.5 max-w-[150px] font-medium outline-none"
         >
           <option value="Host">Host 👑 ({activeHostName})</option>
           {guestSeats
@@ -486,56 +549,123 @@ export const ViewerGiftBox: React.FC<ViewerGiftBoxProps> = ({
         </select>
       </div>
 
-      {/* STICKY COMBO SELECTOR ON TOP OF THE GIFT GRID */}
+      {/* STICKY COMBO SELECTOR & COST BREAKDOWN ON TOP OF THE GIFT GRID */}
       {selectedGift && (
         <motion.div 
           initial={{ opacity: 0, y: -10 }} 
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-purple-950/90 to-[#ff007f]/20 border border-[#ff007f]/30 rounded-xl p-1.5 mb-2 shrink-0 relative shadow-inner flex flex-col space-y-1 z-10"
+          className="bg-gradient-to-r from-purple-950/90 via-[#181028] to-[#ff007f]/20 border border-[#ff007f]/30 rounded-xl p-2 mb-2 shrink-0 relative shadow-inner flex flex-col space-y-1.5 z-10"
         >
-          <div className="flex items-center justify-between">
-            <p className="text-[8.5px] text-white font-bold flex items-center space-x-1">
-              <span>Sending:</span>
-              <span className="text-yellow-300 font-black">{selectedGift.icon} {selectedGift.name}</span>
-              <span className="text-gray-400 font-mono">({selectedGift.cost} Coins)</span>
-            </p>
-            <p className="text-[8px] text-[#ff007f] font-black font-mono">
-              Total: {(Number(selectedGift?.cost) || 0) * (Number(selectedCombo) || 1)} Coins
-            </p>
+          {/* Selected Gift Name & Required Coins Formula */}
+          <div className="flex items-center justify-between text-[8.5px]">
+            <div className="flex items-center space-x-1.5 font-bold text-white">
+              <span className="text-base leading-none">{selectedGift.icon}</span>
+              <span className="text-yellow-300 font-black">{selectedGift.name}</span>
+              <span className="text-gray-400 font-mono text-[7.5px]">({selectedGift.cost} Coins)</span>
+            </div>
+            <div className="text-right">
+              <span className="text-gray-400 font-mono text-[7.5px]">{selectedGift.cost} × {selectedCombo} = </span>
+              <span className={`font-black font-mono ${hasEnoughCoins ? "text-yellow-300" : "text-red-400"}`}>
+                {currentTotalCoins.toLocaleString()} Coins
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center space-x-1 justify-between">
-            {/* Presets combo list */}
-            <div className="flex flex-wrap gap-0.5 max-w-[130px]">
-              {comboOptions.map(num => (
-                <button
-                  key={num}
-                  onClick={() => setSelectedCombo(num)}
-                  className={`px-1.5 py-0.5 rounded text-[7.5px] font-black transition-all cursor-pointer ${
-                    selectedCombo === num 
-                      ? "bg-[#ff007f] text-white shadow-md scale-105" 
-                      : "bg-black/40 text-gray-300 hover:bg-black/60"
-                  }`}
-                >
-                  x{num}
-                </button>
-              ))}
+          {/* Preset Buttons + Custom Input Toggle */}
+          <div className="flex items-center space-x-1 overflow-x-auto pb-0.5 scrollbar-none">
+            {presetComboOptions.map(num => (
+              <button
+                key={num}
+                onClick={() => handleSelectPreset(num)}
+                className={`px-1.5 py-0.5 rounded text-[7.5px] font-black transition-all cursor-pointer whitespace-nowrap ${
+                  !isCustomMode && selectedCombo === num 
+                    ? "bg-gradient-to-r from-[#ff007f] to-purple-600 text-white shadow-md scale-105 border border-pink-400/40" 
+                    : "bg-black/40 text-gray-300 hover:bg-black/60 border border-white/5"
+                }`}
+              >
+                x{num}
+              </button>
+            ))}
+            <button
+              onClick={() => {
+                setIsCustomMode(true);
+                if (customComboInput) {
+                  handleCustomInputChange(customComboInput);
+                } else {
+                  handleCustomInputChange("25");
+                }
+              }}
+              className={`px-1.5 py-0.5 rounded text-[7.5px] font-black transition-all cursor-pointer whitespace-nowrap ${
+                isCustomMode 
+                  ? "bg-amber-500 text-black font-black shadow-md border border-amber-300" 
+                  : "bg-black/40 text-amber-400 hover:bg-black/60 border border-amber-500/20"
+              }`}
+            >
+              Custom
+            </button>
+          </div>
+
+          {/* Custom Combo Number Field */}
+          {isCustomMode && (
+            <div className="flex items-center space-x-1.5 bg-black/50 p-1 rounded-lg border border-amber-500/30 animate-fade-in">
+              <span className="text-[7.5px] font-black text-amber-400 uppercase">Enter Quantity:</span>
+              <input
+                type="number"
+                min="1"
+                max="99999"
+                value={customComboInput}
+                onChange={(e) => handleCustomInputChange(e.target.value)}
+                placeholder="e.g. 25"
+                className="bg-[#12121c] text-yellow-300 text-[9px] font-black font-mono border border-amber-500/40 rounded px-1.5 py-0.5 w-20 outline-none focus:border-amber-400"
+              />
+              <span className="text-[7.5px] text-gray-400 font-mono">
+                = {(selectedGift.cost * (parseInt(customComboInput, 10) || 1)).toLocaleString()} Coins
+              </span>
+            </div>
+          )}
+
+          {/* Active Tap Combo Feedback Badge */}
+          {comboTimerActive && tapComboCount > 0 && (
+            <div className="flex items-center justify-between bg-gradient-to-r from-amber-500/20 to-pink-500/20 border border-amber-400/40 rounded-lg px-2 py-1 animate-pulse">
+              <span className="text-[8px] font-black text-amber-300 uppercase tracking-wider flex items-center space-x-1">
+                <span>🔥 TAP COMBO ACTIVE:</span>
+                <span className="text-yellow-200">{selectedGift.icon} {selectedGift.name}</span>
+              </span>
+              <span className="text-xs font-black font-mono text-yellow-300 drop-shadow">
+                ×{tapComboCount}
+              </span>
+            </div>
+          )}
+
+          {/* Send Buttons & Balance Check */}
+          <div className="flex items-center justify-between pt-0.5">
+            <div className="text-[7.5px] text-gray-400 font-mono">
+              {!hasEnoughCoins ? (
+                <span className="text-red-400 font-bold">⚠️ Insufficient coins</span>
+              ) : (
+                <span>After send: <strong className="text-green-400 font-mono">{(userCoins - currentTotalCoins).toLocaleString()}</strong></span>
+              )}
             </div>
 
-            {/* SEND and COMBO BUTTONS */}
-            <div className="flex items-center space-x-1">
+            <div className="flex items-center space-x-1.5">
               {selectedGift.comboSupported !== false && (
                 <button
                   onClick={() => handleSendPress(true)}
-                  className="bg-gradient-to-r from-amber-500 to-orange-600 hover:brightness-110 active:scale-90 text-white font-black uppercase text-[8.5px] py-1 px-2 rounded-lg flex items-center justify-center space-x-0.5 transition-all cursor-pointer shadow-[0_2px_8px_rgba(245,158,11,0.4)] animate-pulse"
-                  title="Send repeatedly without closing Gift Box"
+                  disabled={!hasEnoughCoins}
+                  className={`bg-gradient-to-r from-amber-500 to-orange-600 text-white font-black uppercase text-[8.5px] py-1 px-2.5 rounded-lg flex items-center justify-center space-x-0.5 transition-all cursor-pointer shadow-[0_2px_8px_rgba(245,158,11,0.4)] ${
+                    !hasEnoughCoins ? "opacity-50 cursor-not-allowed" : "hover:brightness-110 active:scale-90 animate-pulse"
+                  }`}
+                  title="Keep tapping to build huge combo multiplier!"
                 >
                   <span>COMBO ⚡</span>
                 </button>
               )}
               <button
                 onClick={() => handleSendPress(false)}
-                className="bg-gradient-to-r from-[#ff007f] to-purple-600 hover:brightness-110 active:scale-95 text-white font-black uppercase text-[8.5px] py-1 px-2 rounded-lg flex items-center justify-center space-x-1 transition-all cursor-pointer shadow-[0_2px_8px_rgba(255,0,127,0.3)]"
+                disabled={!hasEnoughCoins}
+                className={`bg-gradient-to-r from-[#ff007f] to-purple-600 text-white font-black uppercase text-[8.5px] py-1 px-2.5 rounded-lg flex items-center justify-center space-x-1 transition-all cursor-pointer shadow-[0_2px_8px_rgba(255,0,127,0.3)] ${
+                  !hasEnoughCoins ? "opacity-50 cursor-not-allowed" : "hover:brightness-110 active:scale-95"
+                }`}
               >
                 <Send className="w-2.5 h-2.5 shrink-0" />
                 <span>SEND</span>
@@ -605,6 +735,7 @@ export const ViewerGiftBox: React.FC<ViewerGiftBoxProps> = ({
                 onClick={() => {
                   setSelectedGift(gift);
                   setSelectedCombo(1); // Reset default to 1 on select
+                  setIsCustomMode(false);
                 }}
                 className={`group p-1.5 rounded-xl border flex flex-col items-center justify-center transition-all relative cursor-pointer ${
                   isSelected 
