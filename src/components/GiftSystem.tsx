@@ -349,7 +349,7 @@ interface ViewerGiftBoxProps {
   setRecipient: (val: string) => void;
   guestSeats: any[];
   setGuestSeats: React.Dispatch<React.SetStateAction<any[]>>;
-  onGiftSent: (gift: Gift, count: number, recipientName: string) => void;
+  onGiftSent: (gift: Gift, count: number, recipientName: string, isCombo?: boolean) => void;
   onShowHistory?: () => void;
 }
 
@@ -401,7 +401,7 @@ export const ViewerGiftBox: React.FC<ViewerGiftBoxProps> = ({
     return matchesSearch && matchesTab;
   });
 
-  const handleSendPress = () => {
+  const handleSendPress = (isComboSend: boolean = false) => {
     if (!selectedGift) {
       alert("Please select a virtual gift to send first! 🎁");
       return;
@@ -409,25 +409,33 @@ export const ViewerGiftBox: React.FC<ViewerGiftBoxProps> = ({
 
     const totalCost = selectedGift.cost * selectedCombo;
     if (user.coins < totalCost) {
-      alert(`❌ Insufficient Coins!\n\nYou need ${totalCost} coins to send this combo (${selectedCombo}x ${selectedGift.name}), but you only have ${user.coins} coins.\n\nPlease recharge in the Platform Recharge panel! 💎`);
+      alert(`❌ Insufficient Coins!\n\nYou need ${totalCost} coins to send this gift (${selectedCombo}x ${selectedGift.name}), but you only have ${user.coins} coins.\n\nPlease recharge in the Platform Recharge panel! 💎`);
       return;
     }
 
     // Determine exact target name
     let targetName = activeHostName;
     if (recipient !== "Host") {
-      const seatId = parseInt(recipient.split("-")[1]);
-      const targetSeat = guestSeats.find(s => s.id === seatId);
-      if (targetSeat && targetSeat.name) {
-        targetName = targetSeat.name;
+      const seatMatch = recipient.match(/\d+/);
+      const seatId = seatMatch ? parseInt(seatMatch[0], 10) : NaN;
+      if (!Number.isNaN(seatId)) {
+        const targetSeat = guestSeats.find(s => s.id === seatId);
+        if (targetSeat && targetSeat.name) {
+          targetName = targetSeat.name;
+        }
+      } else {
+        targetName = recipient;
       }
     }
 
-    // Process local state values
-    onGiftSent(selectedGift, selectedCombo, targetName);
+    // Process gift sending logic
+    onGiftSent(selectedGift, selectedCombo, targetName, isComboSend);
 
-    // Auto-close the bottom sheet to enable immediate high-speed stream return
-    onClose();
+    // If normal single send, close gift box immediately.
+    // If COMBO send, keep gift box OPEN so viewer can send repeatedly!
+    if (!isComboSend) {
+      onClose();
+    }
   };
 
   const comboOptions = [1, 5, 10, 20, 50, 99, 299, 999];
@@ -492,13 +500,13 @@ export const ViewerGiftBox: React.FC<ViewerGiftBoxProps> = ({
               <span className="text-gray-400 font-mono">({selectedGift.cost} Coins)</span>
             </p>
             <p className="text-[8px] text-[#ff007f] font-black font-mono">
-              Total: {selectedGift.cost * selectedCombo} Coins
+              Total: {(Number(selectedGift?.cost) || 0) * (Number(selectedCombo) || 1)} Coins
             </p>
           </div>
 
           <div className="flex items-center space-x-1 justify-between">
             {/* Presets combo list */}
-            <div className="flex flex-wrap gap-0.5 max-w-[170px]">
+            <div className="flex flex-wrap gap-0.5 max-w-[130px]">
               {comboOptions.map(num => (
                 <button
                   key={num}
@@ -514,14 +522,25 @@ export const ViewerGiftBox: React.FC<ViewerGiftBoxProps> = ({
               ))}
             </div>
 
-            {/* SEND BUTTON - Sticky & Instant */}
-            <button
-              onClick={handleSendPress}
-              className="flex-1 max-w-[70px] bg-gradient-to-r from-[#ff007f] to-purple-600 hover:brightness-110 active:scale-95 text-white font-black uppercase text-[8.5px] py-1 px-1.5 rounded-lg flex items-center justify-center space-x-1 transition-all cursor-pointer shadow-[0_2px_8px_rgba(255,0,127,0.3)]"
-            >
-              <Send className="w-2.5 h-2.5 shrink-0" />
-              <span>SEND</span>
-            </button>
+            {/* SEND and COMBO BUTTONS */}
+            <div className="flex items-center space-x-1">
+              {selectedGift.comboSupported !== false && (
+                <button
+                  onClick={() => handleSendPress(true)}
+                  className="bg-gradient-to-r from-amber-500 to-orange-600 hover:brightness-110 active:scale-90 text-white font-black uppercase text-[8.5px] py-1 px-2 rounded-lg flex items-center justify-center space-x-0.5 transition-all cursor-pointer shadow-[0_2px_8px_rgba(245,158,11,0.4)] animate-pulse"
+                  title="Send repeatedly without closing Gift Box"
+                >
+                  <span>COMBO ⚡</span>
+                </button>
+              )}
+              <button
+                onClick={() => handleSendPress(false)}
+                className="bg-gradient-to-r from-[#ff007f] to-purple-600 hover:brightness-110 active:scale-95 text-white font-black uppercase text-[8.5px] py-1 px-2 rounded-lg flex items-center justify-center space-x-1 transition-all cursor-pointer shadow-[0_2px_8px_rgba(255,0,127,0.3)]"
+              >
+                <Send className="w-2.5 h-2.5 shrink-0" />
+                <span>SEND</span>
+              </button>
+            </div>
           </div>
         </motion.div>
       )}
@@ -686,37 +705,17 @@ export const GiftAnimationEngine: React.FC<GiftAnimationEngineProps> = ({
   // Different rendering states depending on chosen Display Type from Admin Panel
   return (
     <AnimatePresence>
-      <div className={`absolute inset-0 z-40 pointer-events-none flex flex-col justify-center items-center p-4 overflow-hidden`}>
+      <div className="absolute inset-0 z-40 pointer-events-none flex flex-col justify-center items-center p-4 overflow-hidden bg-transparent">
         
-        {/* ULTRA SPECIAL GFX: Shaker & Glow Flash & Confetti backgrounds */}
-        {displayType === "ultra" && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.4, 0.1, 0] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-            className="absolute inset-0 bg-[#ff007f]/10 mix-blend-color-dodge z-0 pointer-events-none"
-          />
-        )}
-
-        {/* CAMERA FLASH EFFECT FOR EXTREME GIFTS */}
-        {displayType === "ultra" && (
-          <motion.div 
-            initial={{ opacity: 1 }}
-            animate={{ opacity: 0 }}
-            transition={{ duration: 0.8 }}
-            className="absolute inset-0 bg-white z-50 pointer-events-none"
-          />
-        )}
-
-        {/* Actual Visual Animation Card according to Type */}
+        {/* Actual Visual Animation Overlay according to Type */}
         <motion.div
           initial={{ scale: 0.4, opacity: 0, y: displayType === "small" ? 120 : 0 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.5, opacity: 0 }}
           transition={{ type: "spring", damping: 12 }}
-          className={`text-center z-10 flex flex-col items-center ${
+          className={`text-center z-10 flex flex-col items-center pointer-events-none select-none ${
             displayType === "small" 
-              ? "absolute bottom-28 left-4 bg-black/70 backdrop-blur-md rounded-2xl p-2 border border-white/10 flex-row space-x-2 text-left"
+              ? "absolute bottom-28 left-4 bg-black/70 backdrop-blur-md rounded-2xl p-2 border border-white/10 flex-row space-x-2 text-left shadow-lg"
               : displayType === "half"
               ? "bg-[#181826]/85 backdrop-blur-md border border-[#303040] rounded-3xl p-4 shadow-2xl max-w-[180px]"
               : "bg-black/60 backdrop-blur-md border border-yellow-500/20 rounded-3xl p-5 shadow-[0_0_35px_rgba(234,179,8,0.2)] max-w-[240px]"
@@ -746,16 +745,33 @@ export const GiftAnimationEngine: React.FC<GiftAnimationEngineProps> = ({
             </div>
           </div>
 
-          {/* Core Animation asset display (SVGA / SVG / WebM container rendering) */}
+          {/* Core Animation asset display (WebM / SVGA / SVG container rendering) */}
           <div className="my-2.5 relative flex flex-col items-center justify-center">
             
             {/* Pulsating glowing background trail */}
             <div className={`absolute w-12 h-12 rounded-full filter blur-xl opacity-60 animate-pulse bg-gradient-to-tr ${gift.color}`} />
             
-            {/* The active moving element */}
-            <span className={`text-[48px] block relative z-10 filter drop-shadow-xl select-none ${gift.animationClass}`}>
-              {gift.icon}
-            </span>
+            {/* The active moving element: Video element if WebM URL or SVG/Icon */}
+            {gift.animationFile && (gift.animationFile.endsWith(".webm") || gift.animationFile.startsWith("http")) ? (
+              <video 
+                src={gift.animationFile} 
+                autoPlay 
+                loop 
+                muted 
+                playsInline 
+                className="w-28 h-28 object-contain relative z-10 pointer-events-none drop-shadow-xl"
+              />
+            ) : gift.animationFile && gift.animationFile.endsWith(".svg") ? (
+              <img 
+                src={gift.animationFile} 
+                alt={gift.name} 
+                className={`w-20 h-20 object-contain relative z-10 pointer-events-none drop-shadow-xl ${gift.animationClass}`}
+              />
+            ) : (
+              <span className={`text-[48px] block relative z-10 filter drop-shadow-xl select-none ${gift.animationClass}`}>
+                {gift.icon}
+              </span>
+            )}
 
             {/* Simulated 3D format badge */}
             <span className="absolute -bottom-1 text-[5.5px] font-mono text-[#66fcf1] font-bold bg-black/60 border border-[#66fcf1]/30 rounded px-1 scale-90">

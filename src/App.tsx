@@ -1890,6 +1890,14 @@ export default function App() {
   const [pkTimer, setPkTimer] = useState<number>(180); // 3 minutes PK countdown
   const [pkWinner, setPkWinner] = useState<string | null>(null);
 
+  // PK Double Tap Unique Contributor Tracking Refs (Reset per PK match)
+  const pkDoubleTapContributorsHostA = useRef<Set<string>>(new Set());
+  const pkDoubleTapContributorsHostB = useRef<Set<string>>(new Set());
+  const viewerPkDoubleTapContributorsHostA = useRef<Set<string>>(new Set());
+  const viewerPkDoubleTapContributorsHostB = useRef<Set<string>>(new Set());
+  const [userLiveCoHostLikes, setUserLiveCoHostLikes] = useState<number>(850);
+  const [opponentLikesCount, setOpponentLikesCount] = useState<number>(8500);
+
   // Audio Room State (10 Seat Grid)
   const [audioSeats, setAudioSeats] = useState<Array<{ id: number; name: string | null; avatar: string | null; isMuted: boolean; isLocked: boolean }>>([
     { id: 1, name: "Host Mehak 🎙️", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80", isMuted: false, isLocked: false },
@@ -4287,7 +4295,36 @@ export default function App() {
       setActiveHearts(prev => prev.filter(h => h.id !== heartId));
     }, 2000);
 
-    setLikesCount(prev => prev + 1);
+    const currentUserId = user.id || user.username || user.uniqueId || "viewer_user";
+    const isPk = activeHost?.category === "pk";
+    // Host A (Main Host) is on the LEFT, Host B (Opponent Host) is on the RIGHT
+    const isTargetingHostA = !isPk || (x < rect.width / 2);
+
+    if (isTargetingHostA) {
+      // Target: Host A (Main Host)
+      // 1. Total Hearts: ALWAYS increase with NO limit
+      setLikesCount(prev => prev + 1);
+
+      // 2. PK Match Score: ONLY +3 on first valid double-tap in current PK match
+      if (isPk) {
+        if (!viewerPkDoubleTapContributorsHostA.current.has(currentUserId)) {
+          viewerPkDoubleTapContributorsHostA.current.add(currentUserId);
+          setPkScoreHost(prev => prev + 3);
+        }
+      }
+    } else {
+      // Target: Host B (Opponent Host)
+      // 1. Total Hearts: ALWAYS increase with NO limit
+      setOpponentLikesCount(prev => prev + 1);
+
+      // 2. PK Match Score: ONLY +3 on first valid double-tap in current PK match
+      if (isPk) {
+        if (!viewerPkDoubleTapContributorsHostB.current.has(currentUserId)) {
+          viewerPkDoubleTapContributorsHostB.current.add(currentUserId);
+          setPkScoreOpponent(prev => prev + 3);
+        }
+      }
+    }
 
     // Update Daily Mission
     updateMissionProgress("m-1", 1);
@@ -4812,25 +4849,57 @@ export default function App() {
   }, [currentPlayingGift, giftQueue]);
 
   // Gift Sending Engine
-  const handleSendGift = async (gift: Gift, count: number = 1, recipientName: string = activeHost.name) => {
+  const handleSendGift = async (gift: Gift, count: number = 1, recipientName: string = activeHost.name, isCombo: boolean = false) => {
     const totalCost = gift.cost * count;
     if (user.coins < totalCost) {
       alert(`Insufficient Coins! You need ${totalCost} coins but only have ${user.coins}.`);
       return;
     }
 
-    // Deduct balance and credit XP
+    const requestId = `req-gift-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+
+    // Determine target side for PK score & earnings
+    const recLower = recipientName.toLowerCase();
+    const isOpponentTarget = recLower.includes("host b") || 
+                             recLower.includes("opponent") ||
+                             recLower.includes("alpha_queen") ||
+                             recLower.includes("other") ||
+                             recLower.includes("side b");
+
+    // Deduct local balance immediately (optimistic update)
     const coinsDeducted = totalCost;
-    const diamondsCredited = Math.floor(totalCost * 0.1); // 10% diamond cash out value for host
     const xpGained = Math.floor(totalCost * 0.2);
 
     setUser(prev => ({
       ...prev,
-      coins: prev.coins - coinsDeducted,
+      coins: Math.max(0, prev.coins - coinsDeducted),
       xp: prev.xp + xpGained,
-      userLevel: Math.floor((prev.xp + xpGained) / 100) + 1, // basic level increment
+      userLevel: Math.floor((prev.xp + xpGained) / 100) + 1,
       wealthLevel: prev.wealthLevel + 1
     }));
+
+    // Perform secure backend transaction call
+    try {
+      const resp = await fetch("/api/v1/gifts/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId,
+          giftId: gift.id,
+          count,
+          recipient: recipientName,
+          targetHostSide: isOpponentTarget ? "hostB" : "hostA"
+        })
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.remainingCoins !== undefined) {
+          setUser(prev => ({ ...prev, coins: data.remainingCoins }));
+        }
+      }
+    } catch (err) {
+      console.error("Backend gift transaction API error:", err);
+    }
 
     setLiveRoomTopGifters(prev => {
       const userIndex = prev.findIndex(g => g.username === user.username);
@@ -4892,9 +4961,13 @@ export default function App() {
       setActiveCombo(null);
     }, 3000);
 
-    // If PK Battle is active, increase the host score
-    if (activeHost.category === "pk") {
-      setPkScoreHost(prev => prev + totalCost * 5);
+    // If PK Battle is active: 1 Gift Coin Value = 1 PK Point!
+    if (activeHost.category === "pk" || activeHost.category === "1v1") {
+      if (isOpponentTarget) {
+        setPkScoreOpponent(prev => prev + totalCost);
+      } else {
+        setPkScoreHost(prev => prev + totalCost);
+      }
     }
 
     // Append system message to chat
@@ -5092,14 +5165,44 @@ export default function App() {
       .catch(err => console.error("Error creating host stream on backend:", err));
   };
 
-  const triggerDoubleTapHeart = (x: number, y: number) => {
+  const triggerDoubleTapHeart = (x: number, y: number, containerWidth?: number) => {
     const heartId = Date.now().toString() + Math.random();
     // Choose a random color from TikTok/Sehr Live palette
     const colors = ["#ff007f", "#ff3366", "#ef4444", "#ec4899", "#d946ef", "#8b5cf6", "#f59e0b"];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
     
     setDoubleTapHearts(prev => [...prev, { id: heartId, x, y, color: randomColor }]);
-    setUserLiveLikes(prev => prev + 1);
+
+    const currentUserId = user.id || user.username || user.uniqueId || "broadcaster_viewer";
+    const width = containerWidth || window.innerWidth;
+    // Host A (Main Host) is on the LEFT, Host B (Opponent Host) is on the RIGHT
+    const isTargetingHostA = !userLivePkActive || (x < width / 2);
+
+    if (isTargetingHostA) {
+      // Target: Host A (Main Host / Broadcaster)
+      // 1. Total Hearts: ALWAYS increase with NO limit
+      setUserLiveLikes(prev => prev + 1);
+
+      // 2. PK Match Score: ONLY +3 on first valid double-tap in current PK match
+      if (userLivePkActive) {
+        if (!pkDoubleTapContributorsHostA.current.has(currentUserId)) {
+          pkDoubleTapContributorsHostA.current.add(currentUserId);
+          setUserLivePkScoreMy(prev => prev + 3);
+        }
+      }
+    } else {
+      // Target: Host B (Opponent Host)
+      // 1. Total Hearts: ALWAYS increase with NO limit
+      setUserLiveCoHostLikes(prev => prev + 1);
+
+      // 2. PK Match Score: ONLY +3 on first valid double-tap in current PK match
+      if (userLivePkActive) {
+        if (!pkDoubleTapContributorsHostB.current.has(currentUserId)) {
+          pkDoubleTapContributorsHostB.current.add(currentUserId);
+          setUserLivePkScoreOther(prev => prev + 3);
+        }
+      }
+    }
     
     // Automatically clean up after animation ends (2 seconds)
     setTimeout(() => {
@@ -5130,8 +5233,12 @@ export default function App() {
       const rect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      
-      triggerDoubleTapHeart(x, y);
+
+      if (clientView === "live-room") {
+        triggerDoubleTapLike(e);
+      } else {
+        triggerDoubleTapHeart(x, y, rect.width);
+      }
     }
     lastTapRef.current = now;
   };
@@ -8231,23 +8338,6 @@ export default function App() {
                     {/* ===================================================================== */}
                     {clientView === "live-room" && (
                       <div className="flex-1 flex flex-col justify-between bg-[#08080f] scroll-view-y relative pb-4">
-                        {/* ABSOLUTE FLAME RANKING BUTTON - ACCESSIBLE TO EVERYONE UNDER HOST PROFILE */}
-                        <div className="absolute top-14 left-3 z-45">
-                          <button
-                            onClick={() => {
-                              setRankingType("host");
-                              setRankingPeriod("hourly");
-                              setRankingSearchQuery("");
-                              setShowRankingModal(true);
-                            }}
-                            className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-600 hover:brightness-110 active:scale-95 text-white text-[8px] font-black px-2 py-0.5 rounded-full flex items-center space-x-1 shadow-lg border border-yellow-400/20 transition-all cursor-pointer select-none"
-                            title="Open Rankings"
-                          >
-                            <Flame className="w-2.5 h-2.5 text-yellow-300 fill-yellow-300 animate-pulse" />
-                            <span>Ranking 🔥</span>
-                          </button>
-                        </div>
-
                         {/* 🎵 VIEWER SIDE LIVE BACKGROUND MUSIC CONTROLLER */}
                         {liveRoomActiveTrack && (
                           <div className="absolute top-22 left-3 z-45 flex flex-col space-y-1 bg-black/80 backdrop-blur-md rounded-2xl p-2 border border-white/10 shadow-xl max-w-[145px] text-left select-none animate-slide-up">
@@ -8830,6 +8920,21 @@ export default function App() {
                                 >
                                   {followedUsers.includes(activeHost.name) ? "Following" : "Follow"}
                                 </button>
+
+                                {/* Ranking 🔥 Button in Live Room Header */}
+                                <button
+                                  onClick={() => {
+                                    setRankingType("host");
+                                    setRankingPeriod("hourly");
+                                    setRankingSearchQuery("");
+                                    setShowRankingModal(true);
+                                  }}
+                                  className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-600 hover:brightness-110 active:scale-95 text-white text-[7.5px] font-black px-2 py-0.5 rounded-full flex items-center space-x-1 shadow border border-yellow-400/20 transition-all cursor-pointer select-none ml-1 shrink-0"
+                                  title="Open Rankings"
+                                >
+                                  <Flame className="w-2.5 h-2.5 text-yellow-300 fill-yellow-300 animate-pulse" />
+                                  <span>Ranking 🔥</span>
+                                </button>
                               </div>
 
                               <div className="flex items-center space-x-1.5">
@@ -8897,6 +9002,7 @@ export default function App() {
                         {/* STREAM VIEWPORT: DYNAMIC BACKGROUND DEPENDING ON ROOM TYPE */}
                         <div
                           onDoubleClick={triggerDoubleTapLike}
+                          onClick={handleScreenClickOrTouch}
                           className="flex-1 w-full relative bg-gradient-to-b from-[#090710] via-[#120f21] to-[#090710] flex flex-col justify-center items-center overflow-hidden"
                         >
                           
@@ -8947,7 +9053,7 @@ export default function App() {
                                     {/* Comparison progress bar */}
                                     <div className="h-2 w-full bg-indigo-600 rounded-full overflow-hidden flex shadow-inner">
                                       <div
-                                        style={{ width: `${(pkScoreHost / (pkScoreHost + pkScoreOpponent || 1)) * 100}%` }}
+                                        style={{ width: `${((Number(pkScoreHost) || 0) + (Number(pkScoreOpponent) || 0)) > 0 ? (((Number(pkScoreHost) || 0) / ((Number(pkScoreHost) || 0) + (Number(pkScoreOpponent) || 0))) * 100) : 50}%` }}
                                         className="bg-gradient-to-r from-pink-500 to-[#ff007f] h-full transition-all duration-500"
                                       ></div>
                                     </div>
@@ -9451,8 +9557,8 @@ export default function App() {
                                   setRecipient={setViewerLiveGiftRecipient}
                                   guestSeats={viewerLiveGuestSeats}
                                   setGuestSeats={setViewerLiveGuestSeats}
-                                  onGiftSent={(gift, count, recipientName) => {
-                                    handleSendGift(gift, count, recipientName);
+                                  onGiftSent={(gift, count, recipientName, isCombo) => {
+                                    handleSendGift(gift, count, recipientName, isCombo);
                                   }}
                                   onShowHistory={() => setShowGiftHistoryModal(true)}
                                 />
@@ -10570,14 +10676,14 @@ export default function App() {
                           >
                             <div className="flex justify-between items-center text-[10px]">
                               <span className="font-bold text-white group-hover:text-[#ff007f] transition-all">Experience Level Progression</span>
-                              <span className="text-yellow-400 font-mono">LVL {user.userLevel} ({user.xp} XP)</span>
+                              <span className="text-yellow-400 font-mono">LVL {user.userLevel || 1} ({user.xp || 0} XP)</span>
                             </div>
                             <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
-                              <div style={{ width: `${(user.xp % 100)}%` }} className="h-full bg-gradient-to-r from-[#ff007f] to-[#7b2cbf]"></div>
+                              <div style={{ width: `${((Number(user.xp) || 0) % 100)}%` }} className="h-full bg-gradient-to-r from-[#ff007f] to-[#7b2cbf]"></div>
                             </div>
                             <div className="grid grid-cols-3 gap-1.5 text-center text-[8px] text-gray-400 pt-1 font-mono">
-                              <div>Host Level: <span className="text-white font-bold">{user.hostLevel}</span></div>
-                              <div>Wealth Level: <span className="text-[#66fcf1] font-bold">{user.wealthLevel}</span></div>
+                              <div>Host Level: <span className="text-white font-bold">{user.hostLevel || 1}</span></div>
+                              <div>Wealth Level: <span className="text-[#66fcf1] font-bold">{user.wealthLevel || 1}</span></div>
                               <div>VIP Privilege: <span className="text-yellow-400 font-bold">Gold III</span></div>
                             </div>
                           </div>
@@ -12987,47 +13093,6 @@ export default function App() {
                             className="flex-1 flex flex-col justify-between h-full relative overflow-hidden"
                             onClick={handleScreenClickOrTouch}
                           >
-                            {/* ABSOLUTE FLAME RANKING BUTTON - ACCESSIBLE TO EVERYONE UNDER HOST PROFILE */}
-                            <div className="absolute top-14 left-3 z-45">
-                              <button
-                                onClick={() => {
-                                  setRankingType("host");
-                                  setRankingPeriod("hourly");
-                                  setRankingSearchQuery("");
-                                  setShowRankingModal(true);
-                                }}
-                                className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-600 hover:brightness-110 active:scale-95 text-white text-[8px] font-black px-2 py-0.5 rounded-full flex items-center space-x-1 shadow-lg border border-yellow-400/20 transition-all cursor-pointer select-none"
-                                title="Open Rankings"
-                              >
-                                <Flame className="w-2.5 h-2.5 text-yellow-300 fill-yellow-300 animate-pulse" />
-                                <span>Ranking 🔥</span>
-                              </button>
-                            </div>
-
-                            {/* ABSOLUTE LIVE MUSIC PLAYER CONTROLLER FLOAT BUTTON */}
-                            <div className="absolute top-22 left-3 z-45 flex flex-col items-start space-y-2">
-                              <button
-                                onClick={() => {
-                                  setUserLiveShowMusicModal(true);
-                                }}
-                                className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:brightness-110 active:scale-95 text-white text-[8px] font-black px-2 py-0.5 rounded-full flex items-center space-x-1 shadow-lg border border-blue-400/20 transition-all cursor-pointer select-none"
-                                title="Studio Music"
-                              >
-                                <Music className="w-2.5 h-2.5 text-cyan-300 animate-pulse" />
-                                <span>Music 🎵</span>
-                              </button>
-
-                              {/* If music is playing, show floating record and now-playing banner */}
-                              {userLiveActiveTrack && (
-                                <div className="flex items-center space-x-1.5 bg-black/75 backdrop-blur-md rounded-lg px-2 py-1 border border-white/10 shadow-lg animate-fade-in max-w-[125px]">
-                                  <Disc className={`w-3.5 h-3.5 text-pink-500 shrink-0 ${userLiveMusicPlaying ? "animate-spin" : ""}`} />
-                                  <div className="min-w-0 flex flex-col items-start">
-                                    <span className="text-[6.5px] font-black text-cyan-400 truncate leading-none w-20">{userLiveActiveTrack.title}</span>
-                                    <span className="text-[5.5px] text-gray-400 leading-none mt-0.5 uppercase tracking-widest">{userLiveMusicPlaying ? "Live Music" : "Paused"}</span>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
                             {userLiveGuestModeActive ? (
                               <div className="absolute inset-0 bg-[#06040a] flex flex-col z-35 h-full w-full select-none pt-2">
                                 {/* TOP HEADER ROW OVERLAYS */}
@@ -13417,56 +13482,73 @@ export default function App() {
                               </div>
                             ) : (userLivePkActive || userLivePkConnected) ? (
                               <div className="absolute inset-0 bg-[#08070c] flex flex-col z-30 h-full w-full">
-                                {/* UPPER 10%: NAVIGATION TYPE HEADER BAR */}
-                                <div className="h-[10%] min-h-[55px] max-h-[65px] bg-black/80 backdrop-blur-md border-b border-purple-500/10 flex items-center justify-between px-3 shrink-0 z-20 relative select-none">
-                                  {/* Host details badge */}
-                                  <div className="flex items-center space-x-2 bg-white/5 px-2 py-1 rounded-full border border-white/5 shadow-lg">
-                                    <div className="relative">
-                                      <img
-                                        src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80"
-                                        className="w-7 h-7 rounded-full border border-pink-500 object-cover"
-                                      />
-                                      <span className="absolute bottom-0 right-0 bg-blue-500 text-white rounded-full p-0.5 text-[5px] flex items-center justify-center border border-white">
-                                        ✓
-                                      </span>
-                                    </div>
-                                    <div className="flex flex-col text-left">
-                                      <span className="text-[9px] font-black text-white flex items-center space-x-0.5 leading-none">
-                                        <span>Arooj Queen</span>
-                                        <span className="text-blue-400 text-[7px]">✔️</span>
-                                      </span>
-                                      <div className="flex items-center space-x-1 mt-0.5">
-                                        <span className="text-[6.5px] bg-purple-600 text-white px-1 py-0.2 rounded font-black font-mono">Lv.25</span>
-                                        <span className="text-[6.5px] text-gray-400 font-bold font-mono">Solo Live</span>
+                                {/* UPPER 10%: NAVIGATION TYPE HEADER BAR WITH GENEROUS SPACING */}
+                                <div className="h-[10%] min-h-[62px] max-h-[72px] bg-black/80 backdrop-blur-md border-b border-purple-500/10 flex items-center justify-between px-3 py-1.5 shrink-0 z-20 relative select-none">
+                                  {/* Left: Host details badge & Ranking Button */}
+                                  <div className="flex items-center space-x-1.5">
+                                    <div className="flex items-center space-x-2 bg-white/5 px-2 py-1 rounded-full border border-white/5 shadow-lg">
+                                      <div className="relative">
+                                        <img
+                                          src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80"
+                                          className="w-7 h-7 rounded-full border border-pink-500 object-cover"
+                                        />
+                                        <span className="absolute bottom-0 right-0 bg-blue-500 text-white rounded-full p-0.5 text-[5px] flex items-center justify-center border border-white">
+                                          ✓
+                                        </span>
                                       </div>
+                                      <div className="flex flex-col text-left">
+                                        <span className="text-[9px] font-black text-white flex items-center space-x-0.5 leading-none">
+                                          <span>Arooj Queen</span>
+                                          <span className="text-blue-400 text-[7px]">✔️</span>
+                                        </span>
+                                        <div className="flex items-center space-x-1 mt-0.5">
+                                          <span className="text-[6.5px] bg-purple-600 text-white px-1 py-0.2 rounded font-black font-mono">Lv.25</span>
+                                          <span className="text-[6.5px] text-gray-400 font-bold font-mono">Solo Live</span>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Follow state badge inside host details */}
+                                      <button
+                                        onClick={() => {
+                                          setUserLiveFollowed(!userLiveFollowed);
+                                          if (!userLiveFollowed) {
+                                            setUserLiveViewers(prev => prev + 1);
+                                            setUserLiveMessages(prev => [
+                                              ...prev,
+                                              {
+                                                id: "ul-follow-" + Date.now(),
+                                                username: user.username,
+                                                message: "followed the host",
+                                                vipLevel: user.vipLevel,
+                                                userLevel: user.userLevel,
+                                                isSystem: true,
+                                                isFlagged: false,
+                                                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                              }
+                                            ]);
+                                          }
+                                        }}
+                                        className={`w-4 h-4 rounded-full flex items-center justify-center text-[7px] transition-all ml-1 ${
+                                          userLiveFollowed ? "bg-white/20 text-white" : "bg-white text-pink-600 hover:scale-105 shadow-md font-bold"
+                                        }`}
+                                      >
+                                        {userLiveFollowed ? "✓" : "+"}
+                                      </button>
                                     </div>
-                                    
-                                    {/* Follow state badge inside host details */}
+
+                                    {/* Ranking 🔥 Button positioned cleanly in top navigation area */}
                                     <button
                                       onClick={() => {
-                                        setUserLiveFollowed(!userLiveFollowed);
-                                        if (!userLiveFollowed) {
-                                          setUserLiveViewers(prev => prev + 1);
-                                          setUserLiveMessages(prev => [
-                                            ...prev,
-                                            {
-                                              id: "ul-follow-" + Date.now(),
-                                              username: user.username,
-                                              message: "followed the host",
-                                              vipLevel: user.vipLevel,
-                                              userLevel: user.userLevel,
-                                              isSystem: true,
-                                              isFlagged: false,
-                                              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                            }
-                                          ]);
-                                        }
+                                        setRankingType("host");
+                                        setRankingPeriod("hourly");
+                                        setRankingSearchQuery("");
+                                        setShowRankingModal(true);
                                       }}
-                                      className={`w-4 h-4 rounded-full flex items-center justify-center text-[7px] transition-all ml-1 ${
-                                        userLiveFollowed ? "bg-white/20 text-white" : "bg-white text-pink-600 hover:scale-105 shadow-md font-bold"
-                                      }`}
+                                      className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-600 hover:brightness-110 active:scale-95 text-white text-[7.5px] font-black px-2 py-1 rounded-full flex items-center space-x-1 shadow-lg border border-yellow-400/20 transition-all cursor-pointer select-none shrink-0"
+                                      title="Open Rankings"
                                     >
-                                      {userLiveFollowed ? "✓" : "+"}
+                                      <Flame className="w-2.5 h-2.5 text-yellow-300 fill-yellow-300 animate-pulse" />
+                                      <span>Ranking 🔥</span>
                                     </button>
                                   </div>
 
@@ -13526,9 +13608,11 @@ export default function App() {
                                     const isMatchEnd = userLivePkTimer <= 15;
                                     const isMyWinner = userLivePkScoreMy > userLivePkScoreOther;
                                     const isOtherWinner = userLivePkScoreOther > userLivePkScoreMy;
-                                    const totalScore = userLivePkScoreMy + userLivePkScoreOther || 1;
-                                    const myPct = (userLivePkScoreMy / totalScore) * 100;
-                                    const otherPct = (userLivePkScoreOther / totalScore) * 100;
+                                    const scoreMy = Number(userLivePkScoreMy) || 0;
+                                    const scoreOther = Number(userLivePkScoreOther) || 0;
+                                    const totalScore = scoreMy + scoreOther;
+                                    const myPct = totalScore > 0 ? (scoreMy / totalScore) * 100 : 50;
+                                    const otherPct = totalScore > 0 ? (scoreOther / totalScore) * 100 : 50;
 
                                     return (
                                       <>
@@ -13537,29 +13621,29 @@ export default function App() {
                                           <div className="absolute top-0 inset-x-0 z-20 flex flex-col bg-transparent select-none">
                                             {/* Main PK Progress Bar */}
                                             <div className="relative w-full h-5 flex items-center overflow-hidden border-y border-white/5 bg-black/40">
-                                              {/* Left Opponent bar (Blue = Host B, always Left) */}
+                                              {/* Left Broadcaster bar (Red = Host A, Main Host on Left) */}
                                               <div 
-                                                className="h-full bg-gradient-to-r from-blue-600 via-cyan-600 to-blue-500 flex items-center pl-3 transition-all duration-500 ease-out shrink-0"
-                                                style={{ width: `${otherPct}%` }}
-                                              >
-                                                <span className="text-white text-[9.5px] font-black font-mono tracking-wider drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,0.9)]">
-                                                  {userLivePkScoreOther}
-                                                </span>
-                                              </div>
-                                              
-                                              {/* Right Broadcaster bar (Red = Host A, always Right) */}
-                                              <div 
-                                                className="h-full bg-gradient-to-l from-red-600 via-rose-600 to-red-500 flex items-center justify-end pr-3 flex-1 transition-all duration-500 ease-out"
+                                                className="h-full bg-gradient-to-r from-red-600 via-rose-600 to-red-500 flex items-center pl-3 transition-all duration-500 ease-out shrink-0"
+                                                style={{ width: `${myPct}%` }}
                                               >
                                                 <span className="text-white text-[9.5px] font-black font-mono tracking-wider drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,0.9)]">
                                                   {userLivePkScoreMy}
+                                                </span>
+                                              </div>
+                                              
+                                              {/* Right Opponent bar (Blue = Host B, Opponent on Right) */}
+                                              <div 
+                                                className="h-full bg-gradient-to-l from-blue-600 via-cyan-600 to-blue-500 flex items-center justify-end pr-3 flex-1 transition-all duration-500 ease-out"
+                                              >
+                                                <span className="text-white text-[9.5px] font-black font-mono tracking-wider drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,0.9)]">
+                                                  {userLivePkScoreOther}
                                                 </span>
                                               </div>
 
                                               {/* Smooth tug-of-war battle flame indicator at split junction */}
                                               <div 
                                                 className="absolute top-0 bottom-0 z-30 transition-all duration-500 ease-out"
-                                                style={{ left: `${otherPct}%` }}
+                                                style={{ left: `${myPct}%` }}
                                               >
                                                 <div className="relative h-full -translate-x-1/2 flex items-center justify-center">
                                                   <div className="absolute w-8 h-8 bg-amber-500/30 rounded-full blur-md animate-ping"></div>
@@ -13571,16 +13655,16 @@ export default function App() {
                                             </div>
 
                                             {/* Winning Streaks as transparent overlays on top of the videos */}
-                                            {/* Host B Winning Streak (Left) */}
-                                            <div className="absolute top-7 left-2 z-20 bg-blue-950/60 backdrop-blur-sm px-1.5 py-0.5 rounded border border-blue-500/30 text-[7px] font-black text-blue-300 flex items-center space-x-0.5 shadow-md">
-                                              <span>🔥</span>
-                                              <span>1x WIN</span>
-                                            </div>
-
-                                            {/* Host A Winning Streak (Right) */}
-                                            <div className="absolute top-7 right-2 z-20 bg-red-950/60 backdrop-blur-sm px-1.5 py-0.5 rounded border border-red-500/30 text-[7px] font-black text-red-300 flex items-center space-x-0.5 shadow-md">
+                                            {/* Host A Winning Streak (Left) */}
+                                            <div className="absolute top-7 left-2 z-20 bg-red-950/60 backdrop-blur-sm px-1.5 py-0.5 rounded border border-red-500/30 text-[7px] font-black text-red-300 flex items-center space-x-0.5 shadow-md">
                                               <span>🔥</span>
                                               <span>3x WIN</span>
+                                            </div>
+
+                                            {/* Host B Winning Streak (Right) */}
+                                            <div className="absolute top-7 right-2 z-20 bg-blue-950/60 backdrop-blur-sm px-1.5 py-0.5 rounded border border-blue-500/30 text-[7px] font-black text-blue-300 flex items-center space-x-0.5 shadow-md">
+                                              <span>🔥</span>
+                                              <span>1x WIN</span>
                                             </div>
 
                                             {/* PK title and Timer in the center overlaying the live video */}
@@ -13604,90 +13688,8 @@ export default function App() {
 
                                         {/* BOTH HOSTS VIEWPORT SPLIT */}
                                         <div className="flex-1 w-full flex bg-black relative">
-                                          {/* Left Host: Host B (Opponent / Hamza) - ALWAYS LEFT */}
-                                          <div className="w-1/2 h-full relative border-r border-white/5 bg-[#0f1422] flex items-center justify-center">
-                                            <img
-                                              src={userLiveCoHost?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80"}
-                                              className="w-full h-full object-cover opacity-90"
-                                              alt="Opponent portrait"
-                                              referrerPolicy="no-referrer"
-                                            />
-
-                                            {/* Host B Supporters Row -> LEFT */}
-                                            <div className="absolute bottom-11 left-2 z-10 flex items-center space-x-1.5 select-none bg-transparent">
-                                              {[
-                                                { id: "sup-b1", name: "Ali", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=40&h=40&q=80" },
-                                                { id: "sup-b2", name: "Arooj", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=40&h=40&q=80" },
-                                                { id: "sup-b3", name: "Sehr", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=40&h=40&q=80" }
-                                              ].map((sup, idx) => {
-                                                const isMVP = isMatchEnd && isOtherWinner && idx === 0;
-                                                return (
-                                                  <div key={sup.id} className="relative bg-transparent">
-                                                    {isMVP && (
-                                                      <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[10px] animate-bounce z-20">👑</span>
-                                                    )}
-                                                    <img 
-                                                      src={sup.avatar} 
-                                                      className={`w-6 h-6 rounded-full object-cover shadow-md bg-black/40 ${isMVP ? 'border-2 border-yellow-400' : 'border border-white/20'}`} 
-                                                      alt={sup.name} 
-                                                    />
-                                                    {isMVP && (
-                                                      <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-[5.5px] text-yellow-400 font-extrabold font-mono tracking-wide bg-black/80 px-1 rounded border border-yellow-400/30 text-center select-none scale-90 z-20 shadow">
-                                                        MVP
-                                                      </span>
-                                                    )}
-                                                  </div>
-                                                );
-                                              })}
-                                            </div>
-
-                                            {/* Left label overlay inside camera */}
-                                            <div className="absolute bottom-4 left-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 flex items-center space-x-1 z-10 select-none">
-                                              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shrink-0"></span>
-                                              <span className="text-[7.5px] font-black text-white">{userLiveCoHost?.username || "Hamza"}</span>
-                                              <span className="text-[6.5px] text-cyan-400 font-bold font-mono">💎 {userLivePkScoreOther}</span>
-                                              <button className="w-3.5 h-3.5 rounded-full bg-blue-500 text-white text-[8px] flex items-center justify-center shadow hover:scale-115 active:scale-90 ml-0.5 cursor-pointer">+</button>
-                                            </div>
-
-                                            {/* WIN/LOSS Overlay Animations for Host B */}
-                                            {isMatchEnd && (
-                                              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none select-none overflow-hidden animate-fade-in">
-                                                {isOtherWinner ? (
-                                                  <div className="absolute inset-0 bg-gradient-to-b from-yellow-500/10 via-emerald-500/10 to-transparent flex flex-col items-center justify-center p-4">
-                                                    <div className="bg-emerald-600/90 text-white font-black text-xs px-3 py-1 rounded-full border border-emerald-400/40 shadow-lg flex items-center space-x-1.5 animate-bounce">
-                                                      <span>🎉 WIN 🎉</span>
-                                                    </div>
-                                                    <div className="flex space-x-1 mt-2 text-base">
-                                                      <span className="animate-pulse delay-75">✨</span>
-                                                      <span className="animate-bounce">🥳</span>
-                                                      <span className="animate-pulse delay-150">🎉</span>
-                                                      <span className="animate-bounce delay-100">🏆</span>
-                                                    </div>
-                                                  </div>
-                                                ) : isMyWinner ? (
-                                                  <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-red-950/15 to-transparent flex flex-col items-center justify-center p-4">
-                                                    <div className="bg-gray-800/90 text-gray-300 font-black text-xs px-3 py-1 rounded-full border border-gray-600/40 shadow-lg flex items-center space-x-1.5 animate-pulse">
-                                                      <span>😢 LOSS 😢</span>
-                                                    </div>
-                                                    <div className="flex space-x-1 mt-2 text-base grayscale">
-                                                      <span className="animate-pulse">😭</span>
-                                                      <span className="animate-bounce">💔</span>
-                                                      <span className="animate-pulse">🤧</span>
-                                                    </div>
-                                                  </div>
-                                                ) : (
-                                                  <div className="absolute inset-0 bg-black/20 flex flex-col items-center justify-center p-4">
-                                                    <div className="bg-gray-600/90 text-white font-black text-xs px-3 py-1 rounded-full border border-gray-400/40 shadow-lg flex items-center space-x-1 animate-pulse">
-                                                      <span>🤝 DRAW 🤝</span>
-                                                    </div>
-                                                  </div>
-                                                )}
-                                              </div>
-                                            )}
-                                          </div>
-
-                                          {/* Right Host: Host A (Broadcaster/You) - ALWAYS RIGHT */}
-                                          <div className="w-1/2 h-full relative bg-[#171324] flex items-center justify-center">
+                                          {/* Left Host: Main Host (Host A / Broadcaster / You) - NOW LEFT */}
+                                          <div className="w-1/2 h-full relative border-r border-white/5 bg-[#171324] flex items-center justify-center">
                                             {userLiveCam ? (
                                               <img
                                                 src={USER_LIVE_BG_IMAGES[userLiveBgIndex]}
@@ -13706,8 +13708,8 @@ export default function App() {
                                               </div>
                                             )}
 
-                                            {/* Host A Supporters Row -> RIGHT */}
-                                            <div className="absolute bottom-11 right-2 z-10 flex items-center space-x-1.5 select-none bg-transparent">
+                                            {/* Host A Supporters Row -> LEFT */}
+                                            <div className="absolute bottom-11 left-2 z-10 flex items-center space-x-1.5 select-none bg-transparent">
                                               {[
                                                 { id: "sup-a1", name: "Gifter1", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=40&h=40&q=80" },
                                                 { id: "sup-a2", name: "Gifter2", avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=40&h=40&q=80" },
@@ -13734,8 +13736,8 @@ export default function App() {
                                               })}
                                             </div>
 
-                                            {/* Right label overlay inside camera */}
-                                            <div className="absolute bottom-4 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 flex items-center space-x-1 z-10 select-none">
+                                            {/* Left label overlay inside camera */}
+                                            <div className="absolute bottom-4 left-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 flex items-center space-x-1 z-10 select-none">
                                               <span className="w-1.5 h-1.5 bg-pink-500 rounded-full animate-ping shrink-0"></span>
                                               <span className="text-[7.5px] font-black text-white">Hoorain</span>
                                               <span className="text-[6.5px] text-yellow-400 font-bold font-mono">💎 {userLivePkScoreMy}</span>
@@ -13757,6 +13759,88 @@ export default function App() {
                                                     </div>
                                                   </div>
                                                 ) : isOtherWinner ? (
+                                                  <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-red-950/15 to-transparent flex flex-col items-center justify-center p-4">
+                                                    <div className="bg-gray-800/90 text-gray-300 font-black text-xs px-3 py-1 rounded-full border border-gray-600/40 shadow-lg flex items-center space-x-1.5 animate-pulse">
+                                                      <span>😢 LOSS 😢</span>
+                                                    </div>
+                                                    <div className="flex space-x-1 mt-2 text-base grayscale">
+                                                      <span className="animate-pulse">😭</span>
+                                                      <span className="animate-bounce">💔</span>
+                                                      <span className="animate-pulse">🤧</span>
+                                                    </div>
+                                                  </div>
+                                                ) : (
+                                                  <div className="absolute inset-0 bg-black/20 flex flex-col items-center justify-center p-4">
+                                                    <div className="bg-gray-600/90 text-white font-black text-xs px-3 py-1 rounded-full border border-gray-400/40 shadow-lg flex items-center space-x-1 animate-pulse">
+                                                      <span>🤝 DRAW 🤝</span>
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+
+                                          {/* Right Host: Opponent Host (Host B / Hamza / Co-host) - NOW RIGHT */}
+                                          <div className="w-1/2 h-full relative bg-[#0f1422] flex items-center justify-center">
+                                            <img
+                                              src={userLiveCoHost?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80"}
+                                              className="w-full h-full object-cover opacity-90"
+                                              alt="Opponent portrait"
+                                              referrerPolicy="no-referrer"
+                                            />
+
+                                            {/* Host B Supporters Row -> RIGHT */}
+                                            <div className="absolute bottom-11 right-2 z-10 flex items-center space-x-1.5 select-none bg-transparent">
+                                              {[
+                                                { id: "sup-b1", name: "Ali", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=40&h=40&q=80" },
+                                                { id: "sup-b2", name: "Arooj", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=40&h=40&q=80" },
+                                                { id: "sup-b3", name: "Sehr", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=40&h=40&q=80" }
+                                              ].map((sup, idx) => {
+                                                const isMVP = isMatchEnd && isOtherWinner && idx === 0;
+                                                return (
+                                                  <div key={sup.id} className="relative bg-transparent">
+                                                    {isMVP && (
+                                                      <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[10px] animate-bounce z-20">👑</span>
+                                                    )}
+                                                    <img 
+                                                      src={sup.avatar} 
+                                                      className={`w-6 h-6 rounded-full object-cover shadow-md bg-black/40 ${isMVP ? 'border-2 border-yellow-400' : 'border border-white/20'}`} 
+                                                      alt={sup.name} 
+                                                    />
+                                                    {isMVP && (
+                                                      <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-[5.5px] text-yellow-400 font-extrabold font-mono tracking-wide bg-black/80 px-1 rounded border border-yellow-400/30 text-center select-none scale-90 z-20 shadow">
+                                                        MVP
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+
+                                            {/* Right label overlay inside camera */}
+                                            <div className="absolute bottom-4 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 flex items-center space-x-1 z-10 select-none">
+                                              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shrink-0"></span>
+                                              <span className="text-[7.5px] font-black text-white">{userLiveCoHost?.username || "Hamza"}</span>
+                                              <span className="text-[6.5px] text-cyan-400 font-bold font-mono">💎 {userLivePkScoreOther}</span>
+                                              <button className="w-3.5 h-3.5 rounded-full bg-blue-500 text-white text-[8px] flex items-center justify-center shadow hover:scale-115 active:scale-90 ml-0.5 cursor-pointer">+</button>
+                                            </div>
+
+                                            {/* WIN/LOSS Overlay Animations for Host B */}
+                                            {isMatchEnd && (
+                                              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none select-none overflow-hidden animate-fade-in">
+                                                {isOtherWinner ? (
+                                                  <div className="absolute inset-0 bg-gradient-to-b from-yellow-500/10 via-emerald-500/10 to-transparent flex flex-col items-center justify-center p-4">
+                                                    <div className="bg-emerald-600/90 text-white font-black text-xs px-3 py-1 rounded-full border border-emerald-400/40 shadow-lg flex items-center space-x-1.5 animate-bounce">
+                                                      <span>🎉 WIN 🎉</span>
+                                                    </div>
+                                                    <div className="flex space-x-1 mt-2 text-base">
+                                                      <span className="animate-pulse delay-75">✨</span>
+                                                      <span className="animate-bounce">🥳</span>
+                                                      <span className="animate-pulse delay-150">🎉</span>
+                                                      <span className="animate-bounce delay-100">🏆</span>
+                                                    </div>
+                                                  </div>
+                                                ) : isMyWinner ? (
                                                   <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-red-950/15 to-transparent flex flex-col items-center justify-center p-4">
                                                     <div className="bg-gray-800/90 text-gray-300 font-black text-xs px-3 py-1 rounded-full border border-gray-600/40 shadow-lg flex items-center space-x-1.5 animate-pulse">
                                                       <span>😢 LOSS 😢</span>
@@ -14203,6 +14287,21 @@ export default function App() {
                                 </span>
                               </div>
 
+                              {/* Ranking 🔥 Button in Solo Live sub-header area */}
+                              <button
+                                onClick={() => {
+                                  setRankingType("host");
+                                  setRankingPeriod("hourly");
+                                  setRankingSearchQuery("");
+                                  setShowRankingModal(true);
+                                }}
+                                className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-600 hover:brightness-110 active:scale-95 text-white text-[7.5px] font-black px-2 py-0.5 rounded-full flex items-center space-x-1 shadow-lg border border-yellow-400/20 transition-all cursor-pointer select-none"
+                                title="Open Rankings"
+                              >
+                                <Flame className="w-2.5 h-2.5 text-yellow-300 fill-yellow-300 animate-pulse" />
+                                <span>Ranking 🔥</span>
+                              </button>
+
                               <button
                                 onClick={() => setUserLiveShowFanClubModal(true)}
                                 className="text-[7.5px] font-black text-pink-400 hover:text-pink-300 flex items-center space-x-1 uppercase tracking-wider font-mono bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/5"
@@ -14250,8 +14349,10 @@ export default function App() {
 
                             {/* PK SCORE BARS (If PK Active) */}
                             {userLivePkActive && (() => {
-                              const totalScore = userLivePkScoreMy + userLivePkScoreOther || 1;
-                              const myPct = (userLivePkScoreMy / totalScore) * 100;
+                              const scoreMy = Number(userLivePkScoreMy) || 0;
+                              const scoreOther = Number(userLivePkScoreOther) || 0;
+                              const totalScore = scoreMy + scoreOther;
+                              const myPct = totalScore > 0 ? (scoreMy / totalScore) * 100 : 50;
                               return (
                                 <div className="absolute top-24 left-0 right-0 z-20 flex flex-col bg-black/60 py-1.5 border-b border-white/5 backdrop-blur-sm select-none animate-fade-in">
                                   {/* Main PK Progress Bar */}
@@ -18147,25 +18248,25 @@ export default function App() {
                               <div className="grid grid-cols-3 gap-1 text-center">
                                 <div className="bg-[#12121a] p-1.5 rounded-lg border border-[#303040]">
                                   <span className="text-[10px] font-black text-white font-mono block">
-                                    {showActiveChatProfileModal.followersCount >= 1000000 
-                                      ? `${(showActiveChatProfileModal.followersCount / 1000000).toFixed(1)}M` 
-                                      : showActiveChatProfileModal.followersCount >= 1000 
-                                        ? `${(showActiveChatProfileModal.followersCount / 1000).toFixed(0)}k` 
-                                        : showActiveChatProfileModal.followersCount}
+                                    {(Number(showActiveChatProfileModal.followersCount) || 0) >= 1000000 
+                                      ? `${((Number(showActiveChatProfileModal.followersCount) || 0) / 1000000).toFixed(1)}M` 
+                                      : (Number(showActiveChatProfileModal.followersCount) || 0) >= 1000 
+                                        ? `${((Number(showActiveChatProfileModal.followersCount) || 0) / 1000).toFixed(0)}k` 
+                                        : (Number(showActiveChatProfileModal.followersCount) || 0)}
                                   </span>
                                   <span className="text-[7px] text-gray-400 font-mono block">Followers</span>
                                 </div>
                                 <div className="bg-[#12121a] p-1.5 rounded-lg border border-[#303040]">
-                                  <span className="text-[10px] font-black text-white font-mono block">{showActiveChatProfileModal.followingCount}</span>
+                                  <span className="text-[10px] font-black text-white font-mono block">{Number(showActiveChatProfileModal.followingCount) || 0}</span>
                                   <span className="text-[7px] text-gray-400 font-mono block">Following</span>
                                 </div>
                                 <div className="bg-[#12121a] p-1.5 rounded-lg border border-[#303040]">
                                   <span className="text-[10px] font-black text-white font-mono block">
-                                    {showActiveChatProfileModal.totalLikesCount >= 1000000 
-                                      ? `${(showActiveChatProfileModal.totalLikesCount / 1000000).toFixed(1)}M` 
-                                      : showActiveChatProfileModal.totalLikesCount >= 1000 
-                                        ? `${(showActiveChatProfileModal.totalLikesCount / 1000).toFixed(0)}k` 
-                                        : showActiveChatProfileModal.totalLikesCount}
+                                    {(Number(showActiveChatProfileModal.totalLikesCount) || 0) >= 1000000 
+                                      ? `${((Number(showActiveChatProfileModal.totalLikesCount) || 0) / 1000000).toFixed(1)}M` 
+                                      : (Number(showActiveChatProfileModal.totalLikesCount) || 0) >= 1000 
+                                        ? `${((Number(showActiveChatProfileModal.totalLikesCount) || 0) / 1000).toFixed(0)}k` 
+                                        : (Number(showActiveChatProfileModal.totalLikesCount) || 0)}
                                   </span>
                                   <span className="text-[7px] text-gray-400 font-mono block">Likes</span>
                                 </div>

@@ -148,7 +148,8 @@ export const LEVEL_TIERS: LevelTier[] = [
 ];
 
 export function getLevelTier(level: number): LevelTier {
-  const rounded = Math.min(Math.max(level, 1), 100);
+  const safeLevel = Number.isNaN(Number(level)) ? 1 : Math.max(1, Math.floor(Number(level) || 1));
+  const rounded = Math.min(safeLevel, 100);
   const tier = LEVEL_TIERS.find(t => rounded >= t.minLevel && rounded <= t.maxLevel);
   return tier || LEVEL_TIERS[0];
 }
@@ -157,10 +158,12 @@ export function getLevelTier(level: number): LevelTier {
  * Calculates coins needed to level up based on settings
  */
 export function getCoinsForLevel(
-  level: number,
-  baseCoins: number = 1000,
+  levelInput: number,
+  baseCoinsInput: number = 1000,
   formula: "flat" | "progressive" = "progressive"
 ): number {
+  const level = Number.isNaN(Number(levelInput)) ? 1 : Math.max(1, Math.floor(Number(levelInput) || 1));
+  const baseCoins = Number.isNaN(Number(baseCoinsInput)) ? 1000 : Math.max(1, Number(baseCoinsInput) || 1000);
   if (level <= 1) return 0;
   
   if (formula === "flat") {
@@ -180,8 +183,8 @@ export function getCoinsForLevel(
  * Returns level and progression details based on total accumulated coins
  */
 export function getProgressionFromCoins(
-  coins: number,
-  baseCoins: number = 1000,
+  coinsInput: number,
+  baseCoinsInput: number = 1000,
   formula: "flat" | "progressive" = "progressive"
 ): {
   level: number;
@@ -190,6 +193,8 @@ export function getProgressionFromCoins(
   percent: number;
   coinsNeeded: number;
 } {
+  const coins = Number.isNaN(Number(coinsInput)) ? 0 : Math.max(0, Number(coinsInput) || 0);
+  const baseCoins = Number.isNaN(Number(baseCoinsInput)) ? 1000 : Math.max(1, Number(baseCoinsInput) || 1000);
   let level = 1;
   while (level < 100) {
     const nextLvlCoins = getCoinsForLevel(level + 1, baseCoins, formula);
@@ -207,14 +212,16 @@ export function getProgressionFromCoins(
   const earnedInThisLevel = coins - thisLevelStartCoins;
   
   let percent = range > 0 ? (earnedInThisLevel / range) * 100 : 100;
+  if (Number.isNaN(percent)) percent = 0;
   percent = Math.min(Math.max(percent, 0), 100);
 
-  const coinsNeeded = level >= 100 ? 0 : nextLevelStartCoins - coins;
+  let coinsNeeded = level >= 100 ? 0 : nextLevelStartCoins - coins;
+  if (Number.isNaN(coinsNeeded)) coinsNeeded = 0;
 
   return {
     level,
-    currentLevelCoins: earnedInThisLevel,
-    nextLevelCoins: range,
+    currentLevelCoins: Number.isNaN(earnedInThisLevel) ? 0 : earnedInThisLevel,
+    nextLevelCoins: Number.isNaN(range) ? 1000 : range,
     percent,
     coinsNeeded
   };
@@ -228,7 +235,8 @@ export const LevelBadgeSvg: React.FC<{
   size?: "sm" | "md" | "lg" | "xl";
   className?: string;
   onClick?: () => void;
-}> = ({ level, size = "md", className = "", onClick }) => {
+}> = ({ level: rawLevel, size = "md", className = "", onClick }) => {
+  const level = Number.isNaN(Number(rawLevel)) ? 1 : Math.max(1, Math.floor(Number(rawLevel) || 1));
   const tier = getLevelTier(level);
   
   let width = "48px";

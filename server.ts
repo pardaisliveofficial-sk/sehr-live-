@@ -626,8 +626,117 @@ app.post("/api/v1/user", authenticateUser, (req: any, res) => {
 });
 
 // Gift list CRUD endpoints
+const DEFAULT_ADVANCED_GIFTS_SERVER = [
+  { id: "g-rose", name: "Red Rose", cost: 10, type: "2d", icon: "🌹", color: "from-pink-500 to-rose-600", animationClass: "animate-bounce", category: "Popular", description: "A fresh beautiful red rose of deep admiration.", animationFile: "🌹", animationFormat: "svg", animationDuration: 5, animationDisplayType: "small", comboSupported: true, status: "active", featured: true, priority: 10 },
+  { id: "g-heart", name: "Love Heart", cost: 99, type: "2d", icon: "💖", color: "from-red-500 to-pink-500", animationClass: "animate-pulse", category: "Popular", description: "Express your warm affection.", animationFile: "💖", animationFormat: "svg", animationDuration: 5, animationDisplayType: "small", comboSupported: true, status: "active", featured: true, priority: 9 },
+  { id: "g-lucky-coin", name: "Lucky Coin", cost: 50, type: "2d", icon: "🪙", color: "from-yellow-400 to-amber-600", animationClass: "animate-bounce", category: "Lucky", description: "Send fortune!", animationFile: "🪙", animationFormat: "svg", animationDuration: 5, animationDisplayType: "small", comboSupported: true, status: "active", featured: false, priority: 8 },
+  { id: "g-crown", name: "VIP Crown", cost: 999, type: "3d", icon: "👑", color: "from-yellow-400 to-amber-600", animationClass: "animate-spin", category: "VIP", description: "Royal crown for the star.", animationFile: "👑", animationFormat: "svga", animationDuration: 10, animationDisplayType: "half", comboSupported: true, status: "active", featured: true, priority: 7 },
+  { id: "g-star-trophy", name: "Star Trophy", cost: 500, type: "3d", icon: "🏆", color: "from-yellow-300 to-amber-500", animationClass: "animate-pulse", category: "New", description: "Awarded to energetic hosts.", animationFile: "🏆", animationFormat: "svg", animationDuration: 8, animationDisplayType: "half", comboSupported: true, status: "active", featured: false, priority: 6 },
+  { id: "g-car", name: "Sports Car", cost: 4999, type: "luxury", icon: "🏎️", color: "from-blue-500 to-indigo-600", animationClass: "animate-bounce", category: "Luxury", description: "Rev your engine!", animationFile: "🏎️", animationFormat: "webm", animationDuration: 10, animationDisplayType: "full", comboSupported: false, status: "active", featured: true, priority: 4 },
+  { id: "g-rocket", name: "Space Rocket", cost: 9999, type: "luxury", icon: "🚀", color: "from-purple-600 to-pink-600", animationClass: "animate-pulse", category: "Premium", description: "Blast off into the cosmos!", animationFile: "🚀", animationFormat: "webm", animationDuration: 15, animationDisplayType: "full", comboSupported: false, status: "active", featured: true, priority: 3 },
+  { id: "g-dragon", name: "Golden Dragon", cost: 29999, type: "luxury", icon: "🐉", color: "from-amber-500 to-red-600", animationClass: "animate-bounce", category: "Luxury", description: "Screaming golden fire storm!", animationFile: "🐉", animationFormat: "svga", animationDuration: 30, animationDisplayType: "ultra", comboSupported: false, status: "active", featured: true, priority: 2 }
+];
+
 app.get("/api/v1/gifts", (req, res) => {
+  if (!dbData.gifts || dbData.gifts.length === 0) {
+    dbData.gifts = DEFAULT_ADVANCED_GIFTS_SERVER;
+  }
   res.json(dbData.gifts);
+});
+
+app.post("/api/v1/gifts/send", authenticateUser, (req, res) => {
+  const { requestId, giftId, count = 1, recipient = "Host", targetHostSide } = req.body;
+  if (!giftId) {
+    return res.status(400).json({ error: "giftId is required" });
+  }
+
+  if (requestId && dbData.processedGiftRequests && dbData.processedGiftRequests[requestId]) {
+    return res.json(dbData.processedGiftRequests[requestId]);
+  }
+
+  if (!dbData.gifts || dbData.gifts.length === 0) {
+    dbData.gifts = DEFAULT_ADVANCED_GIFTS_SERVER;
+  }
+
+  let gift = dbData.gifts.find((g: any) => g.id === giftId);
+  if (!gift) {
+    gift = DEFAULT_ADVANCED_GIFTS_SERVER.find((g: any) => g.id === giftId);
+  }
+  if (!gift) {
+    return res.status(404).json({ error: "Gift not found" });
+  }
+
+  if (gift.status === "inactive") {
+    return res.status(400).json({ error: "This gift is currently inactive." });
+  }
+
+  const giftCost = Number(gift.cost) || 0;
+  const giftCount = Math.max(1, Number(count) || 1);
+  const totalCost = giftCost * giftCount;
+
+  const user = (req as any).user || dbData.user;
+  const userCoins = Number(user.coins) || 0;
+
+  if (userCoins < totalCost) {
+    return res.status(400).json({ error: `Insufficient balance. Required: ${totalCost} coins, Available: ${userCoins} coins.` });
+  }
+
+  user.coins = userCoins - totalCost;
+  user.xp = (user.xp || 0) + Math.floor(totalCost * 0.2);
+
+  const hostEarnings = Math.floor(totalCost * 0.5);
+  const companyShare = totalCost - hostEarnings;
+
+  if (!dbData.platformMetrics) {
+    dbData.platformMetrics = { totalGiftCoins: 0, companyRevenue: 0, hostDiamondsDistributed: 0 };
+  }
+  dbData.platformMetrics.totalGiftCoins = (dbData.platformMetrics.totalGiftCoins || 0) + totalCost;
+  dbData.platformMetrics.companyRevenue = (dbData.platformMetrics.companyRevenue || 0) + companyShare;
+  dbData.platformMetrics.hostDiamondsDistributed = (dbData.platformMetrics.hostDiamondsDistributed || 0) + hostEarnings;
+
+  const txId = requestId || `TX-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const txLog = {
+    id: txId,
+    type: "gift_sent",
+    amount: totalCost,
+    currency: "coins",
+    hostEarnings,
+    companyShare,
+    sender: user.username,
+    recipient,
+    giftName: gift.name,
+    giftIcon: gift.icon,
+    count: giftCount,
+    targetHostSide: targetHostSide || "hostA",
+    timestamp: new Date().toISOString(),
+    status: "Completed"
+  };
+
+  if (!dbData.transactions) dbData.transactions = [];
+  dbData.transactions.unshift(txLog);
+
+  const responseData = {
+    success: true,
+    transactionId: txId,
+    gift,
+    count: giftCount,
+    totalCoinsSpent: totalCost,
+    remainingCoins: user.coins,
+    hostEarnings,
+    companyShare,
+    recipient,
+    pkScoreAdded: totalCost,
+    timestamp: txLog.timestamp
+  };
+
+  if (!dbData.processedGiftRequests) dbData.processedGiftRequests = {};
+  if (requestId) {
+    dbData.processedGiftRequests[requestId] = responseData;
+  }
+
+  saveDatabase();
+
+  return res.json(responseData);
 });
 
 app.post("/api/v1/gifts", (req, res) => {
