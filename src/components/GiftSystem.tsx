@@ -730,7 +730,7 @@ export const ViewerGiftBox: React.FC<ViewerGiftBoxProps> = ({
             const isFav = favoriteGifts.includes(gift.id);
             const isSelected = selectedGift?.id === gift.id;
             return (
-              <button
+              <div
                 key={gift.id}
                 onClick={() => {
                   setSelectedGift(gift);
@@ -745,6 +745,7 @@ export const ViewerGiftBox: React.FC<ViewerGiftBoxProps> = ({
               >
                 {/* Favorite & Combo badges */}
                 <button
+                  type="button"
                   onClick={(e) => toggleFavorite(gift.id, e)}
                   className="absolute top-1 left-1.5 z-10 p-0.5 rounded text-gray-400 hover:text-yellow-400 transition-colors"
                 >
@@ -776,7 +777,7 @@ export const ViewerGiftBox: React.FC<ViewerGiftBoxProps> = ({
                 <span className="text-[6.5px] text-yellow-400 font-bold font-mono">
                   {gift.cost} Coins
                 </span>
-              </button>
+              </div>
             );
           })
         )}

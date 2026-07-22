@@ -3250,7 +3250,20 @@ export default function App() {
   const [userLivePkActive, setUserLivePkActive] = useState<boolean>(false);
   const [userLivePkConnected, setUserLivePkConnected] = useState<boolean>(false);
   const [userLivePkInvitePanelOpen, setUserLivePkInvitePanelOpen] = useState<boolean>(false);
-  const [userLiveCoHost, setUserLiveCoHost] = useState<{ username: string; avatar: string; fans: string; level: number } | null>(null);
+  const [userLiveCoHost, setUserLiveCoHost] = useState<{ username: string; avatar: string; fans: string; level: number; isCamOff?: boolean } | null>(null);
+  const [userLiveAvailableHosts, setUserLiveAvailableHosts] = useState<Array<{
+    id: string;
+    userId: string;
+    username: string;
+    avatar: string;
+    level: number;
+    fans: string;
+    isLive: boolean;
+    inPk: boolean;
+    status: string;
+  }>>([]);
+  const [userLivePkChannelName, setUserLivePkChannelName] = useState<string>("");
+  const [incoming1v1Invite, setIncoming1v1Invite] = useState<any>(null);
   const [userLivePkTimer, setUserLivePkTimer] = useState<number>(272); // 4 minutes 32 seconds like reference
   const [userLivePkScoreMy, setUserLivePkScoreMy] = useState<number>(12560); // 12560 from reference image
   const [userLivePkScoreOther, setUserLivePkScoreOther] = useState<number>(9820); // 9820 from reference image
@@ -3259,20 +3272,46 @@ export default function App() {
   const [userLiveInviteSearchQuery, setUserLiveInviteSearchQuery] = useState<string>("");
   const [userLiveShowIncomingPkRequest, setUserLiveShowIncomingPkRequest] = useState<boolean>(false);
   const [userLiveShowOutgoingPkRequest, setUserLiveShowOutgoingPkRequest] = useState<boolean>(false);
-  const [userLiveGiftToasts, setUserLiveGiftToasts] = useState<Array<{ id: string; username: string; giftName: string; giftIcon: string; count: number; avatar: string }>>([
-    { id: "ul-init-toast-1", username: "Shahzaib", giftName: "Rose", giftIcon: "🌹", count: 10, avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80" },
-    { id: "ul-init-toast-2", username: "Awais Khan", giftName: "Lion", giftIcon: "🦁", count: 1, avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80" }
-  ]);
+  const [userLiveGiftToasts, setUserLiveGiftToasts] = useState<Array<{ id: string; username: string; giftName: string; giftIcon: string; count: number; avatar: string }>>([]);
   const [liveRoomTopGifters, setLiveRoomTopGifters] = useState<Array<{
     id: string;
     username: string;
     avatar: string;
     coinsContributed: number;
-  }>>([
-    { id: "g1", username: "Shahzaib", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80", coinsContributed: 3500 },
-    { id: "g2", username: "Awais Khan", avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80", coinsContributed: 2100 },
-    { id: "g3", username: "Zara", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80", coinsContributed: 1200 }
-  ]);
+  }>>([]);
+  const [pkHostASupporters, setPkHostASupporters] = useState<Array<{
+    id: string;
+    username: string;
+    avatar: string;
+    coinsContributed: number;
+  }>>([]);
+  const [pkHostBSupporters, setPkHostBSupporters] = useState<Array<{
+    id: string;
+    username: string;
+    avatar: string;
+    coinsContributed: number;
+  }>>([]);
+
+  // Sync real production supporters from backend gift transactions
+  useEffect(() => {
+    const fetchSupporters = async () => {
+      try {
+        const res = await fetch("/api/v1/gifts/supporters");
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.topGifters)) setLiveRoomTopGifters(data.topGifters);
+          if (Array.isArray(data.hostASupporters)) setPkHostASupporters(data.hostASupporters);
+          if (Array.isArray(data.hostBSupporters)) setPkHostBSupporters(data.hostBSupporters);
+        }
+      } catch (err) {
+        console.error("Error fetching supporters:", err);
+      }
+    };
+
+    fetchSupporters();
+    const interval = setInterval(fetchSupporters, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   const liveBroadcasterName = clientView === "user-live" ? user.username : (activeHost?.name || "Broadcaster");
   const liveBroadcasterAvatar = clientView === "user-live" ? user.avatar : (activeHost?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80");
@@ -3324,15 +3363,135 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [userLiveInviteCountdown]);
 
-  // Simulate opponent (Host B) challenging User to PK after 15s in 1v1 split screen
+  // Real-time presence heartbeat (runs every 3.5s while app is open)
   useEffect(() => {
-    if (userLivePkConnected && !userLivePkActive && !userLiveShowIncomingPkRequest && !userLiveShowOutgoingPkRequest) {
-      const timer = setTimeout(() => {
-        setUserLiveShowIncomingPkRequest(true);
-      }, 15000);
-      return () => clearTimeout(timer);
-    }
-  }, [userLivePkConnected, userLivePkActive, userLiveShowIncomingPkRequest, userLiveShowOutgoingPkRequest]);
+    if (!user?.username) return;
+    const sendPresence = async () => {
+      try {
+        await fetch("/api/v1/presence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: user.username,
+            userId: user.uid || user.username,
+            avatar: user.avatar,
+            level: user.userLevel || 1,
+            fans: user.fans || "12K fans",
+            isLive: clientView === "user-live" || clientView === "live-room",
+            inPk: userLivePkConnected || userLivePkActive
+          })
+        });
+      } catch (e) {
+        // ignore network error
+      }
+    };
+
+    sendPresence();
+    const interval = setInterval(sendPresence, 3500);
+    return () => clearInterval(interval);
+  }, [user.username, user.uid, user.avatar, user.userLevel, user.fans, clientView, userLivePkConnected, userLivePkActive]);
+
+  // Real-time Available Hosts Polling (runs when invite drawer is open)
+  useEffect(() => {
+    if (!userLivePkInvitePanelOpen || !user?.username) return;
+
+    const fetchAvailableHosts = async () => {
+      try {
+        const res = await fetch(`/api/v1/pk/available-hosts?username=${encodeURIComponent(user.username)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setUserLiveAvailableHosts(data || []);
+        }
+      } catch (e) {
+        console.error("Error fetching available hosts:", e);
+      }
+    };
+
+    fetchAvailableHosts();
+    const interval = setInterval(fetchAvailableHosts, 2000);
+    return () => clearInterval(interval);
+  }, [userLivePkInvitePanelOpen, user.username]);
+
+  // Real-time Invites & Active Session Sync (runs continuously)
+  useEffect(() => {
+    if (!user?.username) return;
+
+    const checkInvitesAndSession = async () => {
+      try {
+        const res = await fetch(`/api/v1/pk/invites?username=${encodeURIComponent(user.username)}`);
+        if (res.ok) {
+          const data = await res.json();
+
+          // 1. Check Incoming 1v1 Invites
+          if (data.incoming && data.incoming.status === "pending") {
+            setIncoming1v1Invite(data.incoming);
+            setUserLiveShowIncomingPkRequest(true);
+          } else if (!data.incoming && incoming1v1Invite) {
+            setIncoming1v1Invite(null);
+            setUserLiveShowIncomingPkRequest(false);
+          }
+
+          // 2. Check Outgoing Invite status
+          if (data.outgoing) {
+            if (data.outgoing.status === "accepted" && userLiveInvitedHostId) {
+              // Outgoing invite accepted!
+              setUserLiveInvitedHostId(null);
+              setUserLiveInviteCountdown(null);
+              setUserLivePkInvitePanelOpen(false);
+              setUserLiveShowOutgoingPkRequest(false);
+
+              // Connect to session
+              const sess = data.activeSession;
+              if (sess) {
+                const otherHost = sess.hostA.username.toLowerCase() === user.username.toLowerCase() ? sess.hostB : sess.hostA;
+                setUserLiveCoHost({
+                  username: otherHost.username,
+                  avatar: otherHost.avatar,
+                  level: otherHost.level || 1,
+                  fans: otherHost.fans || "10K fans"
+                });
+                setUserLivePkConnected(true);
+                setUserLivePkChannelName(sess.channelName);
+              }
+            } else if (data.outgoing.status === "rejected" && userLiveInvitedHostId) {
+              alert(`❌ @${userLiveInvitedHostId} rejected your invitation.`);
+              setUserLiveInvitedHostId(null);
+              setUserLiveInviteCountdown(null);
+              setUserLiveShowOutgoingPkRequest(false);
+            }
+          }
+
+          // 3. Active Session Sync
+          if (data.activeSession && data.activeSession.status === "connected") {
+            const sess = data.activeSession;
+            const otherHost = sess.hostA.username.toLowerCase() === user.username.toLowerCase() ? sess.hostB : sess.hostA;
+            if (!userLivePkConnected || userLiveCoHost?.username !== otherHost.username) {
+              setUserLiveCoHost({
+                username: otherHost.username,
+                avatar: otherHost.avatar,
+                level: otherHost.level || 1,
+                fans: otherHost.fans || "10K fans"
+              });
+              setUserLivePkConnected(true);
+              setUserLivePkChannelName(sess.channelName);
+            }
+          } else if (!data.activeSession && userLivePkConnected) {
+            // Session ended on backend
+            setUserLivePkConnected(false);
+            setUserLivePkActive(false);
+            setUserLiveCoHost(null);
+            setUserLivePkChannelName("");
+          }
+        }
+      } catch (e) {
+        // ignore network error
+      }
+    };
+
+    checkInvitesAndSession();
+    const interval = setInterval(checkInvitesAndSession, 1800);
+    return () => clearInterval(interval);
+  }, [user.username, userLiveInvitedHostId, userLivePkConnected, userLiveCoHost, incoming1v1Invite]);
 
   // HTML references for auto-scrolling
   const chatEndRef = useRef<HTMLDivElement | null>(null);
@@ -3833,14 +3992,10 @@ export default function App() {
     };
   }, [clientView, userLiveActiveTrack, liveRoomActiveTrack]);
 
-  // 🎵 Viewer Live Room Background Music sync effect
+  // 🎵 Viewer Live Room Background Music sync effect (Only if Host is actually playing music)
   useEffect(() => {
-    if (clientView === "live-room" && activeHost && activeHost.isLive) {
-      // Pick a deterministic track based on activeHost name
-      const hostName = activeHost.name || "";
-      const trackIdx = Math.abs((hostName.charCodeAt(0) || 0) + hostName.length) % MOCK_TRACKS.length;
-      const hostTrack = MOCK_TRACKS[trackIdx];
-      setLiveRoomActiveTrack(hostTrack);
+    if (clientView === "live-room" && activeHost && activeHost.isLive && activeHost.musicPlaying && activeHost.activeTrack) {
+      setLiveRoomActiveTrack(activeHost.activeTrack);
       setLiveRoomMusicPlaying(true);
       setLiveRoomShowMusicToast(true);
       
@@ -9302,8 +9457,8 @@ export default function App() {
                         ) : (
                           <>
                             {/* HOST HEADER DETAILS */}
-                            <div className="absolute top-2 inset-x-2 z-30 flex items-center justify-between">
-                              <div className="flex items-center space-x-1.5 bg-black/50 backdrop-blur-md px-2 py-1 rounded-full border border-white/10">
+                            <div className="absolute top-2 left-2 right-12 z-30 flex items-center justify-between space-x-2 overflow-x-auto no-scrollbar">
+                              <div className="flex items-center space-x-1.5 bg-black/50 backdrop-blur-md px-2 py-1 rounded-full border border-white/10 shrink-0">
                                 <div className="w-6 h-6 rounded-full overflow-hidden border border-[#ff007f]">
                                   <img src={activeHost.avatar} className="w-full h-full object-cover" alt="host" />
                                 </div>
@@ -9362,7 +9517,7 @@ export default function App() {
                                 </button>
                               </div>
 
-                              <div className="flex items-center space-x-1.5">
+                              <div className="flex items-center space-x-1.5 shrink-0">
                                 {/* Simulating Moderator/Viewer Toggle */}
                                 <button
                                   onClick={() => {
@@ -9373,7 +9528,7 @@ export default function App() {
                                       : "👤 Simulating: Standard Viewer (Administrative buttons will show as locked)"
                                     );
                                   }}
-                                  className={`text-[8px] font-black px-2.5 py-1 rounded-full border transition-all cursor-pointer flex items-center space-x-1 ${
+                                  className={`text-[8px] font-black px-2 py-1 rounded-full border transition-all cursor-pointer flex items-center space-x-1 shrink-0 ${
                                     isUserModerator 
                                       ? "bg-teal-600 hover:bg-teal-500 text-white border-teal-400 animate-pulse" 
                                       : "bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700"
@@ -9383,23 +9538,12 @@ export default function App() {
                                   <span>{isUserModerator ? "🛡️ Moderator" : "👤 Viewer"}</span>
                                 </button>
 
-                                {/* Auto Guest Toggle indicator if guest mode is available */}
-                                <button
-                                  onClick={() => {
-                                    setViewerLiveGuestModeActive(true);
-                                    alert("🎙️ Loaded Host's Guest Room Mode view!");
-                                  }}
-                                  className={`${activeHost.category === 'pk' ? 'hidden' : 'bg-purple-600 hover:bg-purple-500'} text-white text-[8px] font-black px-2 py-1 rounded-full border border-white/10 animate-pulse flex items-center space-x-1`}
-                                >
-                                  <span>🎙️ Live Guest Room</span>
-                                </button>
-
                                 {/* Stream Top Gifters */}
-                                <div className="flex items-center space-x-1.5 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/5 select-none shrink-0">
+                                <div className="flex items-center space-x-1 bg-black/40 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 select-none shrink-0">
                                   {liveRoomTopGifters.map((viewer, idx) => (
                                     <div key={viewer.id || idx} className="flex flex-col items-center bg-transparent">
-                                      <img src={viewer.avatar} className="w-6 h-6 rounded-full border border-white/20 object-cover shadow" title={viewer.username} />
-                                      <span className="text-[7px] text-gray-200 font-black font-mono scale-90 mt-0.5">
+                                      <img src={viewer.avatar} className="w-5 h-5 rounded-full border border-white/20 object-cover shadow" title={viewer.username} />
+                                      <span className="text-[6.5px] text-gray-200 font-black font-mono scale-90 mt-0.5">
                                         {viewer.coinsContributed >= 1000 ? `${(viewer.coinsContributed / 1000).toFixed(1)}K` : viewer.coinsContributed}
                                       </span>
                                     </div>
@@ -9414,15 +9558,19 @@ export default function App() {
                                   <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span>
                                   <span>{viewersCount}</span>
                                 </div>
-                                <button
-                                  onClick={goBack}
-                                  className="w-6 h-6 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center border border-white/10"
-                                  title="Go Back"
-                                >
-                                  <ArrowLeft className="w-3.5 h-3.5" />
-                                </button>
                               </div>
                             </div>
+
+                            {/* ALWAYS VISIBLE VIEWER EXIT BUTTON AT TOP RIGHT */}
+                            <button
+                              onClick={() => {
+                                setClientView("live-feed");
+                              }}
+                              className="absolute top-2 right-2 z-50 w-8 h-8 rounded-full bg-black/70 hover:bg-black text-white flex items-center justify-center border border-white/30 shadow-2xl active:scale-95 transition-all cursor-pointer pointer-events-auto"
+                              title="Exit Stream"
+                            >
+                              <span className="text-sm font-black text-white">✕</span>
+                            </button>
 
                         {/* STREAM VIEWPORT: DYNAMIC BACKGROUND DEPENDING ON ROOM TYPE */}
                         <div
@@ -9437,23 +9585,25 @@ export default function App() {
                               {/* Background Real-Time WebRTC Agora Stream */}
                               <div className="absolute inset-0 z-0 overflow-hidden">
                                 <AgoraStream
-                                  channelName={`room_${activeHost.id || activeHost.username}`}
+                                  channelName={
+                                    activeHost.channelName ||
+                                    (activeHost.uniqueId ? `room_${activeHost.uniqueId}` :
+                                    (activeHost.username ? `room_${activeHost.username}` :
+                                    (activeHost.hostUsername ? `room_${activeHost.hostUsername}` :
+                                    `room_${activeHost.id || activeHost.name}`)))
+                                  }
                                   role="subscriber"
                                   hostAvatar={activeHost.avatar}
                                   hostName={activeHost.name}
                                 />
-                                <div className="absolute inset-0 bg-gradient-to-t from-[#120f21] via-[#120f21]/20 to-[#120f21]/90 pointer-events-none"></div>
                               </div>
 
                               {/* Top row overlays */}
                               <div className="w-full z-10 flex flex-col space-y-1">
                                 <div className="flex justify-between items-center bg-transparent pt-2">
-                                  <span className="bg-red-600 text-white font-mono font-black text-[7.5px] px-2 py-0.5 rounded-full uppercase tracking-widest animate-pulse border border-white/10 shadow-lg">
-                                    {activeHost.category === "pk" ? "⚔️ PK BATTLE LIVE" : "● LIVE SOLO BROADCAST"}
+                                  <span className="bg-red-600/80 backdrop-blur-md text-white font-mono font-black text-[7.5px] px-2 py-0.5 rounded-full uppercase tracking-widest border border-white/10 shadow-lg">
+                                    {activeHost.category === "pk" ? "⚔️ PK BATTLE LIVE" : "● LIVE"}
                                   </span>
-                                  <div className="bg-black/55 backdrop-blur-md border border-white/5 px-2 py-0.5 rounded-full text-[8.5px] text-yellow-400 font-bold flex items-center space-x-1 font-mono">
-                                    <span>⭐ VIP Room Host</span>
-                                  </div>
                                 </div>
 
                                 {activeHost.category === "pk" && (
@@ -9490,41 +9640,6 @@ export default function App() {
                                     </div>
                                   </div>
                                 )}
-                              </div>
-
-                              {/* Center Spotlight & crown visual */}
-                              <div className="text-center z-10 my-auto flex flex-col items-center justify-center relative animate-pop-gift">
-                                <div className="relative mb-3 flex items-center justify-center">
-                                  {/* VIP SVGA-style rotating halo effect */}
-                                  <div className="absolute w-28 h-28 rounded-full border-4 border-dashed border-[#ff007f] animate-[spin_12s_linear_infinite] opacity-50"></div>
-                                  <div className="absolute w-24 h-24 rounded-full border-2 border-yellow-400 animate-[spin_6s_linear_infinite] opacity-40"></div>
-                                  
-                                  {/* Circular Avatar of host */}
-                                  <img 
-                                    src={activeHost.avatar} 
-                                    className="w-20 h-20 rounded-full border-4 border-yellow-400 object-cover shadow-2xl relative z-10" 
-                                    alt="spotlight" 
-                                  />
-                                  
-                                  {/* VIP Host crown icon */}
-                                  <div className="absolute -top-6 z-20 animate-bounce">
-                                    <Crown className="w-9 h-9 text-yellow-400 fill-yellow-400 filter drop-shadow-[0_2px_5px_rgba(234,179,8,0.5)]" />
-                                  </div>
-                                </div>
-
-                                <h3 className="text-sm font-black text-white uppercase tracking-wider">{activeHost.name}</h3>
-                                <p className="text-[9.5px] text-gray-400 font-mono mt-0.5">Lv.30 Certified Diamond Creator</p>
-
-                                {/* Visual audio equalizer bars */}
-                                <div className="flex items-end space-x-1 h-5 mt-4">
-                                  {[...Array(12)].map((_, i) => (
-                                    <div
-                                      key={i}
-                                      style={{ animationDelay: `${i * 0.12}s`, height: `${10 + Math.random() * 15}px` }}
-                                      className="w-0.75 bg-[#ff007f] animate-[bounce_1s_infinite] rounded-full"
-                                    ></div>
-                                  ))}
-                                </div>
                               </div>
                             </div>
                           )}
@@ -9662,13 +9777,11 @@ export default function App() {
                             </div>
                           )}
 
-                        </div>
-
-                        {/* LIVE CHAT STREAM FEED */}
-                        <div className={`${activeHost.category === "pk" ? "flex-1 min-h-[160px]" : "h-48"} bg-gradient-to-b from-transparent to-black/90 px-3 overflow-y-auto space-y-1.5 z-10 flex flex-col justify-end pb-2 border-t border-white/5`}>
-                          {/* Room Comments Disable/Enable Toggle (Fully active) */}
-                          <div className="flex justify-between items-center mb-1 bg-transparent">
-                            <p className="text-[7px] text-gray-400 uppercase tracking-wider font-mono">Live Broadcast Chat</p>
+                          {/* FLOATING LIVE CHAT OVERLAY OVER VIDEO */}
+                          <div className="absolute bottom-2 left-2 z-20 w-[82%] max-h-44 overflow-y-auto space-y-1 bg-black/40 backdrop-blur-md p-2 rounded-xl border border-white/10 text-white pointer-events-auto">
+                            {/* Room Comments Disable/Enable Toggle */}
+                            <div className="flex justify-between items-center mb-1 bg-transparent">
+                              <p className="text-[7px] text-gray-300 uppercase tracking-wider font-mono font-bold">Live Chat</p>
                             <button
                               onClick={() => {
                                 if (clientView !== "user-live" && !isUserModerator) {
@@ -9848,6 +9961,7 @@ export default function App() {
                             ))}
                             <div ref={chatEndRef}></div>
                           </div>
+                        </div>
                         </div>
 
                         {/* VIEWER CONTROLS & GIFT TRIGGER INPUT */}
@@ -13594,9 +13708,13 @@ export default function App() {
                                                   }}
                                                 />
                                               ) : (
-                                                <div className="flex flex-col items-center space-y-0.5">
-                                                  <CameraOff className="w-3 h-3 text-gray-500" />
-                                                  <span className="text-[5px] text-gray-500 uppercase tracking-widest text-center font-mono">Host Cam Muted</span>
+                                                <div className="relative w-full h-full flex flex-col items-center justify-center bg-[#120e24] p-1 text-center overflow-hidden">
+                                                  <img 
+                                                    src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"}
+                                                    className="w-10 h-10 rounded-full object-cover border-2 border-pink-500/60 shadow"
+                                                    alt={user.username}
+                                                  />
+                                                  <span className="text-[6px] text-pink-300 font-bold uppercase mt-0.5">Cam Off</span>
                                                 </div>
                                               )}
                                               <div className="absolute bottom-1 left-1 bg-black/60 px-1 rounded text-[5px] font-bold text-white uppercase font-mono">Host</div>
@@ -13617,9 +13735,30 @@ export default function App() {
                                                 }}
                                               />
                                             ) : (
-                                              <div className="flex flex-col items-center space-y-1">
-                                                <CameraOff className="w-6 h-6 text-gray-500" />
-                                                <span className="text-[7.5px] text-gray-500 uppercase tracking-widest font-mono">Camera Off</span>
+                                              <div className="relative w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#181328] via-[#0d0918] to-[#181328] overflow-hidden select-none">
+                                                <img 
+                                                  src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"}
+                                                  className="absolute inset-0 w-full h-full object-cover opacity-20 blur-2xl scale-125"
+                                                  alt="blur background"
+                                                />
+                                                <div className="relative z-10 flex flex-col items-center justify-center space-y-3 p-4">
+                                                  <div className="relative">
+                                                    <img
+                                                      src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"}
+                                                      className="w-28 h-28 rounded-full object-cover border-4 border-pink-500/70 shadow-2xl"
+                                                      alt={user.username}
+                                                    />
+                                                    <div className="absolute bottom-0 right-0 bg-gray-900/90 text-pink-400 p-1.5 rounded-full border border-pink-500/40 shadow">
+                                                      <CameraOff className="w-4 h-4" />
+                                                    </div>
+                                                  </div>
+                                                  <div className="text-center space-y-1">
+                                                    <h3 className="text-sm font-black text-white uppercase tracking-wider">{user.username || "Host"}</h3>
+                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30 tracking-widest uppercase">
+                                                      📷 Camera Off
+                                                    </span>
+                                                  </div>
+                                                </div>
                                               </div>
                                             )}
                                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none"></div>
@@ -14092,19 +14231,29 @@ export default function App() {
                                                 referrerPolicy="no-referrer"
                                               />
                                             ) : (
-                                              <div className="flex flex-col items-center space-y-1">
-                                                <CameraOff className="w-5 h-5 text-gray-500" />
-                                                <span className="text-[7px] text-gray-500 uppercase tracking-widest">Cam Muted</span>
+                                              <div className="relative w-full h-full flex flex-col items-center justify-center bg-[#130f24] overflow-hidden select-none p-2">
+                                                <img 
+                                                  src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"}
+                                                  className="absolute inset-0 w-full h-full object-cover opacity-20 blur-xl scale-125"
+                                                  alt="blur"
+                                                />
+                                                <div className="relative z-10 flex flex-col items-center justify-center space-y-1.5 text-center">
+                                                  <img
+                                                    src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"}
+                                                    className="w-14 h-14 rounded-full object-cover border-2 border-pink-500/70 shadow-lg"
+                                                    alt={user.username}
+                                                  />
+                                                  <span className="text-[9px] font-black text-white truncate max-w-[90%]">{user.username || "Host A"}</span>
+                                                  <span className="text-[7px] text-pink-300 font-bold bg-pink-500/20 px-2 py-0.5 rounded-full border border-pink-500/30 uppercase tracking-wider">
+                                                    📷 Camera Off
+                                                  </span>
+                                                </div>
                                               </div>
                                             )}
 
                                             {/* Host A Supporters Row -> LEFT */}
                                             <div className="absolute bottom-11 left-2 z-10 flex items-center space-x-1.5 select-none bg-transparent">
-                                              {[
-                                                { id: "sup-a1", name: "Gifter1", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=40&h=40&q=80" },
-                                                { id: "sup-a2", name: "Gifter2", avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=40&h=40&q=80" },
-                                                { id: "sup-a3", name: "Gifter3", avatar: "https://images.unsplash.com/photo-1527983359383-4758693f760c?auto=format&fit=crop&w=40&h=40&q=80" }
-                                              ].map((sup, idx) => {
+                                              {pkHostASupporters.map((sup, idx) => {
                                                 const isMVP = isMatchEnd && isMyWinner && idx === 0;
                                                 return (
                                                   <div key={sup.id} className="relative bg-transparent">
@@ -14172,20 +14321,37 @@ export default function App() {
 
                                           {/* Right Host: Opponent Host (Host B / Hamza / Co-host) - NOW RIGHT */}
                                           <div className="w-1/2 h-full relative bg-[#0f1422] flex items-center justify-center">
-                                            <img
-                                              src={userLiveCoHost?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80"}
-                                              className="w-full h-full object-cover opacity-90"
-                                              alt="Opponent portrait"
-                                              referrerPolicy="no-referrer"
-                                            />
+                                            {userLiveCoHost?.isCamOff ? (
+                                              <div className="relative w-full h-full flex flex-col items-center justify-center bg-[#0d1220] overflow-hidden select-none p-2">
+                                                <img 
+                                                  src={userLiveCoHost?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80"}
+                                                  className="absolute inset-0 w-full h-full object-cover opacity-20 blur-xl scale-125"
+                                                  alt="blur"
+                                                />
+                                                <div className="relative z-10 flex flex-col items-center justify-center space-y-1.5 text-center">
+                                                  <img
+                                                    src={userLiveCoHost?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80"}
+                                                    className="w-14 h-14 rounded-full object-cover border-2 border-blue-500/70 shadow-lg"
+                                                    alt={userLiveCoHost?.username || "Co-Host"}
+                                                  />
+                                                  <span className="text-[9px] font-black text-white truncate max-w-[90%]">{userLiveCoHost?.username || userLiveCoHost?.name || "Co-Host"}</span>
+                                                  <span className="text-[7px] text-blue-300 font-bold bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/30 uppercase tracking-wider">
+                                                    📷 Camera Off
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <img
+                                                src={userLiveCoHost?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80"}
+                                                className="w-full h-full object-cover opacity-90"
+                                                alt="Opponent portrait"
+                                                referrerPolicy="no-referrer"
+                                              />
+                                            )}
 
                                             {/* Host B Supporters Row -> RIGHT */}
                                             <div className="absolute bottom-11 right-2 z-10 flex items-center space-x-1.5 select-none bg-transparent">
-                                              {[
-                                                { id: "sup-b1", name: "Ali", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=40&h=40&q=80" },
-                                                { id: "sup-b2", name: "Arooj", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=40&h=40&q=80" },
-                                                { id: "sup-b3", name: "Sehr", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=40&h=40&q=80" }
-                                              ].map((sup, idx) => {
+                                              {pkHostBSupporters.map((sup, idx) => {
                                                 const isMVP = isMatchEnd && isOtherWinner && idx === 0;
                                                 return (
                                                   <div key={sup.id} className="relative bg-transparent">
@@ -14585,13 +14751,29 @@ export default function App() {
                                   />
                                 </div>
                               ) : (
-                                <div className="w-full h-full flex flex-col items-center justify-center bg-[#12121a] text-center space-y-3">
-                                  <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center border border-white/10 text-gray-400">
-                                    <CameraOff className="w-8 h-8" />
-                                  </div>
-                                  <div className="space-y-0.5">
-                                    <p className="text-xs font-black text-white uppercase tracking-wider">Privacy Mode Active</p>
-                                    <p className="text-[9px] text-gray-500">Camera turned off. Viewers see your profile card.</p>
+                                <div className="relative w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#181328] via-[#0d0918] to-[#181328] overflow-hidden select-none p-4">
+                                  <img 
+                                    src={user.avatar || liveBroadcasterAvatar}
+                                    className="absolute inset-0 w-full h-full object-cover opacity-20 blur-2xl scale-125"
+                                    alt="blur background"
+                                  />
+                                  <div className="relative z-10 flex flex-col items-center justify-center space-y-3">
+                                    <div className="relative">
+                                      <img
+                                        src={user.avatar || liveBroadcasterAvatar}
+                                        className="w-28 h-28 rounded-full object-cover border-4 border-pink-500/70 shadow-2xl"
+                                        alt={user.username || liveBroadcasterName}
+                                      />
+                                      <div className="absolute bottom-0 right-0 bg-gray-900/90 text-pink-400 p-1.5 rounded-full border border-pink-500/40 shadow">
+                                        <CameraOff className="w-4 h-4" />
+                                      </div>
+                                    </div>
+                                    <div className="text-center space-y-1">
+                                      <h3 className="text-sm font-black text-white uppercase tracking-wider">{user.username || liveBroadcasterName}</h3>
+                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30 tracking-widest uppercase">
+                                        📷 Camera Off
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
                               )}
@@ -14785,11 +14967,13 @@ export default function App() {
                                     {/* Host A MVPs (Red side) */}
                                     <div className="flex items-center space-x-1 bg-transparent">
                                       <div className="flex -space-x-1.5 bg-transparent shrink-0">
-                                        <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=40&h=40&q=80" className="w-4.5 h-4.5 rounded-full border border-red-500/50 object-cover" alt="MVP A1" />
-                                        <img src="https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=40&h=40&q=80" className="w-4.5 h-4.5 rounded-full border border-red-500/50 object-cover" alt="MVP A2" />
-                                        <img src="https://images.unsplash.com/photo-1527983359383-4758693f760c?auto=format&fit=crop&w=40&h=40&q=80" className="w-4.5 h-4.5 rounded-full border border-red-500/50 object-cover" alt="MVP A3" />
+                                        {pkHostASupporters.map((sup) => (
+                                          <img key={sup.id} src={sup.avatar} className="w-4.5 h-4.5 rounded-full border border-red-500/50 object-cover" alt={sup.username} title={sup.username} />
+                                        ))}
                                       </div>
-                                      <span className="text-[6px] text-red-400 font-extrabold font-mono uppercase bg-red-950/30 px-1 rounded border border-red-500/10">MVP</span>
+                                      {pkHostASupporters.length > 0 && (
+                                        <span className="text-[6px] text-red-400 font-extrabold font-mono uppercase bg-red-950/30 px-1 rounded border border-red-500/10">MVP</span>
+                                      )}
                                     </div>
 
                                     {/* Win streaks */}
@@ -14806,11 +14990,13 @@ export default function App() {
 
                                     {/* Host B MVPs (Blue side) */}
                                     <div className="flex items-center space-x-1 bg-transparent">
-                                      <span className="text-[6px] text-blue-400 font-extrabold font-mono uppercase bg-blue-950/30 px-1 rounded border border-blue-500/10">MVP</span>
+                                      {pkHostBSupporters.length > 0 && (
+                                        <span className="text-[6px] text-blue-400 font-extrabold font-mono uppercase bg-blue-950/30 px-1 rounded border border-blue-500/10">MVP</span>
+                                      )}
                                       <div className="flex -space-x-1.5 bg-transparent shrink-0">
-                                        <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=40&h=40&q=80" className="w-4.5 h-4.5 rounded-full border border-blue-500/50 object-cover" alt="MVP B1" />
-                                        <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=40&h=40&q=80" className="w-4.5 h-4.5 rounded-full border border-blue-500/50 object-cover" alt="MVP B2" />
-                                        <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=40&h=40&q=80" className="w-4.5 h-4.5 rounded-full border border-blue-500/50 object-cover" alt="MVP B3" />
+                                        {pkHostBSupporters.map((sup) => (
+                                          <img key={sup.id} src={sup.avatar} className="w-4.5 h-4.5 rounded-full border border-blue-500/50 object-cover" alt={sup.username} title={sup.username} />
+                                        ))}
                                       </div>
                                     </div>
                                   </div>
@@ -14838,23 +15024,38 @@ export default function App() {
                                     <span className="text-yellow-400 font-bold">🏆 MVPs</span>
                                   </div>
                                   
-                                  {/* Left MVP List (Hoorain's Top Supporters) */}
+                                  {/* Left MVP List (Host A's Top Supporters) */}
                                   <div className="flex items-center space-x-1 bg-transparent">
-                                    <span className="text-pink-400 font-black">3x</span>
-                                    <div className="flex -space-x-1">
-                                      <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=50&q=80" className="w-3.5 h-3.5 rounded-full border border-pink-500/50 object-cover" />
-                                      <img src="https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=50&q=80" className="w-3.5 h-3.5 rounded-full border border-pink-500/50 object-cover" />
-                                    </div>
+                                    {pkHostASupporters.length > 0 ? (
+                                      <>
+                                        <span className="text-pink-400 font-black">{pkHostASupporters.length}x</span>
+                                        <div className="flex -space-x-1">
+                                          {pkHostASupporters.slice(0, 3).map((sup) => (
+                                            <img key={sup.id} src={sup.avatar} className="w-3.5 h-3.5 rounded-full border border-pink-500/50 object-cover" alt={sup.username} />
+                                          ))}
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <span className="text-gray-500 text-[7px]">No supporters</span>
+                                    )}
                                   </div>
 
                                   <div className="h-3 w-[1px] bg-white/10 shrink-0 mx-1"></div>
 
-                                  {/* Right MVP List (Co-Host's Top Supporters) */}
+                                  {/* Right MVP List (Host B's Top Supporters) */}
                                   <div className="flex items-center space-x-1 bg-transparent">
-                                    <span className="text-blue-400 font-black">1x</span>
-                                    <div className="flex -space-x-1">
-                                      <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=50&q=80" className="w-3.5 h-3.5 rounded-full border border-blue-500/50 object-cover" />
-                                    </div>
+                                    {pkHostBSupporters.length > 0 ? (
+                                      <>
+                                        <span className="text-blue-400 font-black">{pkHostBSupporters.length}x</span>
+                                        <div className="flex -space-x-1">
+                                          {pkHostBSupporters.slice(0, 3).map((sup) => (
+                                            <img key={sup.id} src={sup.avatar} className="w-3.5 h-3.5 rounded-full border border-blue-500/50 object-cover" alt={sup.username} />
+                                          ))}
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <span className="text-gray-500 text-[7px]">No supporters</span>
+                                    )}
                                   </div>
                                 </div>
                               )}
@@ -15244,26 +15445,31 @@ export default function App() {
 
                                   <div className="flex space-x-2 bg-transparent">
                                     <button
-                                      onClick={() => {
+                                      onClick={async () => {
                                         setUserLiveShowIncomingPkRequest(false);
-                                        setUserLivePkActive(true);
-                                        setUserLivePkScoreMy(12560);
-                                        setUserLivePkScoreOther(9820);
-                                        setUserLivePkTimer(272);
-                                        setUserLiveMessages(prev => [
-                                          ...prev,
-                                          {
-                                            id: "ul-pk-start-" + Date.now(),
-                                            username: "System ⚔️",
-                                            message: `PK Battle match with ${userLiveCoHost?.username || "co-host"} has started! Show your support! 🎁⚔️`,
-                                            vipLevel: 0,
-                                            userLevel: 0,
-                                            isSystem: true,
-                                            isFlagged: false,
-                                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                        if (incoming1v1Invite?.id) {
+                                          try {
+                                            await fetch(`/api/v1/pk/invite/${incoming1v1Invite.id}/respond`, {
+                                              method: "POST",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({
+                                                action: "accept",
+                                                username: user.username
+                                              })
+                                            });
+                                          } catch (err) {
+                                            console.error("Error accepting invite:", err);
                                           }
-                                        ]);
-                                        alert("⚔️ PK Battle has started! Go team go!");
+                                        }
+                                        setUserLivePkConnected(true);
+                                        if (incoming1v1Invite?.fromUsername) {
+                                          setUserLiveCoHost({
+                                            username: incoming1v1Invite.fromUsername,
+                                            avatar: incoming1v1Invite.fromAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80",
+                                            level: incoming1v1Invite.fromLevel || 1,
+                                            fans: incoming1v1Invite.fromFans || "10K fans"
+                                          });
+                                        }
                                       }}
                                       className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:scale-105 active:scale-95 text-white font-black py-2 rounded-xl text-[9px] uppercase tracking-wide transition-all shadow-md flex items-center justify-center space-x-1 cursor-pointer"
                                     >
@@ -15271,9 +15477,22 @@ export default function App() {
                                       <span>Accept</span>
                                     </button>
                                     <button
-                                      onClick={() => {
+                                      onClick={async () => {
                                         setUserLiveShowIncomingPkRequest(false);
-                                        alert("You rejected the PK challenge.");
+                                        if (incoming1v1Invite?.id) {
+                                          try {
+                                            await fetch(`/api/v1/pk/invite/${incoming1v1Invite.id}/respond`, {
+                                              method: "POST",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({
+                                                action: "reject",
+                                                username: user.username
+                                              })
+                                            });
+                                          } catch (err) {
+                                            console.error("Error rejecting invite:", err);
+                                          }
+                                        }
                                       }}
                                       className="flex-1 bg-gradient-to-r from-red-600 to-pink-600 hover:scale-105 active:scale-95 text-white font-black py-2 rounded-xl text-[9px] uppercase tracking-wide transition-all shadow-md cursor-pointer"
                                     >
@@ -16734,21 +16953,16 @@ export default function App() {
 
                                 {/* Host scrollable container */}
                                 <div className="flex-1 overflow-y-auto my-1 pr-1 space-y-2 max-h-[110px] scrollbar-thin">
-                                  {(Array.isArray(dbDataCache?.users) && dbDataCache.users.length > 0 
-                                    ? dbDataCache.users 
-                                    : Array.isArray(dbDataCache?.hosts) && dbDataCache.hosts.length > 0 
-                                      ? dbDataCache.hosts 
-                                      : []
-                                  )
-                                  .filter((u: any) => (u.uid || u.uniqueId || u.username) !== (user.uid || user.uniqueId || user.username))
+                                  {(userLiveAvailableHosts || [])
                                   .map((u: any) => ({
-                                    id: String(u.uid || u.uniqueId || u.username || u.id),
-                                    username: String(u.username || u.name || u.fullName || "User"),
+                                    id: String(u.id || u.userId || u.username),
+                                    username: String(u.username || "User"),
                                     avatar: String(u.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80"),
-                                    fans: `${u.followersCount || u.fans || 0} fans`,
-                                    level: Number(u.level || u.userLevel || u.hostLevel || 1),
+                                    fans: String(u.fans || "10K fans"),
+                                    level: Number(u.level || 1),
                                     flag: "🇵🇰",
-                                    inPkBattle: false
+                                    inPkBattle: false,
+                                    status: u.status || "🟢 Online"
                                   }))
                                   .filter(host => !host.inPkBattle && (
                                     !userLiveInviteSearchQuery ||
@@ -16780,7 +16994,20 @@ export default function App() {
                                           disabled={userLiveInvitedHostId !== null}
                                           onClick={() => {
                                             setUserLiveInvitedHostId(host.id);
-                                            setUserLiveInviteCountdown(10);
+                                            setUserLiveInviteCountdown(15);
+                                            fetch("/api/v1/pk/invite", {
+                                              method: "POST",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({
+                                                fromUsername: user.username || "HostA",
+                                                fromUserId: user.uid || user.username || "uA",
+                                                fromAvatar: user.avatar,
+                                                fromLevel: user.userLevel || 1,
+                                                fromFans: user.fans || "12K fans",
+                                                toUsername: host.username,
+                                                toUserId: host.id
+                                              })
+                                            }).catch(err => console.error("Failed to send PK invite:", err));
                                           }}
                                           className={`px-3 py-1.5 rounded-full text-[8.5px] font-black uppercase tracking-wider font-mono transition-all cursor-pointer ${
                                             isInvited

@@ -38,6 +38,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
   const [localVideoTrack, setLocalVideoTrack] = useState<ICameraVideoTrack | null>(null);
   const [localAudioTrack, setLocalAudioTrack] = useState<IMicrophoneAudioTrack | null>(null);
   const [remoteUser, setRemoteUser] = useState<IAgoraRTCRemoteUser | null>(null);
+  const [hasRemoteVideo, setHasRemoteVideo] = useState<boolean>(false);
   
   // App Streaming Status
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error" | "simulated">("idle");
@@ -217,6 +218,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
 
             if (mediaType === "video" && user.videoTrack) {
               setRemoteUser(user);
+              setHasRemoteVideo(true);
               if (containerRef.current) {
                 containerRef.current.innerHTML = "";
                 user.videoTrack.play(containerRef.current, { fit: "cover" });
@@ -232,21 +234,21 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           const handleUserUnpublished = (user: IAgoraRTCRemoteUser, mediaType: "video" | "audio") => {
             if (mediaType === "video") {
               setRemoteUser(null);
+              setHasRemoteVideo(false);
               if (containerRef.current) {
                 containerRef.current.innerHTML = "";
               }
-              setStatusDetails("Broadcaster paused stream.");
-              setStatus("connecting");
+              setStatusDetails("Broadcaster camera off.");
             }
           };
 
           const handleUserLeft = (user: IAgoraRTCRemoteUser) => {
             setRemoteUser(null);
+            setHasRemoteVideo(false);
             if (containerRef.current) {
               containerRef.current.innerHTML = "";
             }
             setStatusDetails("Host has disconnected.");
-            setStatus("connecting");
           };
 
           agoraClient.on("user-published", handleUserPublished);
@@ -265,9 +267,8 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           }
 
           if (remoteUsers.length === 0) {
-            // If no host is found yet, simulate with live mock layout
             setStatus("connected");
-            setStatusDetails("Live simulated feed (host preparing media...)");
+            setStatusDetails("Awaiting host stream...");
           }
         }
       } catch (err: any) {
@@ -327,68 +328,65 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
     };
   }, [channelName, role, facingMode]);
 
+  const isCameraOff = (role === "publisher" && videoMuted) || (role === "subscriber" && !hasRemoteVideo);
+
   return (
-    <div className="w-full h-full relative overflow-hidden bg-[#0a0814] flex items-center justify-center">
+    <div className="w-full h-full relative overflow-hidden bg-[#0a0814] flex items-center justify-center select-none">
       {/* 1. REAL WEBRTC VIDEO ELEMENT CONTAINER */}
       <div 
         ref={containerRef} 
         className="absolute inset-0 z-0 w-full h-full"
-        style={{ display: isSimulated ? "none" : "block" }}
+        style={{ display: isCameraOff ? "none" : "block" }}
       />
 
-      {/* 2. HIGH-FIDELITY SIMULATOR FALLBACK SCREEN (Sahr-Live Sandbox) */}
-      {isSimulated && (
-        <div className="absolute inset-0 z-0 bg-gradient-to-b from-[#0e0c1b] via-[#1c1435] to-[#080710] flex flex-col items-center justify-center p-4">
-          {/* Cosmic Abstract Ambient Glow */}
-          <div className="absolute top-1/4 left-1/4 w-40 h-40 bg-pink-500/10 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-1/4 right-1/4 w-40 h-40 bg-purple-600/10 rounded-full blur-3xl animate-pulse"></div>
-
-          <div className="relative text-center flex flex-col items-center max-w-xs space-y-4">
-            {/* Pulsing Avatar Frame */}
+      {/* 2. CAMERA OFF DISPLAY WHEN VIDEO IS MUTED OR NO REMOTE VIDEO */}
+      {isCameraOff && (
+        <div className="absolute inset-0 z-20 bg-gradient-to-b from-[#181328] via-[#0d0918] to-[#181328] flex flex-col items-center justify-center p-4 overflow-hidden select-none">
+          {/* Ambient blurred background image */}
+          <img 
+            src={hostAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"}
+            className="absolute inset-0 w-full h-full object-cover opacity-20 blur-2xl scale-125 pointer-events-none"
+            alt="Camera Off Background"
+          />
+          <div className="relative z-10 flex flex-col items-center justify-center space-y-3">
             <div className="relative">
-              {/* Spinning WebRTC Halo */}
-              <div className="absolute -inset-2.5 rounded-full border-2 border-dashed border-pink-500/30 animate-[spin_16s_linear_infinite]" />
-              <div className="absolute -inset-1.5 rounded-full border border-teal-400/40 animate-[spin_8s_linear_infinite]" />
-              
               <img 
                 src={hostAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"}
-                className="w-20 h-20 rounded-full object-cover border-2 border-white/20 shadow-2xl relative"
-                alt="Simulator Host portrait"
+                className="w-24 h-24 rounded-full object-cover border-4 border-pink-500/70 shadow-2xl"
+                alt={hostName}
               />
-              
-              {/* Mini Video category icon */}
-              <div className="absolute -bottom-1 -right-1 bg-pink-600 p-1.5 rounded-full border border-white/20 shadow animate-bounce">
-                <Video className="w-3.5 h-3.5 text-white" />
+              <div className="absolute bottom-0 right-0 bg-gray-900/90 text-pink-400 p-1.5 rounded-full border border-pink-500/40 shadow">
+                <Camera className="w-4 h-4 opacity-70" />
               </div>
             </div>
-
-            <div className="space-y-1">
+            <div className="text-center space-y-1">
               <h4 className="text-xs font-black text-white uppercase tracking-wider">{hostName}</h4>
-              <p className="text-[9px] text-[#66fcf1] font-mono tracking-widest uppercase">Live Stream Signal Active</p>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30 tracking-widest uppercase">
+                📷 Camera Off
+              </span>
             </div>
-
-            {/* Custom Interactive EQ Graph */}
-            <div className="flex items-end space-x-1.5 h-8 px-4 py-1.5 rounded-lg bg-black/45 border border-white/5 shadow-inner">
-              {[...Array(10)].map((_, i) => (
-                <div
-                  key={i}
-                  style={{ 
-                    animationDelay: `${i * 0.1}s`, 
-                    height: `${4 + Math.random() * 18}px`
-                  }}
-                  className="w-1 bg-gradient-to-t from-pink-500 to-indigo-500 animate-[bounce_1.2s_infinite] rounded-full"
-                ></div>
-              ))}
-            </div>
-
-            <p className="text-[8.5px] text-gray-400 leading-normal max-w-[220px]">
-              Secure streaming fallback sandbox active. Full camera tracking and audio multiplexing running.
-            </p>
           </div>
         </div>
       )}
 
-      {/* Telemetry overlay removed for clean, premium Solo Live UI */}
+      {/* 3. HARDWARE FALLBACK SCREEN (PUBLISHER ONLY IF HARDWARE FAILS) */}
+      {role === "publisher" && isSimulated && !videoMuted && (
+        <div className="absolute inset-0 z-0 bg-gradient-to-b from-[#0e0c1b] via-[#1c1435] to-[#080710] flex flex-col items-center justify-center p-4">
+          <div className="relative text-center flex flex-col items-center max-w-xs space-y-4">
+            <div className="relative">
+              <img 
+                src={hostAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"}
+                className="w-20 h-20 rounded-full object-cover border-2 border-white/20 shadow-2xl relative"
+                alt="Host portrait"
+              />
+            </div>
+            <div className="space-y-1">
+              <h4 className="text-xs font-black text-white uppercase tracking-wider">{hostName}</h4>
+              <p className="text-[9px] text-[#66fcf1] font-mono tracking-widest uppercase">Broadcast Stream Active</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

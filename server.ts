@@ -725,6 +725,7 @@ app.post("/api/v1/gifts/send", authenticateUser, (req, res) => {
     hostEarnings,
     companyShare,
     sender: user.username,
+    senderAvatar: user.avatar || "",
     recipient,
     giftName: gift.name,
     giftIcon: gift.icon,
@@ -759,6 +760,43 @@ app.post("/api/v1/gifts/send", authenticateUser, (req, res) => {
   saveDatabase();
 
   return res.json(responseData);
+});
+
+// GET /api/v1/gifts/supporters - Retrieve real top supporters aggregated from backend gift transactions
+app.get("/api/v1/gifts/supporters", (req, res) => {
+  const giftTxs = (dbData.transactions || []).filter((tx: any) => tx.type === "gift_sent");
+
+  const supporterMap: Record<string, { id: string; username: string; avatar: string; coinsContributed: number }> = {};
+  const hostAMap: Record<string, { id: string; username: string; avatar: string; coinsContributed: number }> = {};
+  const hostBMap: Record<string, { id: string; username: string; avatar: string; coinsContributed: number }> = {};
+
+  giftTxs.forEach((tx: any) => {
+    const key = tx.sender || "Anonymous";
+    const avatar = tx.senderAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&h=100&q=80";
+    const coins = Number(tx.amount) || 0;
+
+    if (!supporterMap[key]) {
+      supporterMap[key] = { id: `sup-${key}`, username: key, avatar, coinsContributed: 0 };
+    }
+    supporterMap[key].coinsContributed += coins;
+
+    const side = tx.targetHostSide || "hostA";
+    const targetMap = side === "hostB" ? hostBMap : hostAMap;
+    if (!targetMap[key]) {
+      targetMap[key] = { id: `sup-${side}-${key}`, username: key, avatar, coinsContributed: 0 };
+    }
+    targetMap[key].coinsContributed += coins;
+  });
+
+  const topGifters = Object.values(supporterMap).sort((a, b) => b.coinsContributed - a.coinsContributed);
+  const hostASupporters = Object.values(hostAMap).sort((a, b) => b.coinsContributed - a.coinsContributed);
+  const hostBSupporters = Object.values(hostBMap).sort((a, b) => b.coinsContributed - a.coinsContributed);
+
+  res.json({
+    topGifters: topGifters.slice(0, 5),
+    hostASupporters: hostASupporters.slice(0, 3),
+    hostBSupporters: hostBSupporters.slice(0, 3)
+  });
 });
 
 app.post("/api/v1/gifts", (req, res) => {
@@ -962,6 +1000,261 @@ app.post("/api/v1/hosts/:id/comments", (req, res) => {
   } else {
     res.status(404).json({ error: "Host not found" });
   }
+});
+
+// ------------------------------------------------------------------
+// REAL-TIME PRESENCE & 1V1 PK INVITE ENGINE
+// ------------------------------------------------------------------
+const activePkInvites: Record<string, any> = {};
+const activePkSessions: Record<string, any> = {};
+const onlineUserPresence: Record<string, any> = {};
+
+// Heartbeat / Presence Registration
+app.post("/api/v1/presence", (req, res) => {
+  const { username, userId, avatar, level, fans, isLive, inPk } = req.body || {};
+  if (!username) {
+    return res.status(400).json({ error: "Username required for presence" });
+  }
+
+  const normUser = String(username).toLowerCase();
+  onlineUserPresence[normUser] = {
+    username,
+    userId: userId || username,
+    avatar: avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80",
+    level: Number(level) || 1,
+    fans: fans || "10K fans",
+    isLive: !!isLive,
+    inPk: !!inPk,
+    lastSeen: Date.now()
+  };
+
+  // Clean stale presence older than 15s
+  const now = Date.now();
+  Object.keys(onlineUserPresence).forEach(key => {
+    if (now - onlineUserPresence[key].lastSeen > 15000) {
+      delete onlineUserPresence[key];
+    }
+  });
+
+  res.json({ success: true, activeUsersCount: Object.keys(onlineUserPresence).length });
+});
+
+// Get Available Hosts for 1v1 Invites
+app.get("/api/v1/pk/available-hosts", (req, res) => {
+  const currentUsername = String(req.query.username || "").toLowerCase();
+  const now = Date.now();
+
+  // 1. Gather live hosts from dbData.hosts
+  const liveHostsList = (dbData.hosts || [])
+    .filter((h: any) => h.isLive !== false && !h.inPk && !h.inPkBattle)
+    .map((h: any) => ({
+      id: String(h.id || h.hostUid || h.hostUsername),
+      userId: String(h.hostUid || h.id || h.hostUsername),
+      username: String(h.hostUsername || h.name || "Live Host"),
+      avatar: String(h.hostAvatar || h.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80"),
+      level: Number(h.hostLevel || h.level || 1),
+      fans: `${h.followersCount || h.fans || 0} fans`,
+      isLive: true,
+      inPk: false,
+      status: "🔴 Live Solo"
+    }));
+
+  // 2. Gather online presence users
+  const onlinePresenceList = Object.values(onlineUserPresence)
+    .filter((u: any) => (now - u.lastSeen <= 15000) && !u.inPk)
+    .map((u: any) => ({
+      id: String(u.userId || u.username),
+      userId: String(u.userId || u.username),
+      username: String(u.username),
+      avatar: String(u.avatar),
+      level: Number(u.level || 1),
+      fans: String(u.fans || "10K fans"),
+      isLive: !!u.isLive,
+      inPk: false,
+      status: u.isLive ? "🔴 Live Solo" : "🟢 Online"
+    }));
+
+  // Combine and deduplicate by username (case-insensitive)
+  const combinedMap = new Map<string, any>();
+  
+  [...liveHostsList, ...onlinePresenceList].forEach(item => {
+    const key = item.username.toLowerCase();
+    if (key !== currentUsername && !combinedMap.has(key)) {
+      combinedMap.set(key, item);
+    }
+  });
+
+  const result = Array.from(combinedMap.values());
+  res.json(result);
+});
+
+// Send PK / 1v1 Invite
+app.post("/api/v1/pk/invite", (req, res) => {
+  const { fromUsername, fromUserId, fromAvatar, fromLevel, fromFans, toUsername, toUserId } = req.body || {};
+  if (!fromUsername || !toUsername) {
+    return res.status(400).json({ error: "Sender and receiver usernames are required" });
+  }
+
+  const normFrom = fromUsername.toLowerCase();
+  const normTo = toUsername.toLowerCase();
+
+  // Cancel any previous pending invite from same sender
+  Object.keys(activePkInvites).forEach(id => {
+    const inv = activePkInvites[id];
+    if (inv.fromUsername.toLowerCase() === normFrom && inv.status === "pending") {
+      inv.status = "expired";
+    }
+  });
+
+  const inviteId = `pki_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const channelName = `pk_room_${[normFrom, normTo].sort().join("_")}`;
+
+  const newInvite = {
+    id: inviteId,
+    fromUsername,
+    fromUserId: fromUserId || fromUsername,
+    fromAvatar: fromAvatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
+    fromLevel: Number(fromLevel) || 1,
+    fromFans: fromFans || "10K fans",
+    toUsername,
+    toUserId: toUserId || toUsername,
+    channelName,
+    status: "pending",
+    createdAt: Date.now()
+  };
+
+  activePkInvites[inviteId] = newInvite;
+  console.log(`[PK SERVER SUCCESS] Host @${fromUsername} invited @${toUsername} to 1v1 (Channel: ${channelName})`);
+
+  res.status(201).json(newInvite);
+});
+
+// Query Invites & Session Status
+app.get("/api/v1/pk/invites", (req, res) => {
+  const username = String(req.query.username || "").toLowerCase();
+  if (!username) {
+    return res.status(400).json({ error: "Username parameter required" });
+  }
+
+  const now = Date.now();
+
+  // Find pending incoming invite sent TO this user
+  let incoming = null;
+  // Find outgoing invite sent FROM this user
+  let outgoing = null;
+
+  Object.values(activePkInvites).forEach((inv: any) => {
+    // Expire invites older than 20s
+    if (inv.status === "pending" && (now - inv.createdAt > 20000)) {
+      inv.status = "expired";
+    }
+
+    if (inv.toUsername.toLowerCase() === username) {
+      if (inv.status === "pending") incoming = inv;
+    }
+    if (inv.fromUsername.toLowerCase() === username) {
+      outgoing = inv;
+    }
+  });
+
+  // Find active session
+  const activeSession = Object.values(activePkSessions).find((s: any) => 
+    s.status !== "ended" && 
+    (s.hostA.username.toLowerCase() === username || s.hostB.username.toLowerCase() === username)
+  ) || null;
+
+  res.json({
+    incoming,
+    outgoing,
+    activeSession
+  });
+});
+
+// Respond to Invite (Accept or Reject)
+app.post("/api/v1/pk/invite/:id/respond", (req, res) => {
+  const { id } = req.params;
+  const { action, username, avatar, level, fans } = req.body || {};
+
+  const invite = activePkInvites[id];
+  if (!invite) {
+    return res.status(404).json({ error: "Invite not found or expired" });
+  }
+
+  if (action === "accept") {
+    invite.status = "accepted";
+    
+    // Create active 1v1 session
+    const sessionId = `session_${invite.channelName}`;
+    const session = {
+      id: sessionId,
+      channelName: invite.channelName,
+      hostA: {
+        username: invite.fromUsername,
+        userId: invite.fromUserId,
+        avatar: invite.fromAvatar,
+        level: invite.fromLevel,
+        fans: invite.fromFans,
+        score: 0
+      },
+      hostB: {
+        username: username || invite.toUsername,
+        userId: invite.toUserId,
+        avatar: avatar || "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80",
+        level: Number(level) || 1,
+        fans: fans || "15K fans",
+        score: 0
+      },
+      status: "connected",
+      timer: 270,
+      startedAt: Date.now()
+    };
+
+    activePkSessions[sessionId] = session;
+
+    // Mark both in PK in presence
+    const normA = invite.fromUsername.toLowerCase();
+    const normB = (username || invite.toUsername).toLowerCase();
+    if (onlineUserPresence[normA]) onlineUserPresence[normA].inPk = true;
+    if (onlineUserPresence[normB]) onlineUserPresence[normB].inPk = true;
+
+    // Also update hosts array category or inPk flag
+    dbData.hosts.forEach((h: any) => {
+      if (h.hostUsername?.toLowerCase() === normA || h.hostUsername?.toLowerCase() === normB) {
+        h.inPk = true;
+        h.category = "pk";
+      }
+    });
+
+    console.log(`[PK SERVER SUCCESS] @${username} ACCEPTED invite from @${invite.fromUsername}! Session started on channel: ${invite.channelName}`);
+    return res.json({ success: true, status: "accepted", invite, session });
+  } else {
+    invite.status = "rejected";
+    console.log(`[PK SERVER INFO] @${username} REJECTED invite from @${invite.fromUsername}`);
+    return res.json({ success: true, status: "rejected", invite });
+  }
+});
+
+// End 1v1 / PK Session
+app.post("/api/v1/pk/end", (req, res) => {
+  const { channelName, username } = req.body || {};
+  
+  Object.values(activePkSessions).forEach((s: any) => {
+    if (s.channelName === channelName || (username && (s.hostA.username.toLowerCase() === username.toLowerCase() || s.hostB.username.toLowerCase() === username.toLowerCase()))) {
+      s.status = "ended";
+      const normA = s.hostA.username.toLowerCase();
+      const normB = s.hostB.username.toLowerCase();
+      if (onlineUserPresence[normA]) onlineUserPresence[normA].inPk = false;
+      if (onlineUserPresence[normB]) onlineUserPresence[normB].inPk = false;
+      dbData.hosts.forEach((h: any) => {
+        if (h.hostUsername?.toLowerCase() === normA || h.hostUsername?.toLowerCase() === normB) {
+          h.inPk = false;
+          h.category = "solo";
+        }
+      });
+    }
+  });
+
+  res.json({ success: true, message: "1v1 session ended" });
 });
 
 // Party Hub & 12-Seat Audio Party endpoints
