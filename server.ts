@@ -177,7 +177,7 @@ const handleAgoraTokenRequest = (req: any, res: any) => {
       return res.status(400).json({ error: "channelName is required" });
     }
 
-    const appId = process.env.AGORA_APP_ID || "e229e7019f204362a265637207604f35";
+    const appId = process.env.AGORA_APP_ID || "MOCK_AGORA_APP_ID";
     const appCertificate = process.env.AGORA_APP_CERTIFICATE || "";
 
     const agoraUid = uid ? Number(uid) : 0;
@@ -190,7 +190,7 @@ const handleAgoraTokenRequest = (req: any, res: any) => {
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
     let token: string | null = null;
-    if (appId && appCertificate) {
+    if (appId !== "MOCK_AGORA_APP_ID" && appCertificate) {
       try {
         token = RtcTokenBuilder.buildTokenWithUid(
           appId,
@@ -206,7 +206,8 @@ const handleAgoraTokenRequest = (req: any, res: any) => {
         console.error("[SEHR-LIVE AGORA] RtcTokenBuilder failed:", err);
       }
     } else {
-      console.log(`[SEHR-LIVE AGORA] Certificate not set. Using testing mode with App ID for channel ${channelName}`);
+      token = `mock-token-${channelName}-${agoraUid}-${resolvedRole}`;
+      console.log(`[SEHR-LIVE AGORA] AGORA_APP_ID not configured in env. Returning mock token and sandbox appId.`);
     }
 
     return res.json({
@@ -803,52 +804,88 @@ app.post("/api/v1/categories", (req, res) => {
 
 // Hosts endpoints
 app.get("/api/v1/hosts", (req, res) => {
-  res.json(dbData.hosts);
+  res.json(dbData.hosts || []);
 });
 
 app.post("/api/v1/hosts", (req, res) => {
+  const hostData = req.body || {};
+  const hostUsername = hostData.hostUsername || hostData.name || "live_host";
+  const hostId = hostData.id || `h-${hostData.hostUid || hostUsername}`;
+  
   const newHost = {
-    id: `h-${Date.now()}`,
+    id: hostId,
     isLive: true,
-    viewers: 0,
-    likes: 0,
-    ...req.body
+    viewers: hostData.viewers || 0,
+    realViewerCount: hostData.realViewerCount || 0,
+    likes: hostData.likes || 0,
+    connectedViewers: hostData.connectedViewers || [],
+    comments: hostData.comments || [],
+    ...hostData,
+    hostUsername,
+    hostUid: hostData.hostUid || hostData.hostUsername || hostData.name,
+    updatedAt: new Date().toISOString()
   };
-  dbData.hosts.push(newHost);
-  saveDatabase();
-  syncDocument("hosts", newHost.id, newHost);
-  res.status(201).json(newHost);
+
+  const existingIdx = dbData.hosts.findIndex((h: any) => 
+    h.id === hostId || 
+    (h.hostUsername && h.hostUsername === hostUsername) || 
+    (h.name && h.name === hostData.name)
+  );
+
+  if (existingIdx !== -1) {
+    dbData.hosts[existingIdx] = {
+      ...dbData.hosts[existingIdx],
+      ...newHost,
+      isLive: true
+    };
+    saveDatabase();
+    syncDocument("hosts", hostId, dbData.hosts[existingIdx]);
+    console.log(`[LIVE SERVER SUCCESS] Updated existing host stream: ${hostId} (@${hostUsername})`);
+    return res.status(200).json(dbData.hosts[existingIdx]);
+  } else {
+    dbData.hosts.push(newHost);
+    saveDatabase();
+    syncDocument("hosts", hostId, newHost);
+    console.log(`[LIVE SERVER SUCCESS] Registered new host stream: ${hostId} (@${hostUsername})`);
+    return res.status(201).json(newHost);
+  }
 });
 
 app.put("/api/v1/hosts/:id", (req, res) => {
   const { id } = req.params;
-  const index = dbData.hosts.findIndex((h: any) => h.id === id);
+  const index = dbData.hosts.findIndex((h: any) => h.id === id || h.hostUsername === id || h.name === id);
   if (index !== -1) {
-    dbData.hosts[index] = { ...dbData.hosts[index], ...req.body };
+    dbData.hosts[index] = { ...dbData.hosts[index], ...req.body, updatedAt: new Date().toISOString() };
     saveDatabase();
-    syncDocument("hosts", id, dbData.hosts[index]);
+    syncDocument("hosts", dbData.hosts[index].id, dbData.hosts[index]);
+    console.log(`[LIVE SERVER SUCCESS] Updated host ${id}:`, dbData.hosts[index]);
     res.json(dbData.hosts[index]);
   } else {
+    console.warn(`[LIVE SERVER WARN] Host ${id} not found for update`);
     res.status(404).json({ error: "Host not found" });
   }
 });
 
 app.delete("/api/v1/hosts/:id", (req, res) => {
   const { id } = req.params;
-  dbData.hosts = dbData.hosts.filter((h: any) => h.id !== id);
+  const hostToDelete = dbData.hosts.find((h: any) => h.id === id || h.hostUsername === id || h.name === id);
+  const targetId = hostToDelete ? hostToDelete.id : id;
+  
+  dbData.hosts = dbData.hosts.filter((h: any) => h.id !== id && h.hostUsername !== id && h.name !== id);
   saveDatabase();
-  deleteDocument("hosts", id);
-  res.json({ message: "Host deleted successfully" });
+  deleteDocument("hosts", targetId);
+  console.log(`[LIVE SERVER SUCCESS] Ended/Deleted host stream: ${id} (targetId: ${targetId})`);
+  res.json({ message: "Host deleted successfully", targetId });
 });
 
 // Real-time viewer presence & comments endpoints
 app.post("/api/v1/hosts/:id/join", (req, res) => {
   const { id } = req.params;
-  const { userId, username, avatar, level, vipLevel } = req.body;
+  const { userId, username, avatar, level, vipLevel } = req.body || {};
   if (!username) {
     return res.status(400).json({ error: "Username is required to join" });
   }
-  const index = dbData.hosts.findIndex((h: any) => h.id === id);
+  const index = dbData.hosts.findIndex((h: any) => h.id === id || h.hostUsername === id || h.name === id);
   if (index !== -1) {
     const host = dbData.hosts[index];
     if (!host.connectedViewers) {
@@ -861,20 +898,22 @@ app.post("/api/v1/hosts/:id/join", (req, res) => {
     host.viewers = host.connectedViewers.length;
     host.realViewerCount = host.connectedViewers.length;
     saveDatabase();
-    syncDocument("hosts", id, host);
+    syncDocument("hosts", host.id, host);
+    console.log(`[LIVE SERVER SUCCESS] User @${username} joined live room ${host.id} (total viewers: ${host.realViewerCount})`);
     res.json(host);
   } else {
+    console.warn(`[LIVE SERVER WARN] Host ${id} not found for join`);
     res.status(404).json({ error: "Host not found" });
   }
 });
 
 app.post("/api/v1/hosts/:id/leave", (req, res) => {
   const { id } = req.params;
-  const { username } = req.body;
+  const { username } = req.body || {};
   if (!username) {
     return res.status(400).json({ error: "Username is required to leave" });
   }
-  const index = dbData.hosts.findIndex((h: any) => h.id === id);
+  const index = dbData.hosts.findIndex((h: any) => h.id === id || h.hostUsername === id || h.name === id);
   if (index !== -1) {
     const host = dbData.hosts[index];
     if (host.connectedViewers) {
@@ -885,9 +924,11 @@ app.post("/api/v1/hosts/:id/leave", (req, res) => {
     host.viewers = host.connectedViewers.length;
     host.realViewerCount = host.connectedViewers.length;
     saveDatabase();
-    syncDocument("hosts", id, host);
+    syncDocument("hosts", host.id, host);
+    console.log(`[LIVE SERVER SUCCESS] User @${username} left live room ${host.id} (remaining viewers: ${host.realViewerCount})`);
     res.json(host);
   } else {
+    console.warn(`[LIVE SERVER WARN] Host ${id} not found for leave`);
     res.status(404).json({ error: "Host not found" });
   }
 });

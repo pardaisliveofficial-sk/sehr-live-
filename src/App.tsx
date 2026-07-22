@@ -1843,6 +1843,36 @@ export default function App() {
   // Party System states
   const [partiesList, setPartiesList] = useState<any[]>([]);
   const [activePartyId, setActivePartyId] = useState<string | null>(null);
+  const [partyUserProfile, setPartyUserProfile] = useState<{
+    username: string;
+    avatar?: string;
+    userId: string;
+    userLevel: number;
+    vipLevel: number;
+    isHost: boolean;
+    seatId?: number;
+  } | null>(null);
+
+  // Auto-join Party Room from shared URL link (?partyId=...)
+  const hasCheckedSharedPartyRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (hasCheckedSharedPartyRef.current || partiesList.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const sharedPartyId = params.get("partyId") || params.get("party_id");
+    if (sharedPartyId) {
+      const targetParty = partiesList.find(p => p.id === sharedPartyId);
+      if (targetParty) {
+        hasCheckedSharedPartyRef.current = true;
+        setActivePartyId(targetParty.id);
+        setClientView("party-room");
+        fetch(`/api/v1/parties/${targetParty.id}/join`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: user.username, avatar: user.avatar })
+        }).catch(err => console.error("Error joining shared party:", err));
+      }
+    }
+  }, [partiesList, user]);
 
   // Party Room Navigation & Unload Auto-Cleanup Effect
   const prevClientViewRef = useRef<string>(clientView);
@@ -3860,6 +3890,46 @@ export default function App() {
     }
   }, [clientView, activeHost]);
 
+  // Real-time backend viewer join/leave presence synchronization for active live-room
+  useEffect(() => {
+    if (clientView !== "live-room" || !activeHost) return;
+
+    const hostId = activeHost.id;
+    console.log(`[LIVE VIEWER JOIN ATTEMPT] Joining backend room: ${hostId} (@${activeHost.hostUsername || activeHost.name})`);
+
+    fetch(`/api/v1/hosts/${hostId}/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: user.uniqueId || user.username,
+        username: user.username,
+        avatar: user.avatar,
+        level: user.userLevel || 1,
+        vipLevel: user.vipLevel || 0
+      })
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then(data => {
+        console.log(`[LIVE VIEWER JOIN SUCCESS] Joined backend room ${hostId}:`, data);
+        if (data && Array.isArray(data.connectedViewers)) {
+          setViewersCount(data.realViewerCount !== undefined ? data.realViewerCount : data.connectedViewers.length);
+        }
+      })
+      .catch(err => console.error(`[LIVE VIEWER JOIN ERROR] Could not join backend room ${hostId}:`, err));
+
+    return () => {
+      console.log(`[LIVE VIEWER LEAVE ATTEMPT] Leaving backend room: ${hostId}`);
+      fetch(`/api/v1/hosts/${hostId}/leave`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: user.username })
+      }).catch(err => console.error(`[LIVE VIEWER LEAVE ERROR] Could not leave backend room ${hostId}:`, err));
+    };
+  }, [clientView, activeHost?.id]);
+
   // Auto scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -4163,7 +4233,7 @@ export default function App() {
           if (Array.isArray(data)) setAgencyRequests(data);
         })
         .catch(err => console.error("Error polling agency requests:", err));
-    }, 3000);
+    }, 1500);
 
     return () => {
       clearInterval(pollInterval);
@@ -5186,7 +5256,8 @@ export default function App() {
 
     // Dynamic Live Session: POST host to database
     const token = localStorage.getItem("sehr_auth_token");
-    const hostId = `h-${user.uniqueId || "sehr_1001"}`;
+    const hostId = `h-${user.uniqueId || user.username || "sehr_1001"}`;
+    const liveCategory = prepLiveCategory === "PK" ? "pk" : "video"; // Video or PK stream (never audio for camera live)
     const newHostData = {
       id: hostId,
       name: user.username || "Sehr_User",
@@ -5194,14 +5265,15 @@ export default function App() {
       avatar: user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
       viewers: 0,
       likes: 0,
-      category: prepLiveCategory === "Music" ? "audio" : (prepLiveCategory === "PK" ? "pk" : "video"),
+      category: liveCategory,
+      subCategory: prepLiveCategory || "Solo",
       isLive: true,
       statusText: prepLiveTitle || "Live Stream Active",
       bio: user.bio || "Senior Live Stream Creator on Sehr Live! 🌟",
       agencyId: user.agencyId || "",
       liveSessionId: `session-${Date.now()}`,
       channelName: hostId,
-      hostUid: user.uniqueId,
+      hostUid: user.uniqueId || user.username,
       hostUsername: user.username,
       hostAvatar: user.avatar,
       hostLevel: user.userLevel || 1,
@@ -5213,6 +5285,8 @@ export default function App() {
       comments: []
     };
 
+    console.log("[LIVE GO-LIVE ATTEMPT] Registering host live stream on backend:", newHostData);
+
     fetch("/api/v1/hosts", {
       method: "POST",
       headers: {
@@ -5221,11 +5295,21 @@ export default function App() {
       },
       body: JSON.stringify(newHostData)
     })
-      .then(res => res.json())
-      .then(data => {
-        console.log("Successfully created active host stream on backend:", data);
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
       })
-      .catch(err => console.error("Error creating host stream on backend:", err));
+      .then(data => {
+        console.log("[LIVE GO-LIVE SUCCESS] Host stream successfully registered:", data);
+        // Force immediate refresh of live streams list
+        fetch("/api/v1/hosts")
+          .then(r => r.json())
+          .then(list => {
+            if (Array.isArray(list)) setLiveStreamsList(list);
+          })
+          .catch(e => console.error("[LIVE GO-LIVE QUERY ERROR]:", e));
+      })
+      .catch(err => console.error("[LIVE GO-LIVE ERROR] Error registering host stream on backend:", err));
   };
 
   const triggerDoubleTapHeart = (x: number, y: number, containerWidth?: number) => {
@@ -5387,7 +5471,9 @@ export default function App() {
 
     // Call delete endpoint to end stream on backend
     const token = localStorage.getItem("sehr_auth_token");
-    const hostId = `h-${user.uniqueId || "sehr_1001"}`;
+    const hostId = `h-${user.uniqueId || user.username || "sehr_1001"}`;
+    console.log("[LIVE END ATTEMPT] Deleting active host session on backend:", hostId);
+    
     fetch(`/api/v1/hosts/${hostId}`, {
       method: "DELETE",
       headers: {
@@ -5396,9 +5482,10 @@ export default function App() {
     })
       .then(res => res.json())
       .then(data => {
-        console.log("Successfully deleted active host stream on backend:", data);
+        console.log("[LIVE END SUCCESS] Deleted active host stream on backend:", data);
+        setLiveStreamsList(prev => prev.filter(h => h.id !== hostId && h.hostUsername !== user.username && h.name !== user.username));
       })
-      .catch(err => console.error("Error deleting host stream:", err));
+      .catch(err => console.error("[LIVE END ERROR] Error deleting host stream on backend:", err));
   };
 
   // OTP Login triggers
@@ -7432,31 +7519,39 @@ export default function App() {
                         {/* Host Stream list */}
                         {(() => {
                           const filteredHosts = liveStreamsList.filter(host => {
+                            // Only active live streams
+                            if (host.isLive === false) return false;
+
                             // Filter out audio category since it belongs in Party Hub
                             if (host.category === "audio") return false;
 
                             // Blocked Filter
-                            if (blockedUsers.includes(host.name)) {
+                            if (blockedUsers.includes(host.name) || (host.hostUsername && blockedUsers.includes(host.hostUsername))) {
                               return false;
                             }
 
                             // Category Filter
-                            if (feedCategory !== "all" && host.category !== feedCategory) {
-                              return false;
+                            if (feedCategory !== "all") {
+                              if (feedCategory === "video" && host.category === "pk") return false;
+                              if (feedCategory === "pk" && host.category !== "pk") return false;
                             }
                             
                             // Following Tab Filter
-                            if (feedTab === "following" && !followedUsers.includes(host.name)) {
+                            if (feedTab === "following" && !followedUsers.includes(host.name) && (!host.hostUsername || !followedUsers.includes(host.hostUsername))) {
                               return false;
                             }
                             
-                            // Search query Filter
+                            // Search query Filter (Search by Name, Username, Host UID, ID, Role, Title, SubCategory)
                             if (feedSearchQuery.trim()) {
-                              const query = feedSearchQuery.toLowerCase();
-                              const nameMatch = host.name.toLowerCase().includes(query);
-                              const roleMatch = host.role.toLowerCase().includes(query);
-                              const statusMatch = host.statusText?.toLowerCase().includes(query) || false;
-                              return nameMatch || roleMatch || statusMatch;
+                              const query = feedSearchQuery.trim().toLowerCase();
+                              const nameMatch = host.name ? host.name.toLowerCase().includes(query) : false;
+                              const usernameMatch = host.hostUsername ? host.hostUsername.toLowerCase().includes(query) : false;
+                              const uidMatch = host.hostUid ? String(host.hostUid).toLowerCase().includes(query) : false;
+                              const idMatch = host.id ? String(host.id).toLowerCase().includes(query) : false;
+                              const roleMatch = host.role ? host.role.toLowerCase().includes(query) : false;
+                              const statusMatch = host.statusText ? host.statusText.toLowerCase().includes(query) : false;
+                              const subCatMatch = host.subCategory ? host.subCategory.toLowerCase().includes(query) : false;
+                              return nameMatch || usernameMatch || uidMatch || idMatch || roleMatch || statusMatch || subCatMatch;
                             }
                             
                             return true;
@@ -7505,20 +7600,25 @@ export default function App() {
                           return (
                             <div className="grid grid-cols-2 gap-2 text-left bg-transparent">
                               {filteredHosts.map(host => {
-                                const isFollowing = followedUsers.includes(host.name);
+                                const isFollowing = followedUsers.includes(host.name) || (host.hostUsername && followedUsers.includes(host.hostUsername));
+                                const displayAvatar = host.hostAvatar || host.avatar;
+                                const displayName = host.hostUsername ? `@${host.hostUsername}` : host.name;
+                                const displayViewerCount = host.realViewerCount !== undefined ? host.realViewerCount : (host.viewers || 0);
+
                                 return (
                                   <div
                                     key={host.id}
                                     onClick={() => {
+                                      console.log("[LIVE CARD CLICK] Selected host live stream to join:", host);
                                       setActiveHost(host);
-                                      setViewersCount(host.viewers);
-                                      setLikesCount(host.likes);
+                                      setViewersCount(displayViewerCount);
+                                      setLikesCount(host.likes || 0);
                                       setClientView("live-room");
                                     }}
                                     className="bg-[#1e1e2d] rounded-xl overflow-hidden border border-[#303040]/70 hover:border-[#ff007f]/50 transition-all cursor-pointer relative group shadow-md"
                                   >
                                     <div className="aspect-[4/4.5] w-full bg-gradient-to-tr from-[#12121a] to-[#2a1b40] relative flex items-center justify-center p-2">
-                                      <img src={host.avatar} className="w-13 h-13 rounded-full object-cover border-2 border-purple-500 shadow-md group-hover:scale-105 transition-all" alt="host" />
+                                      <img src={displayAvatar} className="w-13 h-13 rounded-full object-cover border-2 border-purple-500 shadow-md group-hover:scale-105 transition-all" alt="host" />
                                       
                                       <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1 z-10 max-w-[75%] bg-transparent">
                                         {host.category === "pk" ? (
@@ -7543,7 +7643,7 @@ export default function App() {
                                       <div className="absolute top-1.5 right-1.5 flex items-center space-x-1 z-20 bg-transparent">
                                         <div className="bg-black/60 text-white text-[7.5px] font-black px-1 py-0.5 rounded flex items-center space-x-0.5">
                                           <Users className="w-2 h-2 mr-0.5 text-[#66fcf1]" />
-                                          <span>{host.viewers}</span>
+                                          <span>{displayViewerCount}</span>
                                         </div>
                                         <button
                                           onClick={(e) => {
@@ -7559,12 +7659,12 @@ export default function App() {
 
                                       <div className="absolute bottom-1.5 left-1.5 right-1.5 bg-black/75 backdrop-blur-xs p-1 rounded-lg">
                                         <div className="flex justify-between items-center bg-transparent">
-                                          <p className="text-[9px] font-black text-white truncate max-w-[80%] uppercase tracking-wide bg-transparent">{host.name}</p>
+                                          <p className="text-[9px] font-black text-white truncate max-w-[80%] uppercase tracking-wide bg-transparent">{displayName}</p>
                                           {isFollowing && (
                                             <span className="text-pink-500 text-[8px] font-black">✓</span>
                                           )}
                                         </div>
-                                        <p className="text-[7.5px] text-[#66fcf1] truncate font-sans uppercase bg-transparent">{host.role}</p>
+                                        <p className="text-[7.5px] text-[#66fcf1] truncate font-sans uppercase bg-transparent">{host.role || "Broadcaster"}</p>
                                         {host.statusText && (
                                           <p className="text-[7px] text-gray-400 truncate mt-0.5 leading-none italic font-sans bg-transparent">
                                             "{host.statusText}"
@@ -7810,6 +7910,57 @@ export default function App() {
                         alert(`Sent ${gift.name} to ${recipient}! 🚀`);
                       };
 
+                      // Share Party Room function
+                      const handleShareParty = () => {
+                        if (!party) return;
+                        const partyUrl = `${window.location.origin}${window.location.pathname}?partyId=${party.id}`;
+                        const shareData = {
+                          title: `${party.title} | Sahr Live`,
+                          text: `Join @${party.hostUsername}'s Audio Party Room "${party.title}" on Sahr Live! 🎙️✨`,
+                          url: partyUrl,
+                        };
+
+                        if (navigator.share) {
+                          navigator.share(shareData).catch((err) => {
+                            if (err.name !== "AbortError") {
+                              navigator.clipboard.writeText(partyUrl);
+                              alert(`Party Room link copied to clipboard!\n${partyUrl}`);
+                            }
+                          });
+                        } else {
+                          navigator.clipboard.writeText(partyUrl);
+                          alert(`Party Room link copied to clipboard!\n${partyUrl}`);
+                        }
+                      };
+
+                      // Open Party User Profile Popup
+                      const handleOpenPartyUserProfile = (targetUsername: string, avatar?: string, seatId?: number, userLevel?: number, vipLevel?: number) => {
+                        if (!targetUsername) return;
+
+                        const isHost = party ? party.hostUsername === targetUsername : false;
+
+                        let resolvedUserId = "";
+                        if (targetUsername === user.username) {
+                          resolvedUserId = user.uniqueId || "sehr_1001";
+                        } else {
+                          const numericHash = Math.abs(targetUsername.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) * 8371) % 899999 + 100000;
+                          resolvedUserId = `SEHR-${numericHash}`;
+                        }
+
+                        const resolvedLevel = userLevel || (targetUsername === user.username ? (user.level || 1) : getHostLevelFromName(targetUsername) || 12);
+                        const resolvedVip = vipLevel || (targetUsername === user.username ? (user.vipLevel || 0) : (isHost ? 3 : 1));
+
+                        setPartyUserProfile({
+                          username: targetUsername,
+                          avatar: avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+                          userId: resolvedUserId,
+                          userLevel: resolvedLevel,
+                          vipLevel: resolvedVip,
+                          isHost,
+                          seatId
+                        });
+                      };
+
                       // Click seat event handler
                       const handleSeatClick = (seatId: number, occupantName: string | null) => {
                         if (occupantName === user.username) {
@@ -7875,19 +8026,32 @@ export default function App() {
                           <div className="flex flex-col bg-transparent shrink-0">
                             {/* 🎵 ROOM HEADER INFO BOX */}
                             <div className="flex items-center justify-between p-2 px-3 border-b border-white/5 bg-[#12121a]/60 backdrop-blur-md">
-                              <div className="flex items-center space-x-2 bg-transparent text-left max-w-[70%]">
-                                <img src={party.hostAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"} className="w-8 h-8 rounded-full object-cover border border-[#ff007f]" alt="Host" />
+                              <div 
+                                onClick={() => handleOpenPartyUserProfile(party.hostUsername, party.hostAvatar, 1)}
+                                className="flex items-center space-x-2 bg-transparent text-left max-w-[70%] cursor-pointer group"
+                                title="Click to view Host Profile"
+                              >
+                                <img src={party.hostAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"} className="w-8 h-8 rounded-full object-cover border border-[#ff007f] group-hover:scale-105 transition-transform" alt="Host" />
                                 <div className="bg-transparent leading-none truncate">
                                   <h4 className="text-[10px] font-bold text-white uppercase truncate flex items-center space-x-1 bg-transparent">
                                     <span>{party.title}</span>
                                     <span className="text-[7.5px] bg-[#ff007f] text-white px-1 py-0.5 rounded ml-1 tracking-wider uppercase font-black font-mono">LIVE LOUNGE</span>
                                   </h4>
-                                  <p className="text-[8.5px] text-[#ff007f] font-mono mt-0.5 bg-transparent">Host: @{party.hostUsername} • 🎙️ {party.category}</p>
+                                  <p className="text-[8.5px] text-[#ff007f] font-mono mt-0.5 bg-transparent group-hover:underline">Host: @{party.hostUsername} • 🎙️ {party.category}</p>
                                 </div>
                               </div>
 
                               {/* Header Actions */}
                               <div className="flex items-center space-x-1.5 bg-transparent shrink-0">
+                                {/* Share Party Room Button (Host & Viewer/Guest) */}
+                                <button
+                                  onClick={handleShareParty}
+                                  className="bg-[#20102a] border border-pink-500/30 hover:border-pink-500 p-1 rounded-xl text-pink-400 hover:text-pink-300 transition-all cursor-pointer flex items-center justify-center w-7.5 h-7.5 shadow-md active:scale-90"
+                                  title="Share Party Room"
+                                >
+                                  <Share2 className="w-3.5 h-3.5" />
+                                </button>
+
                                 {isHostOfRoom && (
                                   <button
                                     onClick={() => setShowRequestsSheet(true)}
@@ -7951,7 +8115,16 @@ export default function App() {
                                         >
                                           <div className="w-full h-full rounded-full overflow-hidden border border-[#0e0720] flex items-center justify-center bg-transparent">
                                             {isOccupied ? (
-                                              <img src={seat.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"} className="w-full h-full object-cover" alt={seat.name} />
+                                              <img 
+                                                src={seat.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"} 
+                                                className="w-full h-full object-cover cursor-pointer hover:scale-110 transition-transform" 
+                                                alt={seat.name}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleOpenPartyUserProfile(seat.name, seat.avatar, seat.id);
+                                                }}
+                                                title={`Click to view @${seat.name}'s Profile`}
+                                              />
                                             ) : (
                                               <div className="flex flex-col items-center justify-center bg-transparent text-gray-500">
                                                 <span className="text-[9px] bg-transparent font-black leading-none">🎙️</span>
@@ -8029,16 +8202,13 @@ export default function App() {
                                   return (
                                     <div 
                                       key={comment.id}
-                                      onClick={() => {
-                                        if (comment.username !== user.username) {
-                                          setGiftTargetUser(comment.username);
-                                        }
-                                      }}
-                                      className="bg-black/20 hover:bg-white/5 p-1 px-2 rounded-lg flex items-start space-x-1.5 max-w-[95%] transition-all cursor-pointer leading-snug"
+                                      onClick={() => handleOpenPartyUserProfile(comment.username, comment.avatar, undefined, comment.userLevel, comment.vipLevel)}
+                                      className="bg-black/20 hover:bg-white/5 p-1 px-2 rounded-lg flex items-start space-x-1.5 max-w-[95%] transition-all cursor-pointer leading-snug group"
+                                      title="Click to view User Profile"
                                     >
                                       <span className="text-[7.5px] font-bold text-[#ff007f] font-mono whitespace-nowrap bg-transparent uppercase">Lv.{comment.userLevel || 1}</span>
                                       <p className="text-[8.5px] bg-transparent text-gray-200">
-                                        <span className="font-bold text-[#66fcf1] mr-1 uppercase font-mono">@{comment.username}:</span>
+                                        <span className="font-bold text-[#66fcf1] mr-1 uppercase font-mono group-hover:underline">@{comment.username}:</span>
                                         {comment.message}
                                       </p>
                                     </div>
@@ -8072,6 +8242,20 @@ export default function App() {
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2">
+                                  {occupantName && (
+                                    <button
+                                      onClick={() => {
+                                        const sId = activeSeatMenu.seatId;
+                                        const uName = occupantName;
+                                        setActiveSeatMenu(null);
+                                        handleOpenPartyUserProfile(uName, seat?.avatar, sId);
+                                      }}
+                                      className="col-span-2 bg-gradient-to-r from-pink-500/20 to-purple-600/20 hover:from-pink-500/40 hover:to-purple-600/40 border border-pink-500/40 text-pink-300 rounded-xl py-2 text-[9.5px] font-black uppercase tracking-wider text-center cursor-pointer transition-all flex items-center justify-center space-x-1"
+                                    >
+                                      <span>👤 View User Profile & Badges</span>
+                                    </button>
+                                  )}
+
                                   {isMenuMySeat ? (
                                     <>
                                       <button
@@ -8370,6 +8554,142 @@ export default function App() {
                             </button>
                           </div>
                         </div> {/* End of LOWER AREA container */}
+
+                          {/* 👤 PARTY ROOM USER PROFILE POPUP MODAL OVERLAY */}
+                          {partyUserProfile && (
+                            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-99 flex items-center justify-center p-4 animate-fade-in select-none">
+                              <div className="bg-[#150d2a] border-2 border-[#ff007f]/60 rounded-3xl p-5 w-full max-w-xs shadow-[0_0_30px_rgba(255,0,127,0.3)] relative animate-pop-gift text-center space-y-3.5">
+                                {/* Close button */}
+                                <button
+                                  onClick={() => setPartyUserProfile(null)}
+                                  className="absolute top-3.5 right-3.5 text-gray-400 hover:text-white transition-colors text-sm font-black p-1 cursor-pointer bg-black/30 rounded-full w-6 h-6 flex items-center justify-center"
+                                >
+                                  ✕
+                                </button>
+
+                                {/* Profile Photo with Frame & Host/Seat Badge */}
+                                <div className="relative inline-block mt-1">
+                                  <div className="w-20 h-20 rounded-full p-[2px] bg-gradient-to-tr from-[#ff007f] via-purple-500 to-cyan-400 shadow-xl mx-auto">
+                                    <img
+                                      src={partyUserProfile.avatar}
+                                      alt={partyUserProfile.username}
+                                      className="w-full h-full rounded-full object-cover border-2 border-[#150d2a]"
+                                    />
+                                  </div>
+                                  {partyUserProfile.isHost ? (
+                                    <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-400 via-pink-500 to-[#ff007f] text-black font-black text-[7.5px] uppercase px-2 py-0.5 rounded-full tracking-wider border border-black/20 shadow-md whitespace-nowrap">
+                                      👑 ROOM HOST
+                                    </span>
+                                  ) : partyUserProfile.seatId ? (
+                                    <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-purple-600 to-pink-500 text-white font-black text-[7.5px] uppercase px-2 py-0.5 rounded-full tracking-wider border border-black/20 shadow-md whitespace-nowrap">
+                                      🎙️ SEAT {partyUserProfile.seatId}
+                                    </span>
+                                  ) : null}
+                                </div>
+
+                                {/* User Info Header */}
+                                <div className="space-y-1 bg-transparent">
+                                  <h3 className="text-sm font-black text-white uppercase tracking-wide font-mono flex items-center justify-center space-x-1.5">
+                                    <span>@{partyUserProfile.username}</span>
+                                    {partyUserProfile.vipLevel > 0 && (
+                                      <span className="text-[7.5px] bg-amber-400 text-amber-950 px-1.5 py-0.2 rounded font-black font-mono">
+                                        👑 VIP {partyUserProfile.vipLevel}
+                                      </span>
+                                    )}
+                                  </h3>
+
+                                  {/* Real User ID */}
+                                  <div className="flex items-center justify-center space-x-1 bg-black/40 border border-white/5 rounded-full px-3 py-1 w-max mx-auto">
+                                    <span className="text-[8.5px] text-gray-400 font-mono">User ID:</span>
+                                    <span className="text-[9px] font-bold text-cyan-400 font-mono">{partyUserProfile.userId}</span>
+                                    <button
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(partyUserProfile.userId);
+                                        alert(`Copied User ID: ${partyUserProfile.userId}`);
+                                      }}
+                                      className="text-[9px] text-gray-400 hover:text-white ml-1 cursor-pointer"
+                                      title="Copy User ID"
+                                    >
+                                      📋
+                                    </button>
+                                  </div>
+
+                                  {/* Level and Badges */}
+                                  <div className="flex items-center justify-center space-x-2 pt-1">
+                                    <span className="text-[8px] bg-gradient-to-r from-pink-500 to-purple-600 text-white font-black font-mono px-2 py-0.5 rounded-full border border-pink-400/30">
+                                      Lv.{partyUserProfile.userLevel}
+                                    </span>
+                                    <span className="text-[8px] bg-purple-900/60 border border-purple-500/30 text-purple-200 font-bold font-sans px-2 py-0.5 rounded-full">
+                                      {partyUserProfile.isHost ? "Verified Host" : "Lounge Guest"}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Follow / Following Button */}
+                                {partyUserProfile.username !== user.username ? (
+                                  <div className="pt-2">
+                                    {(() => {
+                                      const isFollowing = followedUsers.includes(partyUserProfile.username);
+                                      return (
+                                        <button
+                                          onClick={() => {
+                                            if (isFollowing) {
+                                              setFollowedUsers(prev => prev.filter(u => u !== partyUserProfile.username));
+                                            } else {
+                                              setFollowedUsers(prev => [...prev, partyUserProfile.username]);
+                                            }
+                                          }}
+                                          className={`w-full py-2 px-4 rounded-2xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-md active:scale-95 flex items-center justify-center space-x-1.5 ${
+                                            isFollowing
+                                              ? "bg-[#281b3d] hover:bg-[#342350] border border-pink-500/40 text-pink-300"
+                                              : "bg-gradient-to-r from-[#ff007f] via-pink-500 to-purple-600 hover:brightness-110 text-white border border-pink-400 shadow-[0_0_12px_rgba(255,0,127,0.4)]"
+                                          }`}
+                                        >
+                                          <span>{isFollowing ? "✓" : "💖"}</span>
+                                          <span>{isFollowing ? "Following" : "Follow"}</span>
+                                        </button>
+                                      );
+                                    })()}
+                                  </div>
+                                ) : (
+                                  <div className="pt-2">
+                                    <span className="text-[9px] font-bold text-gray-400 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
+                                      This is your profile
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* Quick Action Shortcuts */}
+                                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/5">
+                                  <button
+                                    onClick={() => {
+                                      setGiftTargetUser(partyUserProfile.username);
+                                      setPartyUserProfile(null);
+                                    }}
+                                    className="bg-pink-500/20 hover:bg-pink-500/30 border border-pink-500/40 text-pink-300 py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center space-x-1"
+                                  >
+                                    <span>🎁</span>
+                                    <span>Send Gift</span>
+                                  </button>
+
+                                  {partyUserProfile.seatId && (
+                                    <button
+                                      onClick={() => {
+                                        const sId = partyUserProfile.seatId;
+                                        const uName = partyUserProfile.username;
+                                        setPartyUserProfile(null);
+                                        setActiveSeatMenu({ seatId: sId!, occupantName: uName });
+                                      }}
+                                      className="bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center space-x-1"
+                                    >
+                                      <span>🎙️</span>
+                                      <span>Seat Menu</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
 
                           {/* 🚪 PORTABLE EXIT & END PARTY CONFIRMATION DIALOG MODAL (Iframe Safe) */}
                           {showPartyExitConfirm && (
