@@ -75,24 +75,55 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
+          mkdir -p android/app
+          KEYSTORE_VALID=false
+
           if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
-            echo "Decoding custom release keystore..."
+            echo "Decoding custom release keystore secret..."
             echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
-            echo "RELEASE_STORE_FILE=release.keystore" >> $GITHUB_ENV
-            echo "RELEASE_STORE_PASSWORD=$RELEASE_STORE_PASSWORD" >> $GITHUB_ENV
-            echo "RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS" >> $GITHUB_ENV
-            echo "RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD" >> $GITHUB_ENV
-          else
-            echo "No custom release keystore secret found. Generating temporary build-time keystore..."
-            keytool -genkey -v -keystore android/app/release.keystore \
-              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass android -keypass android \
-              -dname "CN=Android Build, O=Android, C=US"
+            STORE_PASS="${RELEASE_STORE_PASSWORD:-android}"
+            KEY_ALIAS="${RELEASE_KEY_ALIAS:-release}"
+            KEY_PASS="${RELEASE_KEY_PASSWORD:-android}"
+
+            if keytool -list -keystore android/app/release.keystore -storetype PKCS12 -storepass "$STORE_PASS" > /dev/null 2>&1; then
+              echo "✅ Custom release keystore validated successfully (PKCS12)!"
+              KEYSTORE_VALID=true
+              echo "RELEASE_STORE_FILE=release.keystore" >> $GITHUB_ENV
+              echo "RELEASE_STORE_PASSWORD=$STORE_PASS" >> $GITHUB_ENV
+              echo "RELEASE_KEY_ALIAS=$KEY_ALIAS" >> $GITHUB_ENV
+              echo "RELEASE_KEY_PASSWORD=$KEY_PASS" >> $GITHUB_ENV
+            else
+              echo "⚠️ Custom release keystore validation failed. Falling back to temporary PKCS12 keystore..."
+              rm -f android/app/release.keystore
+            fi
+          fi
+
+          if [ "$KEYSTORE_VALID" != "true" ]; then
+            echo "Generating temporary build-time PKCS12 keystore..."
+            keytool -genkeypair -v \
+              -keystore android/app/release.keystore \
+              -storetype PKCS12 \
+              -alias release \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass android \
+              -keypass android \
+              -dname "CN=SehrLive Build, O=SehrLive, C=US"
+
             echo "RELEASE_STORE_FILE=release.keystore" >> $GITHUB_ENV
             echo "RELEASE_STORE_PASSWORD=android" >> $GITHUB_ENV
-            echo "RELEASE_KEY_ALIAS=androiddebugkey" >> $GITHUB_ENV
+            echo "RELEASE_KEY_ALIAS=release" >> $GITHUB_ENV
             echo "RELEASE_KEY_PASSWORD=android" >> $GITHUB_ENV
           fi
+
+          FINAL_STORE_PASS="android"
+          if [ "$KEYSTORE_VALID" = "true" ]; then
+            FINAL_STORE_PASS="${RELEASE_STORE_PASSWORD:-android}"
+          fi
+
+          echo "Validating final release keystore with keytool..."
+          keytool -list -v -keystore android/app/release.keystore -storetype PKCS12 -storepass "$FINAL_STORE_PASS"
 
       - name: Build Android Release APK (Signed)
         run: |
