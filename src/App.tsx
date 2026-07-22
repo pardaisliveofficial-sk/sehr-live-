@@ -16731,11 +16731,11 @@ export default function App() {
                               <span className="text-[9px] uppercase tracking-widest text-purple-400 font-bold font-mono">Host Stream Earnings</span>
                               <div className="flex items-center justify-center space-x-2">
                                 <DollarSign className="w-6 h-6 text-[#66fcf1]" />
-                                <p className="text-2xl font-black text-white font-mono tracking-tight">{user.diamonds}</p>
+                                <p className="text-2xl font-black text-white font-mono tracking-tight">{user.diamonds ?? 0}</p>
                                 <span className="text-xs text-gray-400 font-bold">Diamonds</span>
                               </div>
                               <p className="text-xs text-[#25D366] font-mono font-bold">
-                                Estimated Value: ${(user.diamonds / 100).toFixed(2)} USD (~{(user.diamonds * 2.8).toFixed(0)} PKR)
+                                Estimated Value: ${(((user.diamonds ?? 0) / 100)).toFixed(2)} USD (~{(((user.diamonds ?? 0) * 2.8)).toFixed(0)} PKR)
                               </p>
                             </div>
 
@@ -16879,9 +16879,9 @@ export default function App() {
                                       Exchange Now
                                     </button>
                                   </div>
-                                  {parseInt(exchangeAmount) > 0 && (
+                                  {(parseInt(exchangeAmount) || 0) > 0 && (
                                     <p className="text-[8.5px] text-yellow-400 font-mono font-bold animate-pulse">
-                                      ✨ Conversion Rate: {parseInt(exchangeAmount)} Diamonds ➔ {parseInt(exchangeAmount)} Coins!
+                                      ✨ Conversion Rate: {parseInt(exchangeAmount) || 0} Diamonds ➔ {parseInt(exchangeAmount) || 0} Coins!
                                     </p>
                                   )}
                                 </div>
@@ -17027,11 +17027,11 @@ export default function App() {
                                     </div>
                                   </div>
 
-                                  {customCoinAmountInput && parseInt(customCoinAmountInput) > 0 && (
+                                  {Boolean(customCoinAmountInput && (parseInt(customCoinAmountInput) || 0) > 0) && (
                                     <div className="bg-[#1e1e2d] p-3 rounded-lg border border-white/5 space-y-1.5 animate-fadeIn">
                                       <div className="flex justify-between items-center bg-transparent text-[10px]">
                                         <span className="text-gray-400 font-medium">Coins Requested:</span>
-                                        <strong className="text-white font-mono">{parseInt(customCoinAmountInput).toLocaleString()} Coins</strong>
+                                        <strong className="text-white font-mono">{(parseInt(customCoinAmountInput) || 0).toLocaleString()} Coins</strong>
                                       </div>
                                       <div className="flex justify-between items-center bg-transparent text-[10px]">
                                         <span className="text-gray-400 font-medium">Conversion Rate:</span>
@@ -17041,7 +17041,7 @@ export default function App() {
                                       <div className="flex justify-between items-center bg-transparent">
                                         <span className="text-[10px] text-gray-300 font-bold">Total Estimated Cost:</span>
                                         <strong className="text-xs font-mono font-black text-[#25D366]">
-                                          ${((parseInt(customCoinAmountInput) / 1000) * 0.95).toFixed(2)} USD
+                                          ${((((parseInt(customCoinAmountInput) || 0) / 1000) * 0.95)).toFixed(2)} USD
                                         </strong>
                                       </div>
 
