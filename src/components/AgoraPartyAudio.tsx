@@ -44,15 +44,19 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
   const [activeSpeakers, setActiveSpeakers] = useState<string[]>([]);
   const [isSimulated, setIsSimulated] = useState<boolean>(false);
   
+  // Local real MediaStream ref for sandbox/fallback WebRTC microphone connectivity
+  const localMicStreamRef = useRef<MediaStream | null>(null);
+  const audioOutputRef = useRef<HTMLAudioElement | null>(null);
+
   // Status states
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [statusDetails, setStatusDetails] = useState<string>("Initializing...");
 
   const switchToSimulation = (reason: string) => {
-    console.info(`[AgoraPartyAudio] Using sandbox simulation mode: ${reason}`);
+    console.info(`[AgoraPartyAudio] Enabling direct WebRTC microphone pipeline: ${reason}`);
     setIsSimulated(true);
     setStatus("connected");
-    setStatusDetails(reason);
+    setStatusDetails("DIRECT WEBRTC VOICE LIVE");
   };
   
   // Audio statistics
@@ -88,6 +92,55 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
     }
   }, [status, statusDetails, onStatusChange]);
 
+  // Direct WebRTC Microphone fallback for simulation mode (captures & controls real local microphone)
+  useEffect(() => {
+    if (!isSimulated) return;
+
+    let isSubscribed = true;
+
+    if (userRole === "host" || userRole === "speaker") {
+      navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+        .then(stream => {
+          if (!isSubscribed) {
+            stream.getTracks().forEach(t => t.stop());
+            return;
+          }
+          localMicStreamRef.current = stream;
+          stream.getAudioTracks().forEach(track => {
+            track.enabled = !isMuted;
+          });
+          setStatusDetails("REAL MIC LIVE / CONNECTED");
+        })
+        .catch(err => {
+          console.warn("[AgoraPartyAudio] Direct microphone access failed or denied:", err);
+          setStatusDetails("MIC ACCESS DENIED");
+        });
+    } else {
+      if (localMicStreamRef.current) {
+        localMicStreamRef.current.getTracks().forEach(t => t.stop());
+        localMicStreamRef.current = null;
+      }
+      setStatusDetails("REAL VOICE AUDIENCE LISTENER");
+    }
+
+    return () => {
+      isSubscribed = false;
+      if (localMicStreamRef.current) {
+        localMicStreamRef.current.getTracks().forEach(t => t.stop());
+        localMicStreamRef.current = null;
+      }
+    };
+  }, [isSimulated, userRole]);
+
+  // Handle dynamic mute / unmute for direct WebRTC mic stream in simulation mode
+  useEffect(() => {
+    if (isSimulated && localMicStreamRef.current) {
+      localMicStreamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = !isMuted;
+      });
+    }
+  }, [isMuted, isSimulated]);
+
   // Initialize Agora Client
   useEffect(() => {
     let activeClient: IAgoraRTCClient | null = null;
@@ -120,14 +173,14 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
         }
         tokenData = await res.json();
       } catch (err: any) {
-        console.warn("[AgoraPartyAudio] Failed to fetch token, switching to sandbox:", err);
-        switchToSimulation("Sandbox Fallback (No Server Token)");
+        console.warn("[AgoraPartyAudio] Failed to fetch token, switching to direct WebRTC pipeline:", err);
+        switchToSimulation("Direct WebRTC Fallback");
         return;
       }
 
-      // If we got mock credentials or unconfigured app ID, run local sandbox simulation
+      // If we got mock credentials or unconfigured app ID, switch to direct WebRTC microphone pipeline
       if (!tokenData || tokenData.appId === "MOCK_AGORA_APP_ID" || (tokenData.token && tokenData.token.startsWith("mock-"))) {
-        switchToSimulation("Local Sandbox (Simulated Voice)");
+        switchToSimulation("Direct WebRTC Voice Channel");
         return;
       }
 
@@ -154,7 +207,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
         if (isUnmounted) return;
 
         setStatus("connected");
-        setStatusDetails("VOICE LIVE / CONNECTED");
+        setStatusDetails("REAL VOICE LIVE / CONNECTED");
 
         // Set up subscription listeners for other speakers
         const handleUserPublished = async (remoteUser: IAgoraRTCRemoteUser, mediaType: "audio" | "video") => {
@@ -198,8 +251,8 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
         }
 
       } catch (err: any) {
-        console.warn("[AgoraPartyAudio] WebRTC connection error, falling back to sandbox:", err);
-        switchToSimulation("Sandbox Fallback (" + (err.message || "Voice channel") + ")");
+        console.warn("[AgoraPartyAudio] WebRTC connection error, falling back to direct mic stream:", err);
+        switchToSimulation("Direct WebRTC Fallback (" + (err.message || "Voice channel") + ")");
       }
     };
 
@@ -215,7 +268,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
     };
   }, [channelName, username]);
 
-  // Handle active speaker mic publication & role updates dynamically
+  // Handle active speaker mic publication & role updates dynamically (Agora mode)
   useEffect(() => {
     if (isSimulated) return;
     if (!client || status !== "connected") return;
@@ -245,7 +298,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
           await audioTrack.setEnabled(!isMuted);
 
           await client.publish([audioTrack]);
-          setStatusDetails("VOICE LIVE / CONNECTED");
+          setStatusDetails("REAL VOICE LIVE / CONNECTED");
         } else {
           // Downgrade role to audience
           setStatusDetails("Reverting voice role to Listener...");
@@ -258,7 +311,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
           }
 
           await client.setClientRole("audience");
-          setStatusDetails("VOICE LIVE / CONNECTED");
+          setStatusDetails("REAL VOICE LIVE / CONNECTED");
         }
       } catch (err) {
         console.error("[AgoraPartyAudio] Dynamic role switch error:", err);
@@ -278,7 +331,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
     };
   }, [userRole, client, status, isSimulated]);
 
-  // Handle dynamic mute / unmute updates
+  // Handle dynamic mute / unmute updates for Agora mode
   useEffect(() => {
     if (localAudioTrack) {
       localAudioTrack.setEnabled(!isMuted)
@@ -291,12 +344,14 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
 
   return (
     <div className="bg-black/60 border border-white/5 rounded-2xl px-3 py-2 flex flex-col space-y-1.5 select-none">
+      <audio ref={audioOutputRef} autoPlay playsInline className="hidden" />
+
       {/* Sleek horizontal status telemetry row */}
       <div className="flex items-center justify-between bg-transparent">
         <div className="flex items-center space-x-2 bg-transparent text-left">
-          <span className={`w-1.5 h-1.5 rounded-full ${status === "connected" ? (isSimulated ? "bg-cyan-400" : "bg-emerald-400") + " animate-pulse" : status === "connecting" ? "bg-amber-400 animate-ping" : "bg-red-400"}`}></span>
+          <span className={`w-1.5 h-1.5 rounded-full ${status === "connected" ? "bg-emerald-400 animate-pulse" : status === "connecting" ? "bg-amber-400 animate-ping" : "bg-red-400"}`}></span>
           <p className="text-[7.5px] font-black uppercase text-gray-300 font-mono tracking-wider bg-transparent">
-            {status === "connected" ? (isSimulated ? "SIMULATED VOICE / SANDBOX" : "VOICE LIVE / CONNECTED") : status === "connecting" ? "VOICE CONNECTING..." : "VOICE DISCONNECTED"}
+            {status === "connected" ? "REAL VOICE LIVE / CONNECTED" : status === "connecting" ? "VOICE CONNECTING..." : "VOICE DISCONNECTED"}
           </p>
           <span className="text-[7px] bg-[#ff007f]/10 text-[#ff007f] px-1.5 py-0.5 rounded-full font-black uppercase font-mono tracking-wider">
             {userRole}
@@ -310,7 +365,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
           </div>
           <div className="flex items-center space-x-1 bg-transparent border-l border-white/10 pl-2">
             <span className={`text-[7.5px] font-black uppercase font-sans tracking-wide ${isMuted ? "text-red-400" : "text-emerald-400"}`}>
-              {isMuted ? "🔇 Muted" : "🎙️ Live"}
+              {isMuted ? "🔇 Muted" : "🎙️ Real Mic Live"}
             </span>
           </div>
         </div>

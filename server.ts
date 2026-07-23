@@ -889,6 +889,16 @@ app.post("/api/v1/hosts", (req, res) => {
   }
 });
 
+app.get("/api/v1/hosts/:id", (req, res) => {
+  const { id } = req.params;
+  const host = dbData.hosts.find((h: any) => h.id === id || h.hostUsername === id || h.name === id);
+  if (host) {
+    res.json(host);
+  } else {
+    res.status(404).json({ error: "Host not found" });
+  }
+});
+
 app.put("/api/v1/hosts/:id", (req, res) => {
   const { id } = req.params;
   const index = dbData.hosts.findIndex((h: any) => h.id === id || h.hostUsername === id || h.name === id);
@@ -900,6 +910,28 @@ app.put("/api/v1/hosts/:id", (req, res) => {
     res.json(dbData.hosts[index]);
   } else {
     console.warn(`[LIVE SERVER WARN] Host ${id} not found for update`);
+    res.status(404).json({ error: "Host not found" });
+  }
+});
+
+app.post("/api/v1/hosts/:id/like", (req, res) => {
+  const { id } = req.params;
+  const { count = 1, senderUsername, xPercent, yPercent } = req.body || {};
+  const index = dbData.hosts.findIndex((h: any) => h.id === id || h.hostUsername === id || h.name === id);
+  if (index !== -1) {
+    const host = dbData.hosts[index];
+    host.likes = (host.likes || 0) + Number(count);
+    host.lastLikeEvent = {
+      senderUsername: senderUsername || "Viewer",
+      timestamp: Date.now(),
+      count: Number(count),
+      xPercent,
+      yPercent
+    };
+    saveDatabase();
+    syncDocument("hosts", host.id, host);
+    res.json({ success: true, likes: host.likes, lastLikeEvent: host.lastLikeEvent });
+  } else {
     res.status(404).json({ error: "Host not found" });
   }
 });

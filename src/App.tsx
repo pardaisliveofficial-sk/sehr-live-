@@ -3066,6 +3066,7 @@ export default function App() {
   const [userLiveLikes, setUserLiveLikes] = useState<number>(100);
   const [doubleTapHearts, setDoubleTapHearts] = useState<Array<{ id: string; x: number; y: number; color: string }>>([]);
   const lastTapRef = useRef<number>(0);
+  const lastHostLikeEventTimestamp = useRef<number>(0);
   const userLiveMessagesRef = useRef<ChatMessage[]>([]);
   const [userLiveMessages, _setUserLiveMessages] = useState<ChatMessage[]>([]);
   const setUserLiveMessages = (val: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
@@ -4045,7 +4046,64 @@ export default function App() {
     }
   }, [clientView, activeHost]);
 
-  // Real-time backend viewer join/leave presence synchronization for active live-room
+  // Host Side Live State Synchronizer (Pushes camera status, pulls viewers & likes in real-time)
+  useEffect(() => {
+    if (clientView !== "user-live" || !user?.username) return;
+
+    const hostId = user.uid || user.username;
+    const syncHostState = () => {
+      fetch(`/api/v1/hosts/${hostId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: hostId,
+          hostUsername: user.username,
+          name: user.username,
+          avatar: user.avatar,
+          hostLevel: user.userLevel || 1,
+          level: user.userLevel || 1,
+          vipLevel: user.vipLevel || 0,
+          cameraEnabled: userLiveCam,
+          isCamOff: !userLiveCam,
+          status: "live",
+          updatedAt: new Date().toISOString()
+        })
+      })
+        .then(res => {
+          if (!res.ok) return null;
+          return res.json();
+        })
+        .then(data => {
+          if (!data) return;
+          // Update viewer count on Host screen from real backend presence
+          if (data.realViewerCount !== undefined) {
+            setUserLiveViewers(data.realViewerCount);
+          } else if (Array.isArray(data.connectedViewers)) {
+            setUserLiveViewers(data.connectedViewers.length);
+          }
+          // Synchronize total likes
+          if (data.likes !== undefined) {
+            setUserLiveLikes(data.likes);
+          }
+          // Process incoming live double-tap like events from viewers
+          if (data.lastLikeEvent && data.lastLikeEvent.timestamp > lastHostLikeEventTimestamp.current) {
+            lastHostLikeEventTimestamp.current = data.lastLikeEvent.timestamp;
+            const screenW = window.innerWidth || 360;
+            const screenH = window.innerHeight || 640;
+            const xPct = data.lastLikeEvent.xPercent !== undefined ? data.lastLikeEvent.xPercent : (Math.random() * 60 + 20);
+            const yPct = data.lastLikeEvent.yPercent !== undefined ? data.lastLikeEvent.yPercent : (Math.random() * 40 + 40);
+            triggerDoubleTapHeart((xPct / 100) * screenW, (yPct / 100) * screenH, screenW);
+          }
+        })
+        .catch(err => console.error("Error syncing host live state:", err));
+    };
+
+    syncHostState();
+    const interval = setInterval(syncHostState, 1500);
+    return () => clearInterval(interval);
+  }, [clientView, user?.username, user?.uid, user?.avatar, user?.userLevel, user?.vipLevel, userLiveCam]);
+
+  // Real-time backend viewer join/leave presence & live state synchronization for active live-room
   useEffect(() => {
     if (clientView !== "live-room" || !activeHost) return;
 
@@ -4075,7 +4133,50 @@ export default function App() {
       })
       .catch(err => console.error(`[LIVE VIEWER JOIN ERROR] Could not join backend room ${hostId}:`, err));
 
+    // Poll live host state in real-time (cameraEnabled, viewers, likes, profile data)
+    const pollHostState = () => {
+      fetch(`/api/v1/hosts/${hostId}`)
+        .then(res => {
+          if (!res.ok) return null;
+          return res.json();
+        })
+        .then(data => {
+          if (!data) return;
+          const isCamOn = data.cameraEnabled !== undefined ? data.cameraEnabled : (data.isCamOff !== undefined ? !data.isCamOff : true);
+          setCameraActive(isCamOn);
+
+          if (data.realViewerCount !== undefined) {
+            setViewersCount(data.realViewerCount);
+          } else if (Array.isArray(data.connectedViewers)) {
+            setViewersCount(data.connectedViewers.length);
+          }
+
+          if (data.likes !== undefined) {
+            setLikesCount(data.likes);
+          }
+
+          setActiveHost(prev => {
+            if (!prev) return data;
+            return {
+              ...prev,
+              ...data,
+              name: data.name || data.hostUsername || prev.name,
+              avatar: data.avatar || prev.avatar,
+              hostLevel: data.hostLevel || data.level || prev.hostLevel || 1,
+              level: data.hostLevel || data.level || prev.level || 1,
+              cameraEnabled: isCamOn,
+              isCamOff: !isCamOn
+            };
+          });
+        })
+        .catch(err => console.error("Error polling host live state:", err));
+    };
+
+    pollHostState();
+    const interval = setInterval(pollHostState, 1500);
+
     return () => {
+      clearInterval(interval);
       console.log(`[LIVE VIEWER LEAVE ATTEMPT] Leaving backend room: ${hostId}`);
       fetch(`/api/v1/hosts/${hostId}/leave`, {
         method: "POST",
@@ -4083,7 +4184,7 @@ export default function App() {
         body: JSON.stringify({ username: user.username })
       }).catch(err => console.error(`[LIVE VIEWER LEAVE ERROR] Could not leave backend room ${hostId}:`, err));
     };
-  }, [clientView, activeHost?.id]);
+  }, [clientView, activeHost?.id, user?.username, user?.avatar, user?.uniqueId, user?.userLevel, user?.vipLevel]);
 
   // Auto scroll chat
   useEffect(() => {
@@ -4573,6 +4674,19 @@ export default function App() {
       // Target: Host A (Main Host)
       // 1. Total Hearts: ALWAYS increase with NO limit
       setLikesCount(prev => prev + 1);
+
+      if (activeHost?.id) {
+        fetch(`/api/v1/hosts/${activeHost.id}/like`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            count: 1,
+            senderUsername: user.username,
+            xPercent: (x / rect.width) * 100,
+            yPercent: (y / rect.height) * 100
+          })
+        }).catch(err => console.error("Error sending live like event:", err));
+      }
 
       // 2. PK Match Score: ONLY +3 on first valid double-tap in current PK match
       if (isPk) {
@@ -8997,8 +9111,8 @@ export default function App() {
                                     <span className="text-blue-400 text-[8px]">✔️</span>
                                   </span>
                                   <div className="flex items-center space-x-1 bg-transparent">
-                                    <span className="text-[7.5px] bg-purple-600 text-white px-1 py-0.2 rounded font-black font-mono">Lv.25</span>
-                                    <span className="text-[7.5px] text-gray-300 font-bold font-mono">Guest Mode Live</span>
+                                    <span className="text-[7.5px] bg-purple-600 text-white px-1 py-0.2 rounded font-black font-mono">Lv.{activeHost.hostLevel || activeHost.level || 1}</span>
+                                    <span className="text-[7.5px] text-gray-300 font-bold font-mono">Host</span>
                                   </div>
                                 </div>
                               </div>
@@ -9467,15 +9581,16 @@ export default function App() {
                                   <p className="text-[7px] text-[#66fcf1] truncate">{likesCount} Likes</p>
                                 </div>
                                 <LevelBadgeSvg
-                                  level={getHostLevelFromName(activeHost.name)}
+                                  level={activeHost.hostLevel || activeHost.level || getHostLevelFromName(activeHost.name)}
                                   size="sm"
                                   onClick={() => {
+                                    const hLvl = activeHost.hostLevel || activeHost.level || getHostLevelFromName(activeHost.name);
                                     setLevelCenterUser({
                                       fullName: activeHost.name,
                                       username: activeHost.name.toLowerCase().replace(/[^a-z0-9]/g, ""),
                                       avatar: activeHost.avatar,
-                                      userLevel: getHostLevelFromName(activeHost.name),
-                                      xp: getCoinsForLevel(getHostLevelFromName(activeHost.name), levelBaseCoins, levelFormula)
+                                      userLevel: hLvl,
+                                      xp: getCoinsForLevel(hLvl, levelBaseCoins, levelFormula)
                                     });
                                     setShowLevelCenter(true);
                                   }}
