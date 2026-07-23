@@ -93,8 +93,14 @@ async function loadDatabase() {
       dbDataCache.adminUsersList.forEach((au: any) => {
         if (!au.coins || au.coins < 1000000) {
           au.coins = 1000000;
-          syncDocument("adminUsersList", au.username, au);
         }
+        if (au.kycStatus === undefined) {
+          au.kycStatus = "none";
+        }
+        if (au.isVerified === undefined) {
+          au.isVerified = false;
+        }
+        syncDocument("adminUsersList", au.username, au);
       });
     }
     saveDatabase();
@@ -630,10 +636,10 @@ app.post("/api/v1/user", authenticateUser, (req: any, res) => {
   if (idx !== -1) {
     dbData.adminUsersList[idx] = {
       ...dbData.adminUsersList[idx],
-      fullName: updatedUser.fullName,
+      fullName: updatedUser.fullName || dbData.adminUsersList[idx].fullName || "",
       coins: updatedUser.coins,
-      isVerified: updatedUser.isVerified,
-      kycStatus: updatedUser.kycStatus
+      isVerified: updatedUser.isVerified ?? dbData.adminUsersList[idx].isVerified ?? false,
+      kycStatus: updatedUser.kycStatus || dbData.adminUsersList[idx].kycStatus || "none"
     };
   }
   saveDatabase();

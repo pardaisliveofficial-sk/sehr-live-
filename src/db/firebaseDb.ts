@@ -52,6 +52,24 @@ export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true
 }, FIRESTORE_DB_ID);
 
+// Helper function to recursively remove undefined properties before calling setDoc
+export function sanitizeFirestoreData(data: any): any {
+  if (data === null || data === undefined) return null;
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeFirestoreData(item)).filter(item => item !== undefined);
+  }
+  if (typeof data === "object" && !(data instanceof Date)) {
+    const clean: Record<string, any> = {};
+    for (const [key, val] of Object.entries(data)) {
+      if (val !== undefined) {
+        clean[key] = sanitizeFirestoreData(val);
+      }
+    }
+    return clean;
+  }
+  return data;
+}
+
 // Helpers to track and handle Firestore write quota exhaustion gracefully
 export let isFirestoreQuotaExhausted = false;
 
@@ -186,7 +204,8 @@ export async function checkAndSeedDatabase() {
     const safeSetDoc = async (docRef: any, data: any) => {
       if (isFirestoreQuotaExhausted) return;
       try {
-        await setDoc(docRef, data, { merge: true });
+        const cleanData = sanitizeFirestoreData(data);
+        await setDoc(docRef, cleanData, { merge: true });
       } catch (err) {
         handleQuotaError(err, "database seeding write");
       }
@@ -318,7 +337,8 @@ export async function syncDocument(collectionName: string, docId: string, data: 
   if (isFirestoreQuotaExhausted) return;
   try {
     if (!docId) return;
-    await setDoc(doc(db, collectionName, String(docId)), data, { merge: true });
+    const cleanData = sanitizeFirestoreData(data);
+    await setDoc(doc(db, collectionName, String(docId)), cleanData, { merge: true });
     console.log(`[SEHR-LIVE FIREBASE] Synced document to Firestore: ${collectionName}/${docId}`);
   } catch (err) {
     handleQuotaError(err, `syncDocument ${collectionName}/${docId}`);
@@ -339,7 +359,8 @@ export async function deleteDocument(collectionName: string, docId: string) {
 export async function writeMetadata(docName: "user_profile" | "configurations" | "categories", data: any) {
   if (isFirestoreQuotaExhausted) return;
   try {
-    await setDoc(doc(db, "metadata", docName), data, { merge: true });
+    const cleanData = sanitizeFirestoreData(data);
+    await setDoc(doc(db, "metadata", docName), cleanData, { merge: true });
     console.log(`[SEHR-LIVE FIREBASE] Synced metadata to Firestore: ${docName}`);
   } catch (err) {
     handleQuotaError(err, `writeMetadata ${docName}`);
