@@ -93,14 +93,8 @@ async function loadDatabase() {
       dbDataCache.adminUsersList.forEach((au: any) => {
         if (!au.coins || au.coins < 1000000) {
           au.coins = 1000000;
+          syncDocument("adminUsersList", au.username, au);
         }
-        if (au.kycStatus === undefined) {
-          au.kycStatus = "none";
-        }
-        if (au.isVerified === undefined) {
-          au.isVerified = false;
-        }
-        syncDocument("adminUsersList", au.username, au);
       });
     }
     saveDatabase();
@@ -169,9 +163,8 @@ function authenticateUser(req: any, res: any, next: any) {
     }
   }
   
-  // Legacy / Guest mode fallback on missing, expired or invalid token:
-  req.user = dbData.user;
-  return next();
+  // Unauthorized token format / expired session, send unauthorized
+  return res.status(401).json({ error: "Session expired or invalid token. Please log in again." });
 }
 
 // ------------------------------------------------------------------
@@ -636,10 +629,10 @@ app.post("/api/v1/user", authenticateUser, (req: any, res) => {
   if (idx !== -1) {
     dbData.adminUsersList[idx] = {
       ...dbData.adminUsersList[idx],
-      fullName: updatedUser.fullName || dbData.adminUsersList[idx].fullName || "",
+      fullName: updatedUser.fullName,
       coins: updatedUser.coins,
-      isVerified: updatedUser.isVerified ?? dbData.adminUsersList[idx].isVerified ?? false,
-      kycStatus: updatedUser.kycStatus || dbData.adminUsersList[idx].kycStatus || "none"
+      isVerified: updatedUser.isVerified,
+      kycStatus: updatedUser.kycStatus
     };
   }
   saveDatabase();
@@ -941,50 +934,6 @@ app.get("/api/v1/hosts/:id", (req, res) => {
   }
 });
 
-// ------------------------------------------------------------------
-// REAL-TIME WEBRTC SIGNALING RELAY ENDPOINTS
-// ------------------------------------------------------------------
-const webrtcSignalsMap: Record<string, Array<{ from: string; to: string; signal: any; timestamp: number }>> = {};
-
-app.post("/api/v1/hosts/:id/webrtc/signal", (req, res) => {
-  const { id } = req.params;
-  const { from, to, signal } = req.body;
-  if (!from || !to || !signal) {
-    return res.status(400).json({ error: "Missing required signal parameters: from, to, signal" });
-  }
-
-  if (!webrtcSignalsMap[id]) {
-    webrtcSignalsMap[id] = [];
-  }
-
-  webrtcSignalsMap[id].push({
-    from,
-    to,
-    signal,
-    timestamp: Date.now()
-  });
-
-  const cutoff = Date.now() - 30000;
-  webrtcSignalsMap[id] = webrtcSignalsMap[id].filter(s => s.timestamp > cutoff);
-
-  return res.json({ success: true });
-});
-
-app.get("/api/v1/hosts/:id/webrtc/signals", (req, res) => {
-  const { id } = req.params;
-  const clientId = (req.query.client_id as string) || "";
-  if (!clientId) {
-    return res.status(400).json({ error: "client_id is required" });
-  }
-
-  const roomSignals = webrtcSignalsMap[id] || [];
-  const targetSignals = roomSignals.filter(s => s.to === clientId || s.to === "all" || (clientId === "host" && s.to === "host"));
-
-  webrtcSignalsMap[id] = roomSignals.filter(s => !(s.to === clientId || s.to === "all" || (clientId === "host" && s.to === "host")));
-
-  return res.json({ signals: targetSignals });
-});
-
 app.put("/api/v1/hosts/:id", (req, res) => {
   const { id } = req.params;
   const index = dbData.hosts.findIndex((h: any) => h.id === id || h.hostUsername === id || h.name === id);
@@ -1011,9 +960,6 @@ app.put("/api/v1/hosts/:id", (req, res) => {
     }
     if (updateData.lastLikeEvent === undefined && existing.lastLikeEvent) {
       updateData.lastLikeEvent = existing.lastLikeEvent;
-    }
-    if (updateData.lastJoinEvent === undefined && existing.lastJoinEvent) {
-      updateData.lastJoinEvent = existing.lastJoinEvent;
     }
     if (updateData.pkScoreHost === undefined && existing.pkScoreHost !== undefined) {
       updateData.pkScoreHost = existing.pkScoreHost;
@@ -1098,18 +1044,6 @@ app.post("/api/v1/hosts/:id/join", (req, res) => {
     }
     host.viewers = host.connectedViewers.length;
     host.realViewerCount = host.connectedViewers.length;
-
-    // Create real-time join event for both host and viewer entry UI
-    host.lastJoinEvent = {
-      id: `join-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      userId: userId || username,
-      username,
-      avatar: avatar || "",
-      level: level || 1,
-      vipLevel: vipLevel || 0,
-      timestamp: Date.now()
-    };
-
     saveDatabase();
     syncDocument("hosts", host.id, host);
     console.log(`[LIVE SERVER SUCCESS] User @${username} joined live room ${host.id} (total viewers: ${host.realViewerCount})`);
@@ -1152,7 +1086,7 @@ app.post("/api/v1/hosts/:id/comments", (req, res) => {
   if (!message || !username) {
     return res.status(400).json({ error: "Username and message are required" });
   }
-  const index = dbData.hosts.findIndex((h: any) => h.id === id || h.hostUsername === id || h.name === id);
+  const index = dbData.hosts.findIndex((h: any) => h.id === id);
   if (index !== -1) {
     const host = dbData.hosts[index];
     if (!host.comments) {
@@ -2633,7 +2567,7 @@ Respond strictly in JSON format with two keys:
 Message to moderate: "${text}"`;
 
     const response = await client.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.5-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -2645,13 +2579,14 @@ Message to moderate: "${text}"`;
     return res.json({
       flagged: !!result.flagged,
       reason: result.reason || "Approved",
-      moderatorType: "Sehr Live Server AI Moderation (Gemini-2.5-Flash)"
+      moderatorType: "Sehr Live Server AI Moderation (Gemini-3.5-Flash)"
     });
   } catch (error: any) {
-    console.warn("AI Moderation Fallback:", error?.message || error);
+    console.error("AI Moderation Error:", error);
     return res.json({
       flagged: false,
-      reason: "Approved",
+      reason: "Error processing; default approved.",
+      error: error.message,
       moderatorType: "Sehr Live Moderator Fallback"
     });
   }
@@ -2667,13 +2602,13 @@ app.post("/api/ai/translate", async (req, res) => {
   if (!client) {
     let translatedText = text;
     if (targetLanguage.toLowerCase() === "urdu") {
-      translatedText = `[اردو ترجمہ] ${text}`;
+      translatedText = `[اردو ترجمہ] ${text} (AI offline simulation)`;
     } else if (targetLanguage.toLowerCase() === "hindi") {
-      translatedText = `[हिंदी अनुवाद] ${text}`;
+      translatedText = `[हिंदी अनुवाद] ${text} (AI offline simulation)`;
     } else if (targetLanguage.toLowerCase() === "arabic") {
-      translatedText = `[الترجمة العربية] ${text}`;
+      translatedText = `[الترجمة العربية] ${text} (AI offline simulation)`;
     } else {
-      translatedText = `[Translated to ${targetLanguage}] ${text}`;
+      translatedText = `[Translated to ${targetLanguage}] ${text} (AI offline)`;
     }
 
     return res.json({
@@ -2688,7 +2623,7 @@ app.post("/api/ai/translate", async (req, res) => {
 Text: "${text}"`;
 
     const response = await client.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.5-flash",
       contents: prompt,
     });
 
@@ -2698,9 +2633,9 @@ Text: "${text}"`;
       type: "Sehr Live AI Translator"
     });
   } catch (error: any) {
-    console.warn("AI Translation Fallback:", error?.message || error);
+    console.error("AI Translation Error:", error);
     return res.json({
-      translatedText: text,
+      translatedText: `[Translation Error] ${text}`,
       sourceLanguage: "Auto",
       type: "Sehr Live Translation Fallback"
     });
@@ -2744,7 +2679,7 @@ Provide a short, lively, authentic response (1-2 sentences maximum) that a live 
 Do not wrap your answer in quotes or add metadata. Speak as the host directly.`;
 
     const response = await client.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.5-flash",
       contents: contextPrompt,
     });
 
@@ -2754,7 +2689,7 @@ Do not wrap your answer in quotes or add metadata. Speak as the host directly.`;
       type: "Sehr Live Gemini AI Host"
     });
   } catch (error: any) {
-    console.warn("AI Host Fallback:", error?.message || error);
+    console.error("AI Host Error:", error);
     return res.json({
       reply: "Thank you so much for the love and support! Let's rock Sehr Live! 🎉",
       speaker: hostName,

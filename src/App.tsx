@@ -947,7 +947,6 @@ export default function App() {
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [downloadingReelId, setDownloadingReelId] = useState<string | null>(null);
   const [activeReelGiftAnimation, setActiveReelGiftAnimation] = useState<{ icon: string; name: string } | null>(null);
-  const [isViewerAudioMuted, setIsViewerAudioMuted] = useState<boolean>(false);
 
   // Pull-to-refresh states
   const [pullY, setPullY] = useState<number>(0);
@@ -2077,26 +2076,32 @@ export default function App() {
   const [showActiveViewersModal, setShowActiveViewersModal] = useState<boolean>(false);
 
   const triggerJoinNotif = (username: string, userLevel: number, vipLevel: number) => {
-    const newBanner: EntryBanner = {
-      id: "banner-" + Math.random().toString(36).substring(2, 9) + "-" + Date.now(),
-      username,
-      userLevel: userLevel || 1,
-      vipLevel: vipLevel || 0,
-    };
     const newNotif: JoinNotif = {
       id: "join-" + Math.random().toString(36).substring(2, 9) + "-" + Date.now(),
       username,
-      userLevel: userLevel || 1,
-      vipLevel: vipLevel || 0,
+      userLevel,
+      vipLevel,
     };
-
-    setActiveEntryBanners([newBanner]);
-    setJoinNotifs([newNotif]);
-
+    setJoinNotifs(prev => [...prev, newNotif]);
+    // Auto-remove after 5 seconds (5000ms)
     setTimeout(() => {
-      setActiveEntryBanners(prev => prev.filter(b => b.id !== newBanner.id));
       setJoinNotifs(prev => prev.filter(n => n.id !== newNotif.id));
     }, 5000);
+
+    // If level is 10 or above, also trigger the premium sliding entry banner bar (patti)
+    if (userLevel >= 10) {
+      const newBanner: EntryBanner = {
+        id: "banner-" + Math.random().toString(36).substring(2, 9) + "-" + Date.now(),
+        username,
+        userLevel,
+        vipLevel,
+      };
+      setActiveEntryBanners(prev => [...prev, newBanner]);
+      // Remove after 6 seconds (to allow 0.4s enter, 5.2s pause, 0.4s exit)
+      setTimeout(() => {
+        setActiveEntryBanners(prev => prev.filter(b => b.id !== newBanner.id));
+      }, 6000);
+    }
   };
 
   // ==========================================
@@ -3081,10 +3086,8 @@ export default function App() {
   const lastTapRef = useRef<number>(0);
   const lastHostLikeEventTimestamp = useRef<number>(0);
   const lastHostGiftEventTimestamp = useRef<number>(0);
-  const lastHostJoinEventTimestamp = useRef<number>(0);
   const lastViewerGiftEventTimestamp = useRef<number>(0);
   const lastViewerLikeEventTimestamp = useRef<number>(0);
-  const lastViewerJoinEventTimestamp = useRef<number>(0);
   const userLiveMessagesRef = useRef<ChatMessage[]>([]);
   const [userLiveMessages, _setUserLiveMessages] = useState<ChatMessage[]>([]);
   const setUserLiveMessages = (val: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
@@ -4083,7 +4086,7 @@ export default function App() {
     }
   }, [clientView, activeHost]);
 
-  // Sync guest mode state & user entry notifications based on live host category
+  // Sync guest mode state based on live host category
   useEffect(() => {
     if (clientView === "live-room" && activeHost) {
       if (activeHost.category === "audio") {
@@ -4094,19 +4097,27 @@ export default function App() {
 
       // Reset join notifications for clean entrance
       setJoinNotifs([]);
-      setActiveEntryBanners([]);
 
-      // Trigger user themselves joining after a short delay (shows entry bar once for 5 seconds)
+      // Trigger user themselves joining after a short delay
       const t1 = setTimeout(() => {
-        triggerJoinNotif(user.username, user.userLevel || 1, user.vipLevel || 0);
+        triggerJoinNotif(user.username, user.userLevel, user.vipLevel);
       }, 350);
+
+      // Trigger another dynamic join event 1.8 seconds later
+      const dynamicJoiners = ["Saif_Ali_VIP", "Malik_Sheraz_40", "Raja_G_Level40", "Ayesha_Gull", "Sardar_Sb_VIP"];
+      const t2 = setTimeout(() => {
+        const name = dynamicJoiners[Math.floor(Math.random() * dynamicJoiners.length)];
+        const lvl = Math.floor(Math.random() * 20) + 30; // Level 30 - 50
+        const vip = Math.floor(Math.random() * 3) + 1; // VIP 1 - 3
+        triggerJoinNotif(name, lvl, vip);
+      }, 1800);
 
       return () => {
         clearTimeout(t1);
+        clearTimeout(t2);
       };
     } else {
       setJoinNotifs([]);
-      setActiveEntryBanners([]);
     }
   }, [clientView, activeHost]);
 
@@ -4124,7 +4135,6 @@ export default function App() {
           hostUsername: user.username,
           name: user.username,
           avatar: user.avatar,
-          channelName: `room_${user.uniqueId || user.username || DEFAULT_USER.uniqueId || DEFAULT_USER.username}`,
           hostLevel: user.userLevel || 1,
           level: user.userLevel || 1,
           vipLevel: user.vipLevel || 0,
@@ -4162,15 +4172,6 @@ export default function App() {
           // Synchronize comments from backend viewers
           if (Array.isArray(data.comments)) {
             setUserLiveMessages(data.comments);
-          }
-          // Process incoming live join events from viewers on Host screen
-          if (data.lastJoinEvent && data.lastJoinEvent.timestamp > lastHostJoinEventTimestamp.current) {
-            lastHostJoinEventTimestamp.current = data.lastJoinEvent.timestamp;
-            triggerJoinNotif(
-              data.lastJoinEvent.username,
-              data.lastJoinEvent.level || 1,
-              data.lastJoinEvent.vipLevel || 0
-            );
           }
           // Process incoming live double-tap like events from viewers
           if (data.lastLikeEvent && data.lastLikeEvent.timestamp > lastHostLikeEventTimestamp.current) {
@@ -4307,16 +4308,6 @@ export default function App() {
             }, 4000);
           }
 
-          // Process join events for viewer entry notification overlay
-          if (data.lastJoinEvent && data.lastJoinEvent.timestamp > lastViewerJoinEventTimestamp.current) {
-            lastViewerJoinEventTimestamp.current = data.lastJoinEvent.timestamp;
-            triggerJoinNotif(
-              data.lastJoinEvent.username,
-              data.lastJoinEvent.level || 1,
-              data.lastJoinEvent.vipLevel || 0
-            );
-          }
-
           // Process like events for viewer heart animations
           if (data.lastLikeEvent && data.lastLikeEvent.timestamp > lastViewerLikeEventTimestamp.current) {
             lastViewerLikeEventTimestamp.current = data.lastLikeEvent.timestamp;
@@ -4424,14 +4415,8 @@ export default function App() {
             setLiveStreamsList(data);
             // Set active host dynamically from backend list
             setActiveHost(prev => {
-              if (!prev) return data[0];
-              const matched = data.find(h =>
-                h.id === prev.id ||
-                h.hostUsername === prev.hostUsername ||
-                (prev.username && h.hostUsername === prev.username) ||
-                h.name === prev.name
-              );
-              return matched || prev;
+              const matched = data.find(h => h.id === prev?.id);
+              return matched || data[0];
             });
           }
         })
@@ -5697,47 +5682,23 @@ export default function App() {
   };
 
   // User Solo Live Broadcaster Handlers
-  const startUserSoloLive = async () => {
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        const testStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        testStream.getTracks().forEach(track => track.stop());
-        setCameraError(null);
-        setClientView("camera-prep");
-      } catch (err) {
-        console.warn("Camera/microphone permission verification failed:", err);
+  const startUserSoloLive = () => {
+    requestAppPermission(
+      "camera",
+      "Camera access is needed to broadcast video, use high-quality beauty filters, and perform PK battle matches.",
+      () => {
         requestAppPermission(
-          "camera",
-          "Camera access is needed to broadcast video, use high-quality beauty filters, and perform PK battle matches.",
+          "microphone",
+          "Microphone access is required so your viewers can hear your voice and you can join voice chat rooms.",
           () => {
-            requestAppPermission(
-              "microphone",
-              "Microphone access is required so your viewers can hear your voice and you can join voice chat rooms.",
-              () => {
-                setClientView("camera-prep");
-              }
-            );
+            setClientView("camera-prep");
           }
         );
       }
-    } else {
-      setClientView("camera-prep");
-    }
+    );
   };
 
-  const actuallyGoLive = async () => {
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        const permStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        permStream.getTracks().forEach(track => track.stop());
-        setCameraError(null);
-      } catch (err) {
-        console.warn("Camera permission verification failed before going live:", err);
-        alert("⚠️ Camera and microphone permissions are required to start live streaming. Please allow camera permissions in your browser.");
-        return;
-      }
-    }
-
+  const actuallyGoLive = () => {
     setClientView("user-live");
     setUserLiveDuration(0); 
     setUserLiveViewers(0); 
@@ -5932,6 +5893,33 @@ export default function App() {
       })
     }).catch(err => console.error("Error posting host comment to backend room:", err));
 
+    // Setup a nice interactive response from viewers in Roman Urdu/Urdu
+    setTimeout(() => {
+      const responsePool = [
+        "Aapki awaz bohot pyaari hai host! 😍",
+        "Wao host replied! Thank you!",
+        "Boht khushi hui apka jawab dekh kar.",
+        "MashaAllah host superb dynamic personality!",
+        "Support standard maximum! Syed team!"
+      ];
+      const randomResponse = responsePool[Math.floor(Math.random() * responsePool.length)];
+      const randomUsers = ["Sana_Khan", "Alina_Malik", "Karachi_King", "Siddique_bhai"];
+      const randomUser = randomUsers[Math.floor(Math.random() * randomUsers.length)];
+
+      setUserLiveMessages(prev => [
+        ...prev,
+        {
+          id: "ul-viewer-reply-" + Date.now(),
+          username: randomUser,
+          message: randomResponse,
+          vipLevel: Math.random() > 0.6 ? 1 : 0,
+          userLevel: Math.floor(Math.random() * 20) + 5,
+          isSystem: false,
+          isFlagged: false,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+    }, 1500);
   };
 
   const handleEndUserLive = () => {
@@ -9571,7 +9559,7 @@ export default function App() {
                                   title="View Active Audience List"
                                 >
                                   <Eye className="w-3 h-3 text-[#66fcf1] animate-pulse" />
-                                  <span>{viewersCount >= 1000 ? (viewersCount / 1000).toFixed(1) + "K" : viewersCount}</span>
+                                  <span>{viewersCount}</span>
                                 </div>
                                 <button
                                   onClick={() => {
@@ -9855,7 +9843,24 @@ export default function App() {
 
                                 {/* Message input bar */}
                                 <form
-                                  onSubmit={handleSendChatMessage}
+                                  onSubmit={(e) => {
+                                    e.preventDefault();
+                                    if (!chatInput.trim()) return;
+                                    setChatMessages(prev => [
+                                      ...prev,
+                                      {
+                                        id: "viewer-msg-" + Date.now(),
+                                        username: user.username,
+                                        message: chatInput,
+                                        vipLevel: user.vipLevel,
+                                        userLevel: user.userLevel,
+                                        isSystem: false,
+                                        isFlagged: false,
+                                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                      }
+                                    ]);
+                                    setChatInput("");
+                                  }}
                                   className="flex items-center space-x-1.5 mt-1 bg-white/5 rounded-full px-2 py-0.5 border border-white/5"
                                 >
                                   <input
@@ -10063,7 +10068,7 @@ export default function App() {
                                   title="View Active Audience List"
                                 >
                                   <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span>
-                                  <span>{viewersCount >= 1000 ? (viewersCount / 1000).toFixed(1) + "K" : viewersCount}</span>
+                                  <span>{viewersCount}</span>
                                 </div>
                               </div>
                             </div>
@@ -10097,11 +10102,9 @@ export default function App() {
                                     (activeHost.uniqueId ? `room_${activeHost.uniqueId}` :
                                     (activeHost.username ? `room_${activeHost.username}` :
                                     (activeHost.hostUsername ? `room_${activeHost.hostUsername}` :
-                                    (activeHost.id ? `room_${activeHost.id.replace(/^h-/, "")}` :
-                                    `room_${activeHost.name}`))))
+                                    `room_${activeHost.id || activeHost.name}`)))
                                   }
                                   role="subscriber"
-                                  muted={isViewerAudioMuted}
                                   hostAvatar={activeHost.avatar}
                                   hostName={activeHost.name}
                                 />
@@ -10110,26 +10113,9 @@ export default function App() {
                               {/* Top row overlays */}
                               <div className="w-full z-10 flex flex-col space-y-1">
                                 <div className="flex justify-between items-center bg-transparent pt-2">
-                                  <span className="bg-red-600/80 backdrop-blur-md text-white font-mono font-black text-[7.5px] px-2 py-0.5 rounded-full uppercase tracking-widest border border-white/10 shadow-lg flex items-center space-x-1">
-                                    <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping"></span>
-                                    <span>{activeHost.category === "pk" ? "⚔️ PK BATTLE LIVE" : "● LIVE"}</span>
+                                  <span className="bg-red-600/80 backdrop-blur-md text-white font-mono font-black text-[7.5px] px-2 py-0.5 rounded-full uppercase tracking-widest border border-white/10 shadow-lg">
+                                    {activeHost.category === "pk" ? "⚔️ PK BATTLE LIVE" : "● LIVE"}
                                   </span>
-
-                                  {/* Live Sound Toggle Button */}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setIsViewerAudioMuted(!isViewerAudioMuted);
-                                    }}
-                                    className={`px-2.5 py-1 rounded-full text-[8px] font-black border transition-all cursor-pointer flex items-center space-x-1 shadow-md pointer-events-auto ${
-                                      !isViewerAudioMuted
-                                        ? "bg-green-600 hover:bg-green-500 text-white border-green-400 animate-pulse"
-                                        : "bg-red-900/80 hover:bg-red-800 text-white border-red-500/50"
-                                    }`}
-                                    title="Toggle Host Live Audio"
-                                  >
-                                    <span>{!isViewerAudioMuted ? "🔊 Live Sound On" : "🔇 Sound Muted"}</span>
-                                  </button>
                                 </div>
 
                                 {activeHost.category === "pk" && (
@@ -10235,23 +10221,6 @@ export default function App() {
                                   <span>{requestedToSpeak ? "Request Pending..." : "Request to Speak / Get Mic"}</span>
                                 </button>
                               </div>
-
-                              {/* 🎙️ REAL-TIME VOICE PIPELINE CONTROLLER FOR AUDIO ROOM VIEWERS */}
-                              <AgoraPartyAudio
-                                partyId={String(activeHost.id || activeHost.username)}
-                                channelName={
-                                  activeHost.channelName ||
-                                  `room_${activeHost.uniqueId || activeHost.username || activeHost.id}`
-                                }
-                                userRole={
-                                  audioSeats.some(s => s.name === user.username) ? "speaker" : "listener"
-                                }
-                                isMuted={
-                                  audioSeats.find(s => s.name === user.username)?.isMuted ?? isViewerAudioMuted
-                                }
-                                username={user.username || "Viewer"}
-                                avatar={user.avatar || ""}
-                              />
                             </div>
                           )}
 
@@ -14489,7 +14458,24 @@ export default function App() {
 
                                     {/* Message input bar */}
                                     <form
-                                      onSubmit={handleUserLiveSendMessage}
+                                      onSubmit={(e) => {
+                                        e.preventDefault();
+                                        if (!chatInput.trim()) return;
+                                        setUserLiveMessages(prev => [
+                                          ...prev,
+                                          {
+                                            id: "ul-msg-" + Date.now(),
+                                            username: "You (Host)",
+                                            message: chatInput,
+                                            vipLevel: user.vipLevel,
+                                            userLevel: user.userLevel,
+                                            isSystem: false,
+                                            isFlagged: false,
+                                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                          }
+                                        ]);
+                                        setChatInput("");
+                                      }}
                                       className="flex items-center space-x-1.5 mt-1 bg-white/5 rounded-full px-2 py-0.5 border border-white/5"
                                     >
                                       <input
@@ -15282,17 +15268,44 @@ export default function App() {
                             
                             {/* CAMERA VIEWPORT BACKGROUND SIMULATION */}
                             <div className="absolute inset-0 z-0 bg-black flex">
-                              <div className="w-full h-full relative overflow-hidden">
-                                <AgoraStream
-                                  channelName={`room_${user.uniqueId || user.username || DEFAULT_USER.uniqueId || DEFAULT_USER.username}`}
-                                  role="publisher"
-                                  muted={!userLiveMic}
-                                  videoMuted={!userLiveCam}
-                                  facingMode={userLiveCamFlipped ? "environment" : "user"}
-                                  hostAvatar={user.avatar || DEFAULT_USER.avatar}
-                                  hostName={user.username || DEFAULT_USER.username}
-                                />
-                              </div>
+                              {userLiveCam ? (
+                                <div className="w-full h-full relative animate-fade-in overflow-hidden">
+                                  <AgoraStream
+                                    channelName={`room_${DEFAULT_USER.uniqueId || DEFAULT_USER.username}`}
+                                    role="publisher"
+                                    muted={!userLiveMic}
+                                    videoMuted={!userLiveCam}
+                                    hostAvatar={DEFAULT_USER.avatar}
+                                    hostName={DEFAULT_USER.username}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="relative w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#181328] via-[#0d0918] to-[#181328] overflow-hidden select-none p-4">
+                                  <img 
+                                    src={user.avatar || liveBroadcasterAvatar}
+                                    className="absolute inset-0 w-full h-full object-cover opacity-20 blur-2xl scale-125"
+                                    alt="blur background"
+                                  />
+                                  <div className="relative z-10 flex flex-col items-center justify-center space-y-3">
+                                    <div className="relative">
+                                      <img
+                                        src={user.avatar || liveBroadcasterAvatar}
+                                        className="w-28 h-28 rounded-full object-cover border-4 border-pink-500/70 shadow-2xl"
+                                        alt={user.username || liveBroadcasterName}
+                                      />
+                                      <div className="absolute bottom-0 right-0 bg-gray-900/90 text-pink-400 p-1.5 rounded-full border border-pink-500/40 shadow">
+                                        <CameraOff className="w-4 h-4" />
+                                      </div>
+                                    </div>
+                                    <div className="text-center space-y-1">
+                                      <h3 className="text-sm font-black text-white uppercase tracking-wider">{user.username || liveBroadcasterName}</h3>
+                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30 tracking-widest uppercase">
+                                        📷 Camera Off
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                               <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/15 to-black/60 pointer-events-none"></div>
                             </div>
 
@@ -15337,7 +15350,7 @@ export default function App() {
                               <div className="flex items-center space-x-1.5">
                                 <div className="bg-black/45 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/5 flex items-center space-x-1 text-[9px] font-black text-white font-mono shadow-md">
                                   <Eye className="w-3 h-3 text-[#66fcf1]" />
-                                  <span>{userLiveViewers >= 1000 ? (userLiveViewers / 1000).toFixed(1) + "K" : userLiveViewers}</span>
+                                  <span>{(userLiveViewers / 1000).toFixed(1)}K</span>
                                 </div>
                                 <div className="bg-black/45 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/5 flex items-center space-x-1 text-[9px] font-black text-pink-500 font-mono shadow-md">
                                   <Heart className="w-3 h-3 text-[#ff007f] fill-[#ff007f]" />

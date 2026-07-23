@@ -19,20 +19,6 @@ interface AgoraPartyAudioProps {
   onStatusChange?: (status: "idle" | "connecting" | "connected" | "error", details?: string) => void;
 }
 
-// Helper for unique client session instance in party audio
-const getSessionViewerId = (): string => {
-  try {
-    let id = sessionStorage.getItem("sehr_agora_session_uid");
-    if (!id) {
-      id = "v_" + Math.random().toString(36).substring(2, 9) + "_" + Date.now();
-      sessionStorage.setItem("sehr_agora_session_uid", id);
-    }
-    return id;
-  } catch (e) {
-    return "v_" + Math.random().toString(36).substring(2, 9) + "_" + Date.now();
-  }
-};
-
 // Generate deterministic numeric UID for Agora from username
 const getNumericUid = (str: string): number => {
   let hash = 0;
@@ -58,40 +44,13 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
   const [activeSpeakers, setActiveSpeakers] = useState<string[]>([]);
   const [isSimulated, setIsSimulated] = useState<boolean>(false);
   
-  // Local real MediaStream ref for fallback WebRTC microphone connectivity
+  // Local real MediaStream ref for sandbox/fallback WebRTC microphone connectivity
   const localMicStreamRef = useRef<MediaStream | null>(null);
   const audioOutputRef = useRef<HTMLAudioElement | null>(null);
 
   // Status states
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [statusDetails, setStatusDetails] = useState<string>("Initializing...");
-
-  // Global browser audio unlocker for mobile/Chrome media audio routing
-  useEffect(() => {
-    const unlockAudio = () => {
-      try {
-        if ((AgoraRTC as any).getAudioContext) {
-          const ctx = (AgoraRTC as any).getAudioContext();
-          if (ctx && ctx.state === "suspended") {
-            ctx.resume();
-          }
-        }
-        if (audioOutputRef.current && audioOutputRef.current.paused) {
-          audioOutputRef.current.play().catch(() => {});
-        }
-      } catch (e) {}
-    };
-
-    window.addEventListener("pointerdown", unlockAudio, { passive: true });
-    window.addEventListener("touchstart", unlockAudio, { passive: true });
-    window.addEventListener("click", unlockAudio, { passive: true });
-
-    return () => {
-      window.removeEventListener("pointerdown", unlockAudio);
-      window.removeEventListener("touchstart", unlockAudio);
-      window.removeEventListener("click", unlockAudio);
-    };
-  }, []);
 
   const switchToSimulation = (reason: string) => {
     console.info(`[AgoraPartyAudio] Enabling direct WebRTC microphone pipeline: ${reason}`);
@@ -105,7 +64,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
   const [bitrate, setBitrate] = useState<number>(64);
   const [packetLoss, setPacketLoss] = useState<string>("0.0%");
 
-  // Telemetry updates
+  // Analytics tracker
   useEffect(() => {
     const timer = setInterval(() => {
       setLatency(prev => {
@@ -191,9 +150,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
       setStatus("connecting");
       setStatusDetails("Fetching secure voice credentials...");
 
-      // Always pass null so Agora dynamically allocates a unique, conflict-free 32-bit integer UID
-      const targetUid: number | null = null;
-
+      const numericUid = getNumericUid(username);
       let tokenData: any = null;
 
       try {
@@ -207,13 +164,14 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
           body: JSON.stringify({
             channelName,
             role: userRole === "listener" ? "subscriber" : "publisher",
-            uid: targetUid || 0
+            uid: numericUid
           })
         });
 
-        if (res.ok) {
-          tokenData = await res.json();
+        if (!res.ok) {
+          throw new Error(`Token API error: status ${res.status}`);
         }
+        tokenData = await res.json();
       } catch (err: any) {
         console.warn("[AgoraPartyAudio] Failed to fetch token, switching to direct WebRTC pipeline:", err);
         switchToSimulation("Direct WebRTC Fallback");
@@ -230,7 +188,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
         setStatusDetails("Connecting to WebRTC voice gateway...");
         
         // Live mode is required for host-audience dynamic role switching
-        let agoraClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
+        const agoraClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
         activeClient = agoraClient;
         setClient(agoraClient);
 
@@ -238,36 +196,13 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
         const initialAgoraRole = userRole === "listener" ? "audience" : "host";
         await agoraClient.setClientRole(initialAgoraRole);
 
-        // Join voice room with fallback retry on UID_CONFLICT using fresh client and null UID
-        try {
-          await agoraClient.join(
-            tokenData.appId,
-            tokenData.channelName,
-            tokenData.token || null,
-            targetUid
-          );
-        } catch (joinErr: any) {
-          console.warn("[AgoraPartyAudio] Primary join encounter, retrying with fresh client & dynamic UID:", joinErr?.message || joinErr);
-          
-          try {
-            await agoraClient.leave();
-          } catch (e) {}
-
-          if (isUnmounted) return;
-
-          const freshClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
-          activeClient = freshClient;
-          setClient(freshClient);
-          agoraClient = freshClient;
-
-          await agoraClient.setClientRole(initialAgoraRole);
-          await agoraClient.join(
-            tokenData.appId,
-            tokenData.channelName,
-            tokenData.token || null,
-            null
-          );
-        }
+        // Join voice room
+        await agoraClient.join(
+          tokenData.appId,
+          tokenData.channelName,
+          tokenData.token || null,
+          tokenData.uid || numericUid
+        );
 
         if (isUnmounted) return;
 
@@ -282,8 +217,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
               await agoraClient.subscribe(remoteUser, "audio");
               if (isUnmounted) return;
               if (remoteUser.audioTrack) {
-                remoteUser.audioTrack.setVolume(100);
-                remoteUser.audioTrack.play(); // Plays through device media speaker
+                remoteUser.audioTrack.play();
                 setActiveSpeakers(prev => {
                   const uidStr = String(remoteUser.uid);
                   return prev.includes(uidStr) ? prev : [...prev, uidStr];
