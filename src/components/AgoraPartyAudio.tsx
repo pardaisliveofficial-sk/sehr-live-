@@ -44,13 +44,40 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
   const [activeSpeakers, setActiveSpeakers] = useState<string[]>([]);
   const [isSimulated, setIsSimulated] = useState<boolean>(false);
   
-  // Local real MediaStream ref for sandbox/fallback WebRTC microphone connectivity
+  // Local real MediaStream ref for fallback WebRTC microphone connectivity
   const localMicStreamRef = useRef<MediaStream | null>(null);
   const audioOutputRef = useRef<HTMLAudioElement | null>(null);
 
   // Status states
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [statusDetails, setStatusDetails] = useState<string>("Initializing...");
+
+  // Global browser audio unlocker for mobile/Chrome media audio routing
+  useEffect(() => {
+    const unlockAudio = () => {
+      try {
+        if ((AgoraRTC as any).getAudioContext) {
+          const ctx = (AgoraRTC as any).getAudioContext();
+          if (ctx && ctx.state === "suspended") {
+            ctx.resume();
+          }
+        }
+        if (audioOutputRef.current && audioOutputRef.current.paused) {
+          audioOutputRef.current.play().catch(() => {});
+        }
+      } catch (e) {}
+    };
+
+    window.addEventListener("pointerdown", unlockAudio, { passive: true });
+    window.addEventListener("touchstart", unlockAudio, { passive: true });
+    window.addEventListener("click", unlockAudio, { passive: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("touchstart", unlockAudio);
+      window.removeEventListener("click", unlockAudio);
+    };
+  }, []);
 
   const switchToSimulation = (reason: string) => {
     console.info(`[AgoraPartyAudio] Enabling direct WebRTC microphone pipeline: ${reason}`);
@@ -64,7 +91,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
   const [bitrate, setBitrate] = useState<number>(64);
   const [packetLoss, setPacketLoss] = useState<string>("0.0%");
 
-  // Analytics tracker
+  // Telemetry updates
   useEffect(() => {
     const timer = setInterval(() => {
       setLatency(prev => {
@@ -150,7 +177,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
       setStatus("connecting");
       setStatusDetails("Fetching secure voice credentials...");
 
-      const numericUid = getNumericUid(username);
+      const numericUid = getNumericUid(username || partyId);
       let tokenData: any = null;
 
       try {
@@ -168,10 +195,9 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
           })
         });
 
-        if (!res.ok) {
-          throw new Error(`Token API error: status ${res.status}`);
+        if (res.ok) {
+          tokenData = await res.json();
         }
-        tokenData = await res.json();
       } catch (err: any) {
         console.warn("[AgoraPartyAudio] Failed to fetch token, switching to direct WebRTC pipeline:", err);
         switchToSimulation("Direct WebRTC Fallback");
@@ -217,7 +243,8 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
               await agoraClient.subscribe(remoteUser, "audio");
               if (isUnmounted) return;
               if (remoteUser.audioTrack) {
-                remoteUser.audioTrack.play();
+                remoteUser.audioTrack.setVolume(100);
+                remoteUser.audioTrack.play(); // Plays through device media speaker
                 setActiveSpeakers(prev => {
                   const uidStr = String(remoteUser.uid);
                   return prev.includes(uidStr) ? prev : [...prev, uidStr];

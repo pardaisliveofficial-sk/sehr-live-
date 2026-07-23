@@ -947,6 +947,7 @@ export default function App() {
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [downloadingReelId, setDownloadingReelId] = useState<string | null>(null);
   const [activeReelGiftAnimation, setActiveReelGiftAnimation] = useState<{ icon: string; name: string } | null>(null);
+  const [isViewerAudioMuted, setIsViewerAudioMuted] = useState<boolean>(false);
 
   // Pull-to-refresh states
   const [pullY, setPullY] = useState<number>(0);
@@ -10102,9 +10103,11 @@ export default function App() {
                                     (activeHost.uniqueId ? `room_${activeHost.uniqueId}` :
                                     (activeHost.username ? `room_${activeHost.username}` :
                                     (activeHost.hostUsername ? `room_${activeHost.hostUsername}` :
-                                    `room_${activeHost.id || activeHost.name}`)))
+                                    (activeHost.id ? `room_${activeHost.id.replace(/^h-/, "")}` :
+                                    `room_${activeHost.name}`))))
                                   }
                                   role="subscriber"
+                                  muted={isViewerAudioMuted}
                                   hostAvatar={activeHost.avatar}
                                   hostName={activeHost.name}
                                 />
@@ -10113,9 +10116,26 @@ export default function App() {
                               {/* Top row overlays */}
                               <div className="w-full z-10 flex flex-col space-y-1">
                                 <div className="flex justify-between items-center bg-transparent pt-2">
-                                  <span className="bg-red-600/80 backdrop-blur-md text-white font-mono font-black text-[7.5px] px-2 py-0.5 rounded-full uppercase tracking-widest border border-white/10 shadow-lg">
-                                    {activeHost.category === "pk" ? "⚔️ PK BATTLE LIVE" : "● LIVE"}
+                                  <span className="bg-red-600/80 backdrop-blur-md text-white font-mono font-black text-[7.5px] px-2 py-0.5 rounded-full uppercase tracking-widest border border-white/10 shadow-lg flex items-center space-x-1">
+                                    <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping"></span>
+                                    <span>{activeHost.category === "pk" ? "⚔️ PK BATTLE LIVE" : "● LIVE"}</span>
                                   </span>
+
+                                  {/* Live Sound Toggle Button */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setIsViewerAudioMuted(!isViewerAudioMuted);
+                                    }}
+                                    className={`px-2.5 py-1 rounded-full text-[8px] font-black border transition-all cursor-pointer flex items-center space-x-1 shadow-md pointer-events-auto ${
+                                      !isViewerAudioMuted
+                                        ? "bg-green-600 hover:bg-green-500 text-white border-green-400 animate-pulse"
+                                        : "bg-red-900/80 hover:bg-red-800 text-white border-red-500/50"
+                                    }`}
+                                    title="Toggle Host Live Audio"
+                                  >
+                                    <span>{!isViewerAudioMuted ? "🔊 Live Sound On" : "🔇 Sound Muted"}</span>
+                                  </button>
                                 </div>
 
                                 {activeHost.category === "pk" && (
@@ -10221,6 +10241,23 @@ export default function App() {
                                   <span>{requestedToSpeak ? "Request Pending..." : "Request to Speak / Get Mic"}</span>
                                 </button>
                               </div>
+
+                              {/* 🎙️ REAL-TIME VOICE PIPELINE CONTROLLER FOR AUDIO ROOM VIEWERS */}
+                              <AgoraPartyAudio
+                                partyId={String(activeHost.id || activeHost.username)}
+                                channelName={
+                                  activeHost.channelName ||
+                                  `room_${activeHost.uniqueId || activeHost.username || activeHost.id}`
+                                }
+                                userRole={
+                                  audioSeats.some(s => s.name === user.username) ? "speaker" : "listener"
+                                }
+                                isMuted={
+                                  audioSeats.find(s => s.name === user.username)?.isMuted ?? isViewerAudioMuted
+                                }
+                                username={user.username || "Viewer"}
+                                avatar={user.avatar || ""}
+                              />
                             </div>
                           )}
 
@@ -15268,44 +15305,17 @@ export default function App() {
                             
                             {/* CAMERA VIEWPORT BACKGROUND SIMULATION */}
                             <div className="absolute inset-0 z-0 bg-black flex">
-                              {userLiveCam ? (
-                                <div className="w-full h-full relative animate-fade-in overflow-hidden">
-                                  <AgoraStream
-                                    channelName={`room_${DEFAULT_USER.uniqueId || DEFAULT_USER.username}`}
-                                    role="publisher"
-                                    muted={!userLiveMic}
-                                    videoMuted={!userLiveCam}
-                                    hostAvatar={DEFAULT_USER.avatar}
-                                    hostName={DEFAULT_USER.username}
-                                  />
-                                </div>
-                              ) : (
-                                <div className="relative w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#181328] via-[#0d0918] to-[#181328] overflow-hidden select-none p-4">
-                                  <img 
-                                    src={user.avatar || liveBroadcasterAvatar}
-                                    className="absolute inset-0 w-full h-full object-cover opacity-20 blur-2xl scale-125"
-                                    alt="blur background"
-                                  />
-                                  <div className="relative z-10 flex flex-col items-center justify-center space-y-3">
-                                    <div className="relative">
-                                      <img
-                                        src={user.avatar || liveBroadcasterAvatar}
-                                        className="w-28 h-28 rounded-full object-cover border-4 border-pink-500/70 shadow-2xl"
-                                        alt={user.username || liveBroadcasterName}
-                                      />
-                                      <div className="absolute bottom-0 right-0 bg-gray-900/90 text-pink-400 p-1.5 rounded-full border border-pink-500/40 shadow">
-                                        <CameraOff className="w-4 h-4" />
-                                      </div>
-                                    </div>
-                                    <div className="text-center space-y-1">
-                                      <h3 className="text-sm font-black text-white uppercase tracking-wider">{user.username || liveBroadcasterName}</h3>
-                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30 tracking-widest uppercase">
-                                        📷 Camera Off
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
+                              <div className="w-full h-full relative overflow-hidden">
+                                <AgoraStream
+                                  channelName={`room_${user.uniqueId || user.username || DEFAULT_USER.uniqueId || DEFAULT_USER.username}`}
+                                  role="publisher"
+                                  muted={!userLiveMic}
+                                  videoMuted={!userLiveCam}
+                                  facingMode={userLiveCamFlipped ? "environment" : "user"}
+                                  hostAvatar={user.avatar || DEFAULT_USER.avatar}
+                                  hostName={user.username || DEFAULT_USER.username}
+                                />
+                              </div>
                               <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/15 to-black/60 pointer-events-none"></div>
                             </div>
 
