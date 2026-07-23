@@ -1929,6 +1929,8 @@ export default function App() {
   const [showRequestsSheet, setShowRequestsSheet] = useState<boolean>(false);
   const [showInviteSheetForSeat, setShowInviteSheetForSeat] = useState<number | null>(null);
   const [giftTargetUser, setGiftTargetUser] = useState<string | null>(null);
+  const [partyGiftRecipient, setPartyGiftRecipient] = useState<string>("Host");
+  const [partyGiftDrawerOpen, setPartyGiftDrawerOpen] = useState<boolean>(false);
   
   // Create Party Form states
   const [partyFormName, setPartyFormName] = useState<string>("");
@@ -3170,8 +3172,9 @@ export default function App() {
       setUserLiveShowExitOptions(false);
       return;
     }
-    if (giftTargetUser) {
+    if (giftTargetUser || partyGiftDrawerOpen) {
       setGiftTargetUser(null);
+      setPartyGiftDrawerOpen(false);
       return;
     }
 
@@ -8129,41 +8132,155 @@ export default function App() {
                         }
                       };
 
-                      // Send gift inside party room
-                      const handleSendPartyGift = async (recipient: string, giftId: string) => {
-                        const gift = giftsList.find(g => g.id === giftId);
+                      // Send gift inside party room with full combo, animation engine, and transaction ledger support
+                      const handleSendPartyGift = async (giftOrTarget: Gift | string, countOrId: number | string = 1, recipientNameInput?: string, isCombo: boolean = false) => {
+                        let gift: Gift | undefined;
+                        let count = 1;
+                        let recipientName = recipientNameInput || party.hostUsername || "Host";
+
+                        if (typeof giftOrTarget === "object" && giftOrTarget !== null) {
+                          gift = giftOrTarget as Gift;
+                          count = typeof countOrId === "number" ? countOrId : 1;
+                        } else {
+                          // Legacy support if called with (recipientString, giftIdString)
+                          recipientName = giftOrTarget as string;
+                          const gId = countOrId as string;
+                          gift = giftsList.find(g => g.id === gId);
+                        }
+
                         if (!gift) return;
-                        if (user.coins < gift.coins) {
-                          alert("Insufficient coins to purchase this gift! Recharge from Sahr Wallet.");
+
+                        const gObj = gift as any;
+                        const totalCost = (gift.cost || gObj.coins || 0) * count;
+                        if (user.coins < totalCost) {
+                          alert(`❌ Insufficient Coins!\n\nGift: ${gift.name} (${gift.cost || gObj.coins} Coins)\nQuantity: x${count}\nTotal Required: ${totalCost.toLocaleString()} Coins\nYour Balance: ${user.coins.toLocaleString()} Coins\n\nPlease recharge in the Sahr Wallet! 💎`);
                           return;
                         }
 
-                        // Deduct coins locally and sync with user state
-                        setUser(prev => ({ ...prev, coins: prev.coins - gift.coins }));
+                        const requestId = `req-party-gift-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
-                        // Send gift transaction log
+                        // Determine actual target name if "Host" or "Seat-X"
+                        let actualTargetName = recipientName || party.hostUsername || "Host";
+                        if (actualTargetName === "Host") {
+                          actualTargetName = party.hostUsername || "Host";
+                        } else if (actualTargetName.startsWith("Seat-")) {
+                          const sMatch = actualTargetName.match(/\d+/);
+                          const sId = sMatch ? parseInt(sMatch[0], 10) : NaN;
+                          if (!Number.isNaN(sId) && party.seats) {
+                            const targetSeat = party.seats.find((s: any) => s.id === sId);
+                            if (targetSeat && targetSeat.name) {
+                              actualTargetName = targetSeat.name;
+                            }
+                          }
+                        }
+
+                        // Deduct coins & update XP / level
+                        const coinsDeducted = totalCost;
+                        const xpGained = Math.floor(totalCost * 0.2);
+
+                        setUser(prev => ({
+                          ...prev,
+                          coins: Math.max(0, prev.coins - coinsDeducted),
+                          xp: prev.xp + xpGained,
+                          userLevel: Math.floor((prev.xp + xpGained) / 100) + 1,
+                          wealthLevel: prev.wealthLevel + 1
+                        }));
+
+                        // Perform secure backend transaction call
+                        try {
+                          const resp = await fetch("/api/v1/gifts/send", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              requestId,
+                              giftId: gift.id,
+                              count,
+                              recipient: actualTargetName,
+                              targetHostSide: "hostA"
+                            })
+                          });
+                          if (resp.ok) {
+                            const data = await resp.json();
+                            if (data.remainingCoins !== undefined) {
+                              setUser(prev => ({ ...prev, coins: data.remainingCoins }));
+                            }
+                          }
+                        } catch (err) {
+                          console.error("Backend party gift transaction API error:", err);
+                        }
+
+                        // Add transaction ledger entry
+                        const giftIconChar = gift.icon || gObj.emoji || "🎁";
                         const newTx: Transaction = {
                           id: `GFT-${Date.now().toString().slice(-4)}`,
                           type: "gift_sent",
-                          amount: gift.coins,
+                          amount: coinsDeducted,
                           currency: "coins",
                           timestamp: new Date().toISOString().replace("T", " ").slice(0, 16),
                           status: "Completed",
-                          details: `Sent ${gift.name} (${gift.coins} Coins) to ${recipient}`
+                          details: `Party Gift: Sent ${count}x ${gift.name} (${giftIconChar}) to @${actualTargetName}`
                         };
                         setTransactions(prev => [newTx, ...prev]);
 
-                        // Post system message inside room comments
+                        // Save into history items
+                        const newHistoryItem = {
+                          id: `h-pty-${Date.now()}-${Math.random()}`,
+                          giftName: gift.name,
+                          giftIcon: giftIconChar,
+                          amount: totalCost,
+                          recipient: actualTargetName,
+                          date: "Today, " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                          status: "Completed"
+                        };
+                        try {
+                          const savedHistory = JSON.parse(localStorage.getItem("sehr_live_history_v1") || "[]");
+                          localStorage.setItem("sehr_live_history_v1", JSON.stringify([newHistoryItem, ...savedHistory]));
+                        } catch (e) {
+                          console.error(e);
+                        }
+
+                        // Track Gift combo with full metadata
+                        let newComboCount = count;
+                        if (activeCombo && activeCombo.giftId === gift.id) {
+                          newComboCount = activeCombo.count + count;
+                        }
+                        setActiveCombo({ 
+                          giftId: gift.id, 
+                          giftName: gift.name, 
+                          giftIcon: giftIconChar, 
+                          count: newComboCount 
+                        });
+
+                        if (comboTimeoutRef.current) clearTimeout(comboTimeoutRef.current);
+                        comboTimeoutRef.current = setTimeout(() => {
+                          setActiveCombo(null);
+                        }, 3000);
+
+                        // Update live gift toast overlay
+                        const newGiftToast = {
+                          id: "toast-" + Date.now() + "-" + Math.random(),
+                          username: user.username,
+                          giftName: gift.name,
+                          giftIcon: giftIconChar,
+                          count: newComboCount,
+                          avatar: (user as any).avatarUrl || user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80"
+                        };
+                        setUserLiveGiftToasts(prev => [newGiftToast, ...prev.slice(0, 1)]);
+                        setTimeout(() => {
+                          setUserLiveGiftToasts(prev => prev.filter(t => t.id !== newGiftToast.id));
+                        }, 4000);
+
+                        // Post system comment inside room comments
                         try {
                           const res = await fetch(`/api/v1/parties/${party.id}/comments`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
-                              message: `🎁 sent a ${gift.name} to ${recipient}!`,
+                              message: `🎁 sent ${count > 1 ? `${count}x ` : ""}${gift.name} (${giftIconChar}) to @${actualTargetName}!`,
                               username: user.username,
                               avatar: user.avatar,
                               vipLevel: user.vipLevel || 0,
-                              userLevel: user.level || 1,
+                              userLevel: user.userLevel || 1,
                               isSystem: true
                             })
                           });
@@ -8175,8 +8292,29 @@ export default function App() {
                           console.error("Error logging party gift comment:", err);
                         }
 
-                        setGiftTargetUser(null);
-                        alert(`Sent ${gift.name} to ${recipient}! 🚀`);
+                        // Trigger global gift banner ("gifting ki broad patti") on all screens
+                        triggerGlobalGiftBanner(user.username, gift.name, `${giftIconChar} x${count}`, actualTargetName);
+
+                        // Add to Advanced Gifting Sequential Queue for full screen 60FPS animation player
+                        const newAnim = {
+                          id: `anim-${Date.now()}-${Math.random()}`,
+                          sender: user.username,
+                          recipient: actualTargetName,
+                          gift,
+                          comboCount: count
+                        };
+                        setGiftQueue(prev => [...prev, newAnim]);
+
+                        // Handle Legacy Luxury / 3D Full Screen Animation Effects
+                        if (gift.type === GiftType.LUXURY || gift.type === GiftType.THREE_D) {
+                          setLuxuryGiftActive(gift);
+                          setTimeout(() => {
+                            setLuxuryGiftActive(null);
+                          }, 3500);
+                        }
+
+                        // Update Daily Mission
+                        updateMissionProgress("m-2", count);
                       };
 
                       // Share Party Room function
@@ -8583,6 +8721,7 @@ export default function App() {
                                         <>
                                           <button
                                             onClick={() => {
+                                              setPartyGiftRecipient(occupantName);
                                               setGiftTargetUser(occupantName);
                                               setActiveSeatMenu(null);
                                             }}
@@ -8719,36 +8858,84 @@ export default function App() {
                             </div>
                           )}
 
-                          {/* 🎁 INTERACTIVE GIFT LAUNCHER TRAY MODAL OVERLAY */}
-                          {giftTargetUser && (
-                            <div className="absolute inset-x-3 bottom-16 z-55 bg-[#12121a]/95 border-2 border-[#ff007f] rounded-3xl p-4 shadow-2xl text-left space-y-4 animate-slide-up">
-                              <div className="flex items-center justify-between border-b border-white/5 pb-2 bg-transparent">
-                                <div className="bg-transparent space-y-0.5">
-                                  <h4 className="text-[11px] font-black uppercase text-[#ff007f] tracking-wider font-mono">🎁 Send Sahr Premium Gift</h4>
-                                  <p className="text-[8px] text-gray-400 font-sans">Recipient: @{giftTargetUser} • Your balance: {user.coins} Coins</p>
+                          {/* 💎 LUXURY 3D SVGA FULL SCREEN ANIMATION OVERLAY FOR PARTY ROOM */}
+                          {luxuryGiftActive && (
+                            <div className="absolute inset-0 z-60 pointer-events-none flex items-center justify-center bg-black/60 backdrop-blur-xs animate-fade-in">
+                              <div className="text-center animate-bounce-slow">
+                                <span className="text-[44px] block mb-2 filter drop-shadow-lg">
+                                  {luxuryGiftActive.id === "g-rocket" && "🚀"}
+                                  {luxuryGiftActive.id === "g-car" && "🏎️"}
+                                  {luxuryGiftActive.id === "g-dragon" && "🐉"}
+                                  {luxuryGiftActive.id === "g-crown" && "👑"}
+                                </span>
+                                <div className="bg-gradient-to-r from-amber-500 to-red-600 border border-amber-300 rounded-xl px-4 py-2 shadow-2xl">
+                                  <p className="text-xs uppercase tracking-wider text-amber-300 font-mono font-black text-sparkling">SVGA LUXURY GIFT ALERT</p>
+                                  <h4 className="text-sm font-black text-white">{user.username} sent {luxuryGiftActive.name}!</h4>
+                                  <p className="text-[9px] text-amber-200 mt-0.5">Value: {luxuryGiftActive.cost || luxuryGiftActive.coins} Coins</p>
                                 </div>
-                                <button
-                                  onClick={() => setGiftTargetUser(null)}
-                                  className="text-gray-500 hover:text-white font-black text-xs cursor-pointer"
-                                >
-                                  ✕
-                                </button>
                               </div>
-
-                              <div className="grid grid-cols-4 gap-2 max-h-[140px] overflow-y-auto scrollbar-thin">
-                                {giftsList.map((gift) => (
-                                  <div
-                                    key={gift.id}
-                                    onClick={() => handleSendPartyGift(giftTargetUser, gift.id)}
-                                    className="p-2 bg-black/40 border border-white/5 hover:border-pink-500 rounded-2xl flex flex-col items-center space-y-1 cursor-pointer transition-all active:scale-95 text-center group"
-                                  >
-                                    <span className="text-xl group-hover:scale-110 transition-transform">{gift.emoji}</span>
-                                    <p className="text-[8px] font-bold text-white truncate max-w-full uppercase font-sans tracking-wide leading-tight">{gift.name}</p>
-                                    <p className="text-[7.5px] font-bold font-mono text-pink-500 leading-none">{gift.coins} 💰</p>
-                                  </div>
-                                ))}
-                              </div>
+                              
+                              {luxuryGiftActive.id === "g-rocket" && (
+                                <div className="absolute w-12 h-12 text-3xl animate-gift-rocket">🚀✨</div>
+                              )}
+                              {luxuryGiftActive.id === "g-dragon" && (
+                                <div className="absolute text-5xl animate-gift-dragon">🐉🔥</div>
+                              )}
                             </div>
+                          )}
+
+                          {/* ADVANCED SEHR LIVE GIFT ANIMATION ENGINE (Sequential 60FPS Player) */}
+                          <GiftAnimationEngine
+                            activeGift={currentPlayingGift}
+                            onComplete={() => setCurrentPlayingGift(null)}
+                          />
+
+                          {/* ACTIVE COMBO BOX INDICATOR OVERLAY */}
+                          {activeCombo && (
+                            <div className="absolute left-3 top-16 bg-gradient-to-r from-purple-800 to-[#ff007f] text-white px-3 py-1 rounded-full border border-[#ff007f]/50 flex items-center space-x-1.5 animate-pop-gift z-30 shadow-lg">
+                              <span className="text-xs">🎁</span>
+                              <span className="text-[10px] font-bold">{activeCombo.giftName || "Rose"} Combo</span>
+                              <span className="text-sm font-black text-yellow-300">x{activeCombo.count}</span>
+                            </div>
+                          )}
+
+                          {/* REAL-TIME FLOATING GIFT TOASTS OVERLAY */}
+                          {userLiveGiftToasts.length > 0 && (
+                            <div className="absolute left-3 bottom-24 space-y-1 z-35 pointer-events-none">
+                              {userLiveGiftToasts.map(toast => (
+                                <div key={toast.id} className="bg-gradient-to-r from-black/80 via-purple-950/90 to-[#ff007f]/80 border border-pink-500/40 rounded-full py-1 px-3 flex items-center space-x-2 text-white shadow-xl animate-slide-up">
+                                  <img src={toast.avatar} className="w-6 h-6 rounded-full object-cover border border-pink-400" alt="avatar" />
+                                  <div className="text-left leading-tight">
+                                    <p className="text-[9px] font-bold text-gray-200">@{toast.username}</p>
+                                    <p className="text-[8px] text-pink-300 font-mono">Sent {toast.giftName} {toast.giftIcon}</p>
+                                  </div>
+                                  <span className="text-xs font-black text-yellow-300 font-mono pl-1">x{toast.count}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* 🎁 ADVANCED VIEWER GIFT BOX DRAWER FOR PARTY ROOM */}
+                          {(giftTargetUser || partyGiftDrawerOpen) && (
+                            <ViewerGiftBox
+                              user={user}
+                              setUser={setUser}
+                              activeHostName={party.hostUsername || "Host"}
+                              onClose={() => {
+                                setGiftTargetUser(null);
+                                setPartyGiftDrawerOpen(false);
+                              }}
+                              giftsList={giftsList}
+                              categoriesList={categoriesList}
+                              recipient={partyGiftRecipient || (giftTargetUser ? giftTargetUser : "Host")}
+                              setRecipient={setPartyGiftRecipient}
+                              guestSeats={party.seats || []}
+                              setGuestSeats={() => {}}
+                              onGiftSent={(gift, count, recipientName, isCombo) => {
+                                handleSendPartyGift(gift, count, recipientName, isCombo);
+                              }}
+                              onShowHistory={() => setShowGiftHistoryModal(true)}
+                            />
                           )}
 
                           {/* ⌨️ INTERACTIVE BOTTOM CONTROL ACTIONS ROW */}
@@ -8814,10 +9001,11 @@ export default function App() {
                             {/* Gift launcher button */}
                             <button
                               onClick={() => {
-                                setGiftTargetUser(party.hostUsername);
+                                setPartyGiftRecipient(party.hostUsername || "Host");
+                                setPartyGiftDrawerOpen(true);
                               }}
                               className="w-9 h-9 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 hover:brightness-110 text-white flex items-center justify-center shrink-0 cursor-pointer shadow-[0_0_8px_rgba(255,0,127,0.3)] border border-pink-400 transition-all active:scale-90"
-                              title="Send gift to Host"
+                              title="Send gift in Party Lounge"
                             >
                               <span className="text-sm">🎁</span>
                             </button>
@@ -8932,13 +9120,13 @@ export default function App() {
                                 <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/5">
                                   <button
                                     onClick={() => {
+                                      setPartyGiftRecipient(partyUserProfile.username);
                                       setGiftTargetUser(partyUserProfile.username);
                                       setPartyUserProfile(null);
                                     }}
                                     className="bg-pink-500/20 hover:bg-pink-500/30 border border-pink-500/40 text-pink-300 py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center space-x-1"
                                   >
-                                    <span>🎁</span>
-                                    <span>Send Gift</span>
+                                    <span>🎁 Send Gift</span>
                                   </button>
 
                                   {partyUserProfile.seatId && (
