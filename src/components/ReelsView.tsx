@@ -26,6 +26,10 @@ import {
 const normalizeReelUrl = (url: string): string => {
   if (!url) return "";
 
+  if (url.startsWith("blob:") || url.startsWith("file:") || url.startsWith("content:")) {
+    return url;
+  }
+
   // Parse reels/ key from the URL and convert to public custom R2 delivery domain
   const reelsIndex = url.indexOf("reels/");
   if (reelsIndex !== -1) {
@@ -320,6 +324,7 @@ export interface ReelsViewProps {
   setDragY: (y: number) => void;
   reelInteractions: Record<string, any>;
   setReelInteractions: React.Dispatch<React.SetStateAction<any>>;
+  onOpenUploadReel?: () => void;
 }
 
 export const ReelsView: React.FC<ReelsViewProps> = ({
@@ -345,7 +350,8 @@ export const ReelsView: React.FC<ReelsViewProps> = ({
   dragY,
   setDragY,
   reelInteractions,
-  setReelInteractions
+  setReelInteractions,
+  onOpenUploadReel
 }) => {
   const [showCommentDrawer, setShowCommentDrawer] = useState<boolean>(false);
   const [newCommentText, setNewCommentText] = useState<string>("");
@@ -514,13 +520,24 @@ export const ReelsView: React.FC<ReelsViewProps> = ({
           </button>
         </div>
         
-        <button
-          onClick={() => setShowSearch(true)}
-          className="p-2 rounded-full bg-black/45 backdrop-blur-md border border-white/10 text-white hover:bg-[#ff007f] hover:text-white transition-all cursor-pointer flex-shrink-0 shadow active:scale-95"
-          title="Search Reels & Creators"
-        >
-          <Search className="w-4 h-4" />
-        </button>
+        <div className="flex items-center space-x-2">
+          {onOpenUploadReel && (
+            <button
+              onClick={onOpenUploadReel}
+              className="p-2 rounded-full bg-gradient-to-r from-[#ff007f] via-[#7b2cbf] to-[#66fcf1] text-white hover:brightness-110 transition-all cursor-pointer flex-shrink-0 shadow active:scale-95 border border-pink-400/30"
+              title="Create & Upload Reel"
+            >
+              <Plus className="w-4 h-4 text-white" />
+            </button>
+          )}
+          <button
+            onClick={() => setShowSearch(true)}
+            className="p-2 rounded-full bg-black/45 backdrop-blur-md border border-white/10 text-white hover:bg-[#ff007f] hover:text-white transition-all cursor-pointer flex-shrink-0 shadow active:scale-95"
+            title="Search Reels & Creators"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Pull-to-Refresh Slider Indicator */}
@@ -546,15 +563,26 @@ export const ReelsView: React.FC<ReelsViewProps> = ({
           <div>
             <h3 className="text-xs font-bold text-white uppercase tracking-wider">No Reels Available!</h3>
             <p className="text-[9px] text-gray-400 mt-1 max-w-[220px] mx-auto leading-relaxed">
-              No short-video content matches this filter currently. Explore other tabs for PK battles and singing clips!
+              No short-video content matches this filter currently. Be the first to upload a video or explore other tabs!
             </p>
           </div>
-          <button
-            onClick={() => setReelsTab("foryou")}
-            className="px-4 py-2 bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] rounded-full text-[9px] font-black text-white uppercase tracking-wider"
-          >
-            Go to For You
-          </button>
+          <div className="flex items-center space-x-2">
+            {onOpenUploadReel && (
+              <button
+                onClick={onOpenUploadReel}
+                className="px-4 py-2 bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] rounded-full text-[9px] font-black text-white uppercase tracking-wider flex items-center space-x-1.5 shadow-lg active:scale-95 transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Upload Reel Now 🎬</span>
+              </button>
+            )}
+            <button
+              onClick={() => setReelsTab("foryou")}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/10 rounded-full text-[9px] font-black text-white uppercase tracking-wider"
+            >
+              Go to For You
+            </button>
+          </div>
         </div>
       ) : (
         <div
@@ -688,13 +716,13 @@ export const ReelsView: React.FC<ReelsViewProps> = ({
 
               if (!isRendered) {
                 return (
-                  <div key={reel.id || `spacer-${idx}`} className="w-full h-full shrink-0 bg-[#040406]" />
+                  <div key={`${reel.id || 'spacer'}-${idx}`} className="w-full h-full shrink-0 bg-[#040406]" />
                 );
               }
 
               return (
                 <div 
-                  key={reel.id || `active-${idx}`} 
+                  key={`${reel.id || 'active'}-${idx}`} 
                   className="w-full h-full shrink-0 relative bg-black flex flex-col justify-end"
                 >
                   <ReelVideoPlayer
@@ -1122,8 +1150,8 @@ export const ReelsView: React.FC<ReelsViewProps> = ({
 
           <div className="flex-1 overflow-y-auto py-2.5 space-y-3.5 pr-1 text-left">
             {currentReel.comments && currentReel.comments.length > 0 ? (
-              currentReel.comments.map((comment: any) => (
-                <div key={comment.id} className="space-y-2">
+              currentReel.comments.map((comment: any, cIdx: number) => (
+                <div key={comment.id || `comment-${cIdx}`} className="space-y-2">
                   <div className="flex items-start space-x-2">
                     <img
                       src={comment.userAvatar}
@@ -1180,8 +1208,8 @@ export const ReelsView: React.FC<ReelsViewProps> = ({
                   </div>
 
                   {/* Comment Replies */}
-                  {comment.replies && comment.replies.map((rep: any) => (
-                    <div key={rep.id} className="ml-9 flex items-start space-x-2 bg-white/5 p-2 rounded-xl border border-white/5">
+                  {comment.replies && comment.replies.map((rep: any, rIdx: number) => (
+                    <div key={rep.id || `reply-${rIdx}`} className="ml-9 flex items-start space-x-2 bg-white/5 p-2 rounded-xl border border-white/5">
                       <img
                         src={rep.userAvatar}
                         className="w-5.5 h-5.5 rounded-full border border-white/10 shrink-0"
@@ -1478,11 +1506,11 @@ export const ReelsView: React.FC<ReelsViewProps> = ({
                       <div className="text-center py-6 text-gray-500 text-[10px]">No videos found matching "{searchQuery}"</div>
                     ) : (
                       <div className="grid grid-cols-3 gap-1.5">
-                        {filteredSearchReels.map((reel) => {
+                        {filteredSearchReels.map((reel, sIdx) => {
                           const rawIndex = sortedReels.findIndex(r => r.id === reel.id);
                           return (
                             <div
-                              key={reel.id}
+                              key={`${reel.id}-${sIdx}`}
                               onClick={() => {
                                 if (rawIndex !== -1) {
                                   setCurrentReelIndex(rawIndex);
@@ -1630,11 +1658,11 @@ export const ReelsView: React.FC<ReelsViewProps> = ({
                 <div className="text-center py-8 text-gray-500 text-[10px]">This star hasn't uploaded any clips yet.</div>
               ) : (
                 <div className="grid grid-cols-3 gap-1.5">
-                  {selectedUserProfile.videos?.map((v: any) => {
+                  {selectedUserProfile.videos?.map((v: any, vIdx: number) => {
                     const idx = sortedReels.findIndex(r => r.id === v.id);
                     return (
                       <div
-                        key={v.id}
+                        key={`${v.id}-${vIdx}`}
                         onClick={() => {
                           if (idx !== -1) {
                             setCurrentReelIndex(idx);

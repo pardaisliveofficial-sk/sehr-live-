@@ -1037,7 +1037,14 @@ export default function App() {
           // Filter out private reels from the main public feed
           const publicFirestoreReels = firestoreReels.filter(r => r && r.privacy !== "private");
           const staticReels = prev.filter(r => r && r.id && typeof r.id === "string" && (r.id.startsWith("r") || !publicFirestoreReels.some(fr => fr && fr.id === r.id)));
-          return [...publicFirestoreReels, ...staticReels];
+          const raw = [...publicFirestoreReels, ...staticReels];
+          const seen = new Set();
+          return raw.filter(item => {
+            if (!item || !item.id) return false;
+            if (seen.has(item.id)) return false;
+            seen.add(item.id);
+            return true;
+          });
         });
 
         // Sync profileReels dynamically from Firestore as well!
@@ -1088,12 +1095,21 @@ export default function App() {
         }));
 
         setProfileReels(prev => {
-          const nonDbUploaded = prev.uploaded.filter(r => r && r.id && typeof r.id === "string" && r.id.startsWith("u") && !myUploaded.some(mu => mu && mu.id === r.id));
-          const nonDbPrivate = prev.private.filter(r => r && r.id && typeof r.id === "string" && r.id.startsWith("p") && !myPrivate.some(mp => mp && mp.id === r.id));
+          const dedupe = (list: any[]) => {
+            const seen = new Set();
+            return list.filter(item => {
+              if (!item || !item.id) return false;
+              if (seen.has(item.id)) return false;
+              seen.add(item.id);
+              return true;
+            });
+          };
+          const nonDbUploaded = prev.uploaded.filter(r => r && r.id && !myUploaded.some(mu => mu && mu.id === r.id));
+          const nonDbPrivate = prev.private.filter(r => r && r.id && !myPrivate.some(mp => mp && mp.id === r.id));
           return {
             ...prev,
-            uploaded: [...myUploaded, ...nonDbUploaded],
-            private: [...myPrivate, ...nonDbPrivate]
+            uploaded: dedupe([...myUploaded, ...nonDbUploaded]),
+            private: dedupe([...myPrivate, ...nonDbPrivate])
           };
         });
       }
@@ -3069,6 +3085,9 @@ export default function App() {
   const [doubleTapHearts, setDoubleTapHearts] = useState<Array<{ id: string; x: number; y: number; color: string }>>([]);
   const lastTapRef = useRef<number>(0);
   const lastHostLikeEventTimestamp = useRef<number>(0);
+  const lastHostGiftEventTimestamp = useRef<number>(0);
+  const lastViewerGiftEventTimestamp = useRef<number>(0);
+  const lastViewerLikeEventTimestamp = useRef<number>(0);
   const userLiveMessagesRef = useRef<ChatMessage[]>([]);
   const [userLiveMessages, _setUserLiveMessages] = useState<ChatMessage[]>([]);
   const setUserLiveMessages = (val: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
@@ -3876,16 +3895,69 @@ export default function App() {
       
       setProfileReels(prev => {
         const targetTab = reelPrivacy === "private" ? "private" : "uploaded";
+        const currentTabList = prev[targetTab] || [];
+        const raw = [newProfileReel, ...currentTabList.filter(r => r && r.id !== reelId)];
+        const seen = new Set();
+        const deduplicated = raw.filter(item => {
+          if (!item || !item.id) return false;
+          if (seen.has(item.id)) return false;
+          seen.add(item.id);
+          return true;
+        });
         return {
           ...prev,
-          [targetTab]: [newProfileReel, ...prev[targetTab]]
+          [targetTab]: deduplicated
         };
       });
+
+      // Prepend to global Reels Feed immediately so it is visible to user and all feeds in real time!
+      if (reelPrivacy !== "private") {
+        const newGlobalReel = {
+          id: reelId,
+          creator: reelData.creator,
+          avatar: reelData.avatar,
+          caption: reelData.caption,
+          song: reelData.song,
+          videoBg: reelData.videoBg,
+          videoUrl: finalNormalizedUrl,
+          objectKey: reelData.objectKey,
+          likes: 0,
+          commentsCount: 0,
+          liked: false,
+          privacy: reelData.privacy,
+          location: reelData.location,
+          saves: 0,
+          saved: false,
+          shares: 0,
+          downloads: 0,
+          isFollowed: false,
+          comments: [],
+          uploaderId: reelData.uploaderId,
+          createdAt: reelData.createdAt
+        };
+        setReels(prev => {
+          const raw = [newGlobalReel, ...prev.filter(r => r && r.id !== reelId)];
+          const seen = new Set();
+          return raw.filter(item => {
+            if (!item || !item.id) return false;
+            if (seen.has(item.id)) return false;
+            seen.add(item.id);
+            return true;
+          });
+        });
+      }
+
+      // Update user state so profile/ID reflects uploaded reel
+      setUser(prev => ({
+        ...prev,
+        reels: [newProfileReel, ...(prev.reels || [])],
+        videos: [newProfileReel, ...(prev.videos || [])]
+      }));
       
       // Navigate to reels view and clear indices
       setClientView("reels");
       setCurrentReelIndex(0);
-      alert("Mubarak! Your video reel has been successfully uploaded to Firebase and published to the Reels Feed!");
+      alert("Mubarak! Your video reel has been successfully uploaded to storage and published to the Reels Feed!");
       
       // Reset input states & close overlay
       setNewReelCaption("");
@@ -4049,7 +4121,7 @@ export default function App() {
     }
   }, [clientView, activeHost]);
 
-  // Host Side Live State Synchronizer (Pushes camera status, pulls viewers & likes in real-time)
+  // Host Side Live State Synchronizer (Pushes camera status, pulls viewers, comments, gifts & likes in real-time)
   useEffect(() => {
     if (clientView !== "user-live" || !user?.username) return;
 
@@ -4068,6 +4140,12 @@ export default function App() {
           vipLevel: user.vipLevel || 0,
           cameraEnabled: userLiveCam,
           isCamOff: !userLiveCam,
+          pkActive: userLivePkActive,
+          pkScoreHost: userLivePkScoreMy,
+          pkScoreOpponent: userLivePkScoreOther,
+          coHostUsername: userLiveCoHost?.username,
+          guestModeActive: userLiveGuestModeActive,
+          guestSeats: userLiveGuestSeats,
           status: "live",
           updatedAt: new Date().toISOString()
         })
@@ -4084,9 +4162,16 @@ export default function App() {
           } else if (Array.isArray(data.connectedViewers)) {
             setUserLiveViewers(data.connectedViewers.length);
           }
+          if (Array.isArray(data.connectedViewers)) {
+            setUserLiveViewerList(data.connectedViewers);
+          }
           // Synchronize total likes
           if (data.likes !== undefined) {
             setUserLiveLikes(data.likes);
+          }
+          // Synchronize comments from backend viewers
+          if (Array.isArray(data.comments)) {
+            setUserLiveMessages(data.comments);
           }
           // Process incoming live double-tap like events from viewers
           if (data.lastLikeEvent && data.lastLikeEvent.timestamp > lastHostLikeEventTimestamp.current) {
@@ -4097,14 +4182,40 @@ export default function App() {
             const yPct = data.lastLikeEvent.yPercent !== undefined ? data.lastLikeEvent.yPercent : (Math.random() * 40 + 40);
             triggerDoubleTapHeart((xPct / 100) * screenW, (yPct / 100) * screenH, screenW);
           }
+          // Process incoming live gifts sent by viewers
+          if (data.lastGiftEvent && data.lastGiftEvent.timestamp > lastHostGiftEventTimestamp.current) {
+            lastHostGiftEventTimestamp.current = data.lastGiftEvent.timestamp;
+            const giftEvt = data.lastGiftEvent;
+            const newToast = {
+              id: "toast-" + giftEvt.timestamp + "-" + Math.random(),
+              username: giftEvt.senderUsername,
+              giftName: giftEvt.giftName,
+              giftIcon: giftEvt.giftIcon,
+              count: giftEvt.count || 1,
+              avatar: giftEvt.senderAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80"
+            };
+            setUserLiveGiftToasts(prev => [newToast, ...prev.slice(0, 1)]);
+            setUserLiveCoinsEarned(prev => prev + (giftEvt.totalCost || 0));
+            setTimeout(() => {
+              setUserLiveGiftToasts(prev => prev.filter(t => t.id !== newToast.id));
+            }, 4000);
+
+            if (userLivePkActive) {
+              if (giftEvt.targetHostSide === "hostB") {
+                setUserLivePkScoreOther(prev => prev + (giftEvt.totalCost || 0));
+              } else {
+                setUserLivePkScoreMy(prev => prev + (giftEvt.totalCost || 0));
+              }
+            }
+          }
         })
         .catch(err => console.error("Error syncing host live state:", err));
     };
 
     syncHostState();
-    const interval = setInterval(syncHostState, 1500);
+    const interval = setInterval(syncHostState, 1000);
     return () => clearInterval(interval);
-  }, [clientView, user?.username, user?.uid, user?.avatar, user?.userLevel, user?.vipLevel, userLiveCam]);
+  }, [clientView, user?.username, user?.uid, user?.avatar, user?.userLevel, user?.vipLevel, userLiveCam, userLivePkActive, userLivePkScoreMy, userLivePkScoreOther, userLiveCoHost?.username, userLiveGuestModeActive, userLiveGuestSeats]);
 
   // Real-time backend viewer join/leave presence & live state synchronization for active live-room
   useEffect(() => {
@@ -4136,7 +4247,7 @@ export default function App() {
       })
       .catch(err => console.error(`[LIVE VIEWER JOIN ERROR] Could not join backend room ${hostId}:`, err));
 
-    // Poll live host state in real-time (cameraEnabled, viewers, likes, profile data)
+    // Poll live host state in real-time (cameraEnabled, viewers, likes, comments, gifts, PK scores)
     const pollHostState = () => {
       fetch(`/api/v1/hosts/${hostId}`)
         .then(res => {
@@ -4158,6 +4269,55 @@ export default function App() {
             setLikesCount(data.likes);
           }
 
+          // Sync real-time comments from backend
+          if (Array.isArray(data.comments)) {
+            setChatMessages(data.comments);
+          }
+
+          // Sync PK battle score & active state
+          if (data.pkActive !== undefined) {
+            setUserLivePkActive(!!data.pkActive);
+          }
+          if (data.pkScoreHost !== undefined) {
+            setPkScoreHost(data.pkScoreHost);
+          }
+          if (data.pkScoreOpponent !== undefined) {
+            setPkScoreOpponent(data.pkScoreOpponent);
+          }
+
+          // Sync guest seats
+          if (Array.isArray(data.guestSeats)) {
+            setViewerLiveGuestSeats(data.guestSeats);
+          }
+
+          // Process gift events for viewer toasts & animations
+          if (data.lastGiftEvent && data.lastGiftEvent.timestamp > lastViewerGiftEventTimestamp.current) {
+            lastViewerGiftEventTimestamp.current = data.lastGiftEvent.timestamp;
+            const giftEvt = data.lastGiftEvent;
+            const newToast = {
+              id: "vtoast-" + giftEvt.timestamp + "-" + Math.random(),
+              username: giftEvt.senderUsername,
+              giftName: giftEvt.giftName,
+              giftIcon: giftEvt.giftIcon,
+              count: giftEvt.count || 1,
+              avatar: giftEvt.senderAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80"
+            };
+            setUserLiveGiftToasts(prev => [newToast, ...prev.slice(0, 1)]);
+            setTimeout(() => {
+              setUserLiveGiftToasts(prev => prev.filter(t => t.id !== newToast.id));
+            }, 4000);
+          }
+
+          // Process like events for viewer heart animations
+          if (data.lastLikeEvent && data.lastLikeEvent.timestamp > lastViewerLikeEventTimestamp.current) {
+            lastViewerLikeEventTimestamp.current = data.lastLikeEvent.timestamp;
+            const screenW = window.innerWidth || 360;
+            const screenH = window.innerHeight || 640;
+            const xPct = data.lastLikeEvent.xPercent !== undefined ? data.lastLikeEvent.xPercent : (Math.random() * 60 + 20);
+            const yPct = data.lastLikeEvent.yPercent !== undefined ? data.lastLikeEvent.yPercent : (Math.random() * 40 + 40);
+            triggerDoubleTapHeart((xPct / 100) * screenW, (yPct / 100) * screenH, screenW);
+          }
+
           setActiveHost(prev => {
             if (!prev) return data;
             return {
@@ -4176,7 +4336,7 @@ export default function App() {
     };
 
     pollHostState();
-    const interval = setInterval(pollHostState, 1500);
+    const interval = setInterval(pollHostState, 1000);
 
     return () => {
       clearInterval(interval);
@@ -4279,7 +4439,15 @@ export default function App() {
       fetch("/api/v1/reels")
         .then(res => res.json())
         .then(data => {
-          if (Array.isArray(data)) setReels(data);
+          if (Array.isArray(data)) {
+            const seen = new Set();
+            setReels(data.filter((item: any) => {
+              if (!item || !item.id) return false;
+              if (seen.has(item.id)) return false;
+              seen.add(item.id);
+              return true;
+            }));
+          }
         })
         .catch(err => console.error("Error loading reels:", err));
 
@@ -4422,7 +4590,15 @@ export default function App() {
       fetch("/api/v1/reels")
         .then(res => res.json())
         .then(data => {
-          if (Array.isArray(data)) setReels(data);
+          if (Array.isArray(data)) {
+            const seen = new Set();
+            setReels(data.filter((item: any) => {
+              if (!item || !item.id) return false;
+              if (seen.has(item.id)) return false;
+              seen.add(item.id);
+              return true;
+            }));
+          }
         })
         .catch(err => console.error("Error polling reels:", err));
 
@@ -5026,6 +5202,23 @@ export default function App() {
     setChatMessages(prev => [...prev, finalMsg]);
     updateMissionProgress("m-3", 1);
 
+    // Send comment to backend API for real-time room sync
+    const targetHostId = activeHost?.id || activeHost?.hostUsername || activeHost?.name;
+    if (targetHostId) {
+      fetch(`/api/v1/hosts/${targetHostId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: messageText,
+          username: user.username,
+          vipLevel: user.vipLevel || 0,
+          userLevel: user.userLevel || 1,
+          avatar: user.avatar || "",
+          isSystem: false
+        })
+      }).catch(err => console.error("Error posting comment to backend room:", err));
+    }
+
     // Call Real-time AI server endpoints if toggled
     if (isAiMode) {
       setIsModerating(true);
@@ -5274,7 +5467,8 @@ export default function App() {
           giftId: gift.id,
           count,
           recipient: recipientName,
-          targetHostSide: isOpponentTarget ? "hostB" : "hostA"
+          targetHostSide: isOpponentTarget ? "hostB" : "hostA",
+          hostId: activeHost?.id || user.uid || user.username
         })
       });
       if (resp.ok) {
@@ -5683,6 +5877,21 @@ export default function App() {
 
     setUserLiveMessages(prev => [...prev, myMessage]);
     setUserLiveChatInput("");
+
+    // Post host message to backend room API so all viewers receive it in real-time
+    const hostId = user.uid || user.username;
+    fetch(`/api/v1/hosts/${hostId}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: myMessage.message,
+        username: myMessage.username,
+        vipLevel: user.vipLevel || 0,
+        userLevel: user.userLevel || 1,
+        avatar: user.avatar || "",
+        isSystem: false
+      })
+    }).catch(err => console.error("Error posting host comment to backend room:", err));
 
     // Setup a nice interactive response from viewers in Roman Urdu/Urdu
     setTimeout(() => {
@@ -12005,9 +12214,22 @@ export default function App() {
                                 </h5>
                                 <p className="text-[8px] text-gray-400">Browse short videos, highlights & private ledgers</p>
                               </div>
-                              <span className="text-[9px] text-[#66fcf1] font-mono font-bold">
-                                {Object.values(profileReels).flat().length} Clips
-                              </span>
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setUploadReelStep("select");
+                                    setShowUploadReelOverlay(true);
+                                  }}
+                                  className="px-2.5 py-1 bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] hover:brightness-110 text-white rounded-lg text-[8.5px] font-black uppercase font-mono flex items-center space-x-1 shadow transition-all active:scale-95 cursor-pointer"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  <span>Upload Reel</span>
+                                </button>
+                                <span className="text-[9px] text-[#66fcf1] font-mono font-bold bg-[#12121a] px-2 py-0.5 rounded border border-[#303040]">
+                                  {Object.values(profileReels).flat().length} Clips
+                                </span>
+                              </div>
                             </div>
 
                             {/* Feed Tabs Bar */}
@@ -12072,9 +12294,9 @@ export default function App() {
                                   No clips found in this directory.
                                 </div>
                               ) : (
-                                profileReels[profileFeedTab].map((reel) => (
+                                profileReels[profileFeedTab].map((reel, rIdx) => (
                                   <div
-                                    key={reel.id}
+                                    key={`${reel.id}-${rIdx}`}
                                     onClick={() => setSelectedProfileReel({ ...reel, tab: profileFeedTab })}
                                     className="bg-[#12121a] rounded-xl overflow-hidden border border-[#303040] hover:border-[#ff007f]/50 cursor-pointer group transition-all relative flex flex-col justify-between aspect-[4/3] shadow-md hover:scale-[1.02]"
                                   >
@@ -12307,6 +12529,10 @@ export default function App() {
                         setDragY={setDragY}
                         reelInteractions={reelInteractions}
                         setReelInteractions={setReelInteractions}
+                        onOpenUploadReel={() => {
+                          setUploadReelStep("select");
+                          setShowUploadReelOverlay(true);
+                        }}
                       />
                     )}
 
@@ -19924,6 +20150,111 @@ export default function App() {
                           <p className="text-[8px] text-gray-300 leading-none mt-0.5 bg-transparent">{reportSuccessToast}</p>
                         </div>
                         <button onClick={() => setReportSuccessToast(null)} className="text-gray-400 hover:text-white text-[8px] font-bold">✕</button>
+                      </div>
+                    )}
+
+                    {/* ===================================================================== */}
+                    {/* ➕ BOTTOM CREATE ACTION SHEET OVERLAY */}
+                    {/* ===================================================================== */}
+                    {showCreateActionSheet && (
+                      <div 
+                        className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col justify-end animate-fade-in cursor-pointer"
+                        onClick={() => setShowCreateActionSheet(false)}
+                      >
+                        <div 
+                          className="bg-[#12121e] border-t-2 border-[#ff007f] rounded-t-3xl p-5 space-y-4 shadow-2xl relative text-left cursor-default"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                            <div>
+                              <h3 className="text-sm font-black text-white uppercase tracking-wider font-mono flex items-center gap-1.5">
+                                <span className="text-[#ff007f]">✨</span> Create & Share Content
+                              </h3>
+                              <p className="text-[9px] text-gray-400">Choose an action to start uploading or streaming live</p>
+                            </div>
+                            <button
+                              onClick={() => setShowCreateActionSheet(false)}
+                              className="text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 pt-1">
+                            {/* Option 1: Upload / Record Reel */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowCreateActionSheet(false);
+                                setUploadReelStep("select");
+                                setShowUploadReelOverlay(true);
+                              }}
+                              className="p-3.5 bg-gradient-to-br from-[#1e1e2f] to-[#161625] border border-[#ff007f]/40 hover:border-[#ff007f] rounded-2xl flex flex-col items-start space-y-2 group transition-all active:scale-95 shadow-lg text-left cursor-pointer"
+                            >
+                              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#ff007f] to-[#7b2cbf] flex items-center justify-center text-white shadow-md group-hover:scale-110 transition-transform">
+                                <Film className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <span className="text-xs font-black text-white block uppercase tracking-wide">Upload Reel 🎬</span>
+                                <span className="text-[8.5px] text-gray-400 leading-tight block mt-0.5">Publish short videos & clips to feed</span>
+                              </div>
+                            </button>
+
+                            {/* Option 2: Start Live Stream */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowCreateActionSheet(false);
+                                setClientView("stream");
+                              }}
+                              className="p-3.5 bg-gradient-to-br from-[#1e1e2f] to-[#161625] border border-purple-500/40 hover:border-purple-500 rounded-2xl flex flex-col items-start space-y-2 group transition-all active:scale-95 shadow-lg text-left cursor-pointer"
+                            >
+                              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#7b2cbf] to-[#a855f7] flex items-center justify-center text-white shadow-md group-hover:scale-110 transition-transform">
+                                <Tv className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <span className="text-xs font-black text-white block uppercase tracking-wide">Go Live Stream 🎥</span>
+                                <span className="text-[8.5px] text-gray-400 leading-tight block mt-0.5">Broadcast video or start PK battle</span>
+                              </div>
+                            </button>
+
+                            {/* Option 3: Create Party Lounge */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowCreateActionSheet(false);
+                                setShowCreatePartyModal(true);
+                              }}
+                              className="p-3.5 bg-gradient-to-br from-[#1e1e2f] to-[#161625] border border-[#66fcf1]/40 hover:border-[#66fcf1] rounded-2xl flex flex-col items-start space-y-2 group transition-all active:scale-95 shadow-lg text-left cursor-pointer"
+                            >
+                              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#66fcf1]/80 to-[#20b2aa] flex items-center justify-center text-black shadow-md group-hover:scale-110 transition-transform">
+                                <Mic className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <span className="text-xs font-black text-white block uppercase tracking-wide">Party Lounge 🎙️</span>
+                                <span className="text-[8.5px] text-gray-400 leading-tight block mt-0.5">Multi-seat audio room with games</span>
+                              </div>
+                            </button>
+
+                            {/* Option 4: Post Story */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowCreateActionSheet(false);
+                                setShowCreateStoryModal(true);
+                              }}
+                              className="p-3.5 bg-gradient-to-br from-[#1e1e2f] to-[#161625] border border-amber-500/40 hover:border-amber-500 rounded-2xl flex flex-col items-start space-y-2 group transition-all active:scale-95 shadow-lg text-left cursor-pointer"
+                            >
+                              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-md group-hover:scale-110 transition-transform">
+                                <Sparkles className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <span className="text-xs font-black text-white block uppercase tracking-wide">Post Story 📖</span>
+                                <span className="text-[8.5px] text-gray-400 leading-tight block mt-0.5">Share 24-hour status or photo</span>
+                              </div>
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     )}
 

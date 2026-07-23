@@ -757,6 +757,41 @@ app.post("/api/v1/gifts/send", authenticateUser, (req, res) => {
     dbData.processedGiftRequests[requestId] = responseData;
   }
 
+  // Update active host stream state with lastGiftEvent & PK scores
+  const hostId = req.body.hostId;
+  const activeHostMatch = (dbData.hosts || []).find((h: any) => 
+    (hostId && (h.id === hostId || h.hostUsername === hostId || h.name === hostId)) ||
+    (recipient && h.hostUsername && recipient.toLowerCase().includes(h.hostUsername.toLowerCase())) ||
+    h.isLive
+  );
+
+  if (activeHostMatch) {
+    const isOpponent = targetHostSide === "hostB";
+    if (isOpponent) {
+      activeHostMatch.pkScoreOpponent = (activeHostMatch.pkScoreOpponent || 0) + totalCost;
+    } else {
+      activeHostMatch.pkScoreHost = (activeHostMatch.pkScoreHost || 0) + totalCost;
+    }
+
+    activeHostMatch.lastGiftEvent = {
+      giftId: gift.id,
+      giftName: gift.name,
+      giftIcon: gift.icon,
+      count: giftCount,
+      senderUsername: user.username,
+      senderAvatar: user.avatar || "",
+      recipient: recipient || "Host",
+      totalCost,
+      targetHostSide: targetHostSide || "hostA",
+      timestamp: Date.now()
+    };
+
+    activeHostMatch.likes = (activeHostMatch.likes || 0) + Math.max(1, Math.floor(totalCost * 0.1));
+
+    syncDocument("hosts", activeHostMatch.id, activeHostMatch);
+    console.log(`[REALTIME GIFT SYNC] Updated host ${activeHostMatch.id} with gift ${gift.name} from @${user.username}`);
+  }
+
   saveDatabase();
 
   return res.json(responseData);
@@ -903,14 +938,56 @@ app.put("/api/v1/hosts/:id", (req, res) => {
   const { id } = req.params;
   const index = dbData.hosts.findIndex((h: any) => h.id === id || h.hostUsername === id || h.name === id);
   if (index !== -1) {
-    dbData.hosts[index] = { ...dbData.hosts[index], ...req.body, updatedAt: new Date().toISOString() };
+    const existing = dbData.hosts[index];
+    const updateData = { ...req.body };
+
+    // Safely preserve comments if not provided in updateData
+    if (updateData.comments === undefined && existing.comments) {
+      updateData.comments = existing.comments;
+    }
+    // Safely preserve connectedViewers if not provided in updateData
+    if (updateData.connectedViewers === undefined && existing.connectedViewers) {
+      updateData.connectedViewers = existing.connectedViewers;
+      updateData.realViewerCount = existing.connectedViewers.length;
+    }
+    // Safely preserve likes if updateData.likes is omitted or smaller
+    if (existing.likes !== undefined && (updateData.likes === undefined || updateData.likes < existing.likes)) {
+      updateData.likes = existing.likes;
+    }
+    // Safely preserve last gift/like events if omitted
+    if (updateData.lastGiftEvent === undefined && existing.lastGiftEvent) {
+      updateData.lastGiftEvent = existing.lastGiftEvent;
+    }
+    if (updateData.lastLikeEvent === undefined && existing.lastLikeEvent) {
+      updateData.lastLikeEvent = existing.lastLikeEvent;
+    }
+    if (updateData.pkScoreHost === undefined && existing.pkScoreHost !== undefined) {
+      updateData.pkScoreHost = existing.pkScoreHost;
+    }
+    if (updateData.pkScoreOpponent === undefined && existing.pkScoreOpponent !== undefined) {
+      updateData.pkScoreOpponent = existing.pkScoreOpponent;
+    }
+
+    dbData.hosts[index] = { ...existing, ...updateData, updatedAt: new Date().toISOString() };
     saveDatabase();
     syncDocument("hosts", dbData.hosts[index].id, dbData.hosts[index]);
-    console.log(`[LIVE SERVER SUCCESS] Updated host ${id}:`, dbData.hosts[index]);
     res.json(dbData.hosts[index]);
   } else {
-    console.warn(`[LIVE SERVER WARN] Host ${id} not found for update`);
-    res.status(404).json({ error: "Host not found" });
+    const newHost = {
+      id,
+      isLive: true,
+      viewers: 1,
+      realViewerCount: 1,
+      likes: 0,
+      connectedViewers: [],
+      comments: [],
+      ...req.body,
+      updatedAt: new Date().toISOString()
+    };
+    dbData.hosts.push(newHost);
+    saveDatabase();
+    syncDocument("hosts", id, newHost);
+    res.json(newHost);
   }
 });
 
