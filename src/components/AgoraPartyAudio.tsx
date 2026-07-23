@@ -19,6 +19,20 @@ interface AgoraPartyAudioProps {
   onStatusChange?: (status: "idle" | "connecting" | "connected" | "error", details?: string) => void;
 }
 
+// Helper for unique client session instance in party audio
+const getSessionViewerId = (): string => {
+  try {
+    let id = sessionStorage.getItem("sehr_agora_session_uid");
+    if (!id) {
+      id = "v_" + Math.random().toString(36).substring(2, 9) + "_" + Date.now();
+      sessionStorage.setItem("sehr_agora_session_uid", id);
+    }
+    return id;
+  } catch (e) {
+    return "v_" + Math.random().toString(36).substring(2, 9) + "_" + Date.now();
+  }
+};
+
 // Generate deterministic numeric UID for Agora from username
 const getNumericUid = (str: string): number => {
   let hash = 0;
@@ -177,7 +191,13 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
       setStatus("connecting");
       setStatusDetails("Fetching secure voice credentials...");
 
-      const numericUid = getNumericUid(username || partyId);
+      let targetUid: number | null = null;
+      if (userRole === "host") {
+        targetUid = getNumericUid("host_" + partyId + "_" + (username || "creator"));
+      } else {
+        targetUid = null;
+      }
+
       let tokenData: any = null;
 
       try {
@@ -191,7 +211,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
           body: JSON.stringify({
             channelName,
             role: userRole === "listener" ? "subscriber" : "publisher",
-            uid: numericUid
+            uid: targetUid || 0
           })
         });
 
@@ -214,7 +234,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
         setStatusDetails("Connecting to WebRTC voice gateway...");
         
         // Live mode is required for host-audience dynamic role switching
-        const agoraClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
+        let agoraClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
         activeClient = agoraClient;
         setClient(agoraClient);
 
@@ -222,13 +242,36 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
         const initialAgoraRole = userRole === "listener" ? "audience" : "host";
         await agoraClient.setClientRole(initialAgoraRole);
 
-        // Join voice room
-        await agoraClient.join(
-          tokenData.appId,
-          tokenData.channelName,
-          tokenData.token || null,
-          tokenData.uid || numericUid
-        );
+        // Join voice room with fallback retry on UID_CONFLICT using fresh client and null UID
+        try {
+          await agoraClient.join(
+            tokenData.appId,
+            tokenData.channelName,
+            tokenData.token || null,
+            targetUid
+          );
+        } catch (joinErr: any) {
+          console.warn("[AgoraPartyAudio] Primary join encounter, retrying with fresh client & dynamic UID:", joinErr?.message || joinErr);
+          
+          try {
+            await agoraClient.leave();
+          } catch (e) {}
+
+          if (isUnmounted) return;
+
+          const freshClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
+          activeClient = freshClient;
+          setClient(freshClient);
+          agoraClient = freshClient;
+
+          await agoraClient.setClientRole(initialAgoraRole);
+          await agoraClient.join(
+            tokenData.appId,
+            tokenData.channelName,
+            tokenData.token || null,
+            null
+          );
+        }
 
         if (isUnmounted) return;
 

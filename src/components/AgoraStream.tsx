@@ -20,6 +20,20 @@ interface AgoraStreamProps {
   onStatusChange?: (status: "idle" | "connecting" | "connected" | "error" | "simulated", details?: string) => void;
 }
 
+// Helper for unique client viewer session instance
+const getSessionViewerId = (): string => {
+  try {
+    let id = sessionStorage.getItem("sehr_agora_session_uid");
+    if (!id) {
+      id = "v_" + Math.random().toString(36).substring(2, 9) + "_" + Date.now();
+      sessionStorage.setItem("sehr_agora_session_uid", id);
+    }
+    return id;
+  } catch (e) {
+    return "v_" + Math.random().toString(36).substring(2, 9) + "_" + Date.now();
+  }
+};
+
 // Deterministic numeric UID generator for Agora RTC
 const getNumericUid = (str: string): number => {
   let hash = 0;
@@ -367,7 +381,17 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
       setStatus("connecting");
       setStatusDetails("Fetching secure stream tokens...");
 
-      const numericUid = getNumericUid(hostName || channelName);
+      // Clean up any existing client first to avoid lingering connection conflicts
+      await cleanUpAgora();
+
+      // For publisher/host, use deterministic host UID; for viewers, use null so Agora auto-allocates dynamic UIDs
+      let targetUid: number | null = null;
+      if (role === "publisher") {
+        targetUid = getNumericUid("host_" + channelName);
+      } else {
+        targetUid = null;
+      }
+
       let tokenData: any = null;
 
       try {
@@ -381,7 +405,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           body: JSON.stringify({
             channelName,
             role: role === "publisher" ? "publisher" : "subscriber",
-            uid: numericUid
+            uid: targetUid || 0
           })
         });
 
@@ -400,18 +424,41 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
 
       try {
         setStatusDetails("Connecting to Agora RTC live Gateway...");
-        const agoraClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
+        let agoraClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
         clientRef.current = agoraClient;
 
         const agoraRole = role === "publisher" ? "host" : "audience";
         await agoraClient.setClientRole(agoraRole);
 
-        await agoraClient.join(
-          tokenData.appId,
-          tokenData.channelName,
-          tokenData.token || null,
-          tokenData.uid || numericUid
-        );
+        try {
+          await agoraClient.join(
+            tokenData.appId,
+            tokenData.channelName,
+            tokenData.token || null,
+            targetUid
+          );
+        } catch (joinErr: any) {
+          console.warn("[AgoraStream] Primary join encounter, retrying with fresh client & dynamic UID:", joinErr?.message || joinErr);
+          
+          try {
+            await agoraClient.leave();
+          } catch (e) {}
+
+          if (isUnmounted) return;
+
+          // Re-create a fresh client instance because failed join puts client in invalid state
+          const freshClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
+          clientRef.current = freshClient;
+          agoraClient = freshClient;
+
+          await agoraClient.setClientRole(agoraRole);
+          await agoraClient.join(
+            tokenData.appId,
+            tokenData.channelName,
+            tokenData.token || null,
+            null
+          );
+        }
 
         if (isUnmounted) return;
 
@@ -513,7 +560,6 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
       <div 
         ref={containerRef} 
         className="absolute inset-0 z-0 w-full h-full"
-        style={{ display: isCameraOff ? "none" : "block" }}
       />
 
       {/* 2. CAMERA OFF OR CONNECTING FALLBACK SCREEN */}
@@ -538,7 +584,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             <div className="text-center space-y-1">
               <h4 className="text-xs font-black text-white uppercase tracking-wider">{hostName}</h4>
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30 tracking-widest uppercase animate-pulse">
-                {role === "subscriber" ? "🎙️ Real Live Audio Stream Active" : "📷 Camera Off / Audio Active"}
+                {role === "subscriber" ? "🎙️ Real Live Stream Connecting / Audio Active" : "📷 Camera Off / Audio Active"}
               </span>
             </div>
           </div>

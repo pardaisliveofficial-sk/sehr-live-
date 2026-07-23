@@ -1006,6 +1006,9 @@ app.put("/api/v1/hosts/:id", (req, res) => {
     if (updateData.lastLikeEvent === undefined && existing.lastLikeEvent) {
       updateData.lastLikeEvent = existing.lastLikeEvent;
     }
+    if (updateData.lastJoinEvent === undefined && existing.lastJoinEvent) {
+      updateData.lastJoinEvent = existing.lastJoinEvent;
+    }
     if (updateData.pkScoreHost === undefined && existing.pkScoreHost !== undefined) {
       updateData.pkScoreHost = existing.pkScoreHost;
     }
@@ -1089,6 +1092,18 @@ app.post("/api/v1/hosts/:id/join", (req, res) => {
     }
     host.viewers = host.connectedViewers.length;
     host.realViewerCount = host.connectedViewers.length;
+
+    // Create real-time join event for both host and viewer entry UI
+    host.lastJoinEvent = {
+      id: `join-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      userId: userId || username,
+      username,
+      avatar: avatar || "",
+      level: level || 1,
+      vipLevel: vipLevel || 0,
+      timestamp: Date.now()
+    };
+
     saveDatabase();
     syncDocument("hosts", host.id, host);
     console.log(`[LIVE SERVER SUCCESS] User @${username} joined live room ${host.id} (total viewers: ${host.realViewerCount})`);
@@ -1131,7 +1146,7 @@ app.post("/api/v1/hosts/:id/comments", (req, res) => {
   if (!message || !username) {
     return res.status(400).json({ error: "Username and message are required" });
   }
-  const index = dbData.hosts.findIndex((h: any) => h.id === id);
+  const index = dbData.hosts.findIndex((h: any) => h.id === id || h.hostUsername === id || h.name === id);
   if (index !== -1) {
     const host = dbData.hosts[index];
     if (!host.comments) {
