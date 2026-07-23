@@ -5697,23 +5697,47 @@ export default function App() {
   };
 
   // User Solo Live Broadcaster Handlers
-  const startUserSoloLive = () => {
-    requestAppPermission(
-      "camera",
-      "Camera access is needed to broadcast video, use high-quality beauty filters, and perform PK battle matches.",
-      () => {
+  const startUserSoloLive = async () => {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const testStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        testStream.getTracks().forEach(track => track.stop());
+        setCameraError(null);
+        setClientView("camera-prep");
+      } catch (err) {
+        console.warn("Camera/microphone permission verification failed:", err);
         requestAppPermission(
-          "microphone",
-          "Microphone access is required so your viewers can hear your voice and you can join voice chat rooms.",
+          "camera",
+          "Camera access is needed to broadcast video, use high-quality beauty filters, and perform PK battle matches.",
           () => {
-            setClientView("camera-prep");
+            requestAppPermission(
+              "microphone",
+              "Microphone access is required so your viewers can hear your voice and you can join voice chat rooms.",
+              () => {
+                setClientView("camera-prep");
+              }
+            );
           }
         );
       }
-    );
+    } else {
+      setClientView("camera-prep");
+    }
   };
 
-  const actuallyGoLive = () => {
+  const actuallyGoLive = async () => {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const permStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        permStream.getTracks().forEach(track => track.stop());
+        setCameraError(null);
+      } catch (err) {
+        console.warn("Camera permission verification failed before going live:", err);
+        alert("⚠️ Camera and microphone permissions are required to start live streaming. Please allow camera permissions in your browser.");
+        return;
+      }
+    }
+
     setClientView("user-live");
     setUserLiveDuration(0); 
     setUserLiveViewers(0); 

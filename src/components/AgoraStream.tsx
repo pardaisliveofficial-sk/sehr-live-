@@ -104,12 +104,20 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
     if (localAudioTrackRef.current) {
       localAudioTrackRef.current.setEnabled(!muted).catch(() => {});
     }
+    if (videoElemRef.current && videoElemRef.current.srcObject) {
+      const stream = videoElemRef.current.srcObject as MediaStream;
+      stream.getAudioTracks().forEach(t => { t.enabled = !muted; });
+    }
   }, [muted]);
 
   // Handle dynamic camera enable / disable
   useEffect(() => {
     if (localVideoTrackRef.current) {
       localVideoTrackRef.current.setEnabled(!videoMuted).catch(() => {});
+    }
+    if (videoElemRef.current && videoElemRef.current.srcObject) {
+      const stream = videoElemRef.current.srcObject as MediaStream;
+      stream.getVideoTracks().forEach(t => { t.enabled = !videoMuted; });
     }
   }, [videoMuted]);
 
@@ -384,13 +392,8 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
       // Clean up any existing client first to avoid lingering connection conflicts
       await cleanUpAgora();
 
-      // For publisher/host, use deterministic host UID; for viewers, use null so Agora auto-allocates dynamic UIDs
-      let targetUid: number | null = null;
-      if (role === "publisher") {
-        targetUid = getNumericUid("host_" + channelName);
-      } else {
-        targetUid = null;
-      }
+      // Always pass null so Agora dynamically allocates a unique, conflict-free 32-bit integer UID
+      const targetUid: number | null = null;
 
       let tokenData: any = null;
 
@@ -481,7 +484,22 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             } else if (mediaType === "video") {
               setHasRemoteVideo(true);
               if (remoteUser.videoTrack && containerRef.current) {
-                remoteUser.videoTrack.play(containerRef.current);
+                const mediaStreamTrack = remoteUser.videoTrack.getMediaStreamTrack();
+                if (mediaStreamTrack) {
+                  const remoteStream = new MediaStream([mediaStreamTrack]);
+                  containerRef.current.innerHTML = "";
+                  const v = document.createElement("video");
+                  v.srcObject = remoteStream;
+                  v.autoplay = true;
+                  v.playsInline = true;
+                  v.muted = muted;
+                  v.className = "w-full h-full object-cover";
+                  containerRef.current.appendChild(v);
+                  videoElemRef.current = v;
+                  v.play().catch(e => console.warn("Remote stream play error:", e));
+                } else {
+                  remoteUser.videoTrack.play(containerRef.current);
+                }
               }
             }
           } catch (subErr) {
@@ -510,30 +528,92 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
 
         // Publisher setup
         if (role === "publisher") {
-          const micTrack = await AgoraRTC.createMicrophoneAudioTrack({
-            encoderConfig: "music_standard"
-          });
-          localAudioTrackRef.current = micTrack;
-          await micTrack.setEnabled(!muted);
-
-          let camTrack: ICameraVideoTrack | null = null;
+          // Verify camera & microphone permissions before mounting stream player
+          let mediaStream: MediaStream | null = null;
           try {
-            camTrack = await AgoraRTC.createCameraVideoTrack({
-              encoderConfig: "720p_1",
-              facingMode: facingMode === "environment" ? "environment" : "user"
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                facingMode: facingMode === "environment" ? "environment" : "user",
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+              },
+              audio: true
             });
-            localVideoTrackRef.current = camTrack;
-            await camTrack.setEnabled(!videoMuted);
-
-            if (containerRef.current) {
-              camTrack.play(containerRef.current);
-            }
-          } catch (camErr) {
-            console.warn("[AgoraStream] Camera access fallback:", camErr);
+          } catch (permErr: any) {
+            console.warn("[AgoraStream] Camera/Microphone permission request failed:", permErr);
+            setStatus("simulated");
+            setStatusDetails("Camera permission denied. Please allow camera access.");
+            return;
           }
 
-          const tracksToPublish = [micTrack, camTrack].filter(Boolean) as any[];
-          await agoraClient.publish(tracksToPublish);
+          if (isUnmounted) {
+            if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+            return;
+          }
+
+          localMediaStream = mediaStream;
+
+          // Sync initial audio/video track enabled state
+          mediaStream.getAudioTracks().forEach(t => { t.enabled = !muted; });
+          mediaStream.getVideoTracks().forEach(t => { t.enabled = !videoMuted; });
+
+          // Render video element with stream object assigned to srcObject
+          if (containerRef.current) {
+            containerRef.current.innerHTML = "";
+            const v = document.createElement("video");
+            v.srcObject = mediaStream;
+            v.autoplay = true;
+            v.playsInline = true;
+            v.muted = true; // Local host preview muted to prevent audio feedback
+            v.className = "w-full h-full object-cover" + (facingMode === "user" ? " scale-x-[-1]" : "");
+            containerRef.current.appendChild(v);
+            videoElemRef.current = v;
+            v.play().catch(e => console.warn("[AgoraStream] Local video element play error:", e));
+          }
+
+          // Convert verified MediaStream tracks into Agora tracks
+          const videoTrack = mediaStream.getVideoTracks()[0];
+          const audioTrack = mediaStream.getAudioTracks()[0];
+
+          if (videoTrack) {
+            try {
+              const customVidTrack = await AgoraRTC.createCustomVideoTrack({ mediaStreamTrack: videoTrack });
+              localVideoTrackRef.current = customVidTrack as any;
+              await customVidTrack.setEnabled(!videoMuted);
+            } catch (eVid) {
+              console.warn("[AgoraStream] Custom video track creation error, falling back to createCameraVideoTrack:", eVid);
+              try {
+                const fallbackVid = await AgoraRTC.createCameraVideoTrack({
+                  encoderConfig: "720p_1",
+                  facingMode: facingMode === "environment" ? "environment" : "user"
+                });
+                localVideoTrackRef.current = fallbackVid;
+                await fallbackVid.setEnabled(!videoMuted);
+              } catch (e) {}
+            }
+          }
+
+          if (audioTrack) {
+            try {
+              const customAudTrack = await AgoraRTC.createCustomAudioTrack({ mediaStreamTrack: audioTrack });
+              localAudioTrackRef.current = customAudTrack as any;
+              await customAudTrack.setEnabled(!muted);
+            } catch (eAud) {
+              console.warn("[AgoraStream] Custom audio track creation error, falling back to createMicrophoneAudioTrack:", eAud);
+              try {
+                const fallbackAud = await AgoraRTC.createMicrophoneAudioTrack({
+                  encoderConfig: "music_standard"
+                });
+                localAudioTrackRef.current = fallbackAud;
+                await fallbackAud.setEnabled(!muted);
+              } catch (e) {}
+            }
+          }
+
+          const tracksToPublish = [localAudioTrackRef.current, localVideoTrackRef.current].filter(Boolean) as any[];
+          if (tracksToPublish.length > 0 && agoraClient) {
+            await agoraClient.publish(tracksToPublish);
+          }
           setStatusDetails("AGORA LIVE BROADCASTING ACTIVE");
         }
 

@@ -191,12 +191,8 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
       setStatus("connecting");
       setStatusDetails("Fetching secure voice credentials...");
 
-      let targetUid: number | null = null;
-      if (userRole === "host") {
-        targetUid = getNumericUid("host_" + partyId + "_" + (username || "creator"));
-      } else {
-        targetUid = null;
-      }
+      // Always pass null so Agora dynamically allocates a unique, conflict-free 32-bit integer UID
+      const targetUid: number | null = null;
 
       let tokenData: any = null;
 
