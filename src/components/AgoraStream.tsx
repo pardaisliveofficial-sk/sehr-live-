@@ -24,12 +24,8 @@ interface AgoraStreamProps {
 const sanitizeChannel = (ch: string) => {
   if (!ch) return "room_default";
   let str = String(ch).trim().toLowerCase();
-  if (str.startsWith("h-")) {
-    str = "room_" + str.substring(2);
-  } else if (!str.startsWith("room_")) {
-    str = "room_" + str;
-  }
-  return str.replace(/[^a-zA-Z0-9_-]/g, "");
+  str = str.replace(/^room_/, "").replace(/^h-/, "");
+  return `room_${str.replace(/[^a-zA-Z0-9_-]/g, "")}`;
 };
 
 export const AgoraStream: React.FC<AgoraStreamProps> = ({
@@ -570,8 +566,11 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             setRemoteHostCameraMuted(Boolean(remoteCamMuted));
           } else if (type === "OFFER") {
             const pc = setupSubscriberPc();
-            if (pc && (pc.signalingState === "stable" || pc.signalingState === "have-local-offer" || pc.signalingState === "have-remote-offer")) {
+            if (pc) {
               try {
+                if (pc.signalingState !== "stable") {
+                  await pc.setLocalDescription({ type: "rollback" }).catch(() => {});
+                }
                 await pc.setRemoteDescription(new RTCSessionDescription(sdp));
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);

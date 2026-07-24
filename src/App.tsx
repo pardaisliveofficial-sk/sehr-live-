@@ -7924,16 +7924,6 @@ export default function App() {
                             // Only active live streams
                             if (host.isLive === false || host.status === "ended" || host.status === "offline") return false;
 
-                            // Do NOT show a user's own live card to themselves
-                            const myHostId = `h-${user.uniqueId || user.username}`;
-                            if (
-                              (user.username && (host.hostUsername === user.username || host.name === user.username)) ||
-                              (user.uniqueId && (host.hostUid === user.uniqueId || host.hostUid === user.username)) ||
-                              (host.id === myHostId)
-                            ) {
-                              return false;
-                            }
-
                             // Filter out audio category since it belongs in Party Hub
                             if (host.category === "audio") return false;
 
@@ -8014,6 +8004,11 @@ export default function App() {
                             <div className="grid grid-cols-2 gap-2 text-left bg-transparent">
                               {filteredHosts.map(host => {
                                 const isFollowing = followedUsers.includes(host.name) || (host.hostUsername && followedUsers.includes(host.hostUsername));
+                                const isMyOwnCard = Boolean(
+                                  (user.username && (host.hostUsername === user.username || host.name === user.username)) ||
+                                  (user.uniqueId && (host.hostUid === user.uniqueId || host.hostUid === user.username)) ||
+                                  (host.id === `h-${user.uniqueId || user.username}`)
+                                );
                                 const displayAvatar = host.hostAvatar || host.avatar;
                                 const displayName = host.hostUsername ? `@${host.hostUsername}` : host.name;
                                 const displayViewerCount = host.realViewerCount !== undefined ? host.realViewerCount : (host.viewers || 0);
@@ -8022,13 +8017,17 @@ export default function App() {
                                   <div
                                     key={host.id}
                                     onClick={() => {
-                                      console.log("[LIVE CARD CLICK] Selected host live stream to join:", host);
-                                      setActiveHost(host);
-                                      const hostCamOn = host.cameraEnabled !== undefined ? host.cameraEnabled : (host.isCamOff !== undefined ? !host.isCamOff : true);
-                                      setCameraActive(hostCamOn);
-                                      setViewersCount(displayViewerCount);
-                                      setLikesCount(host.likes || 0);
-                                      setClientView("live-room");
+                                      console.log("[LIVE CARD CLICK] Selected host live stream:", host);
+                                      if (isMyOwnCard) {
+                                        setClientView("user-live");
+                                      } else {
+                                        setActiveHost(host);
+                                        const hostCamOn = host.cameraEnabled !== undefined ? host.cameraEnabled : (host.isCamOff !== undefined ? !host.isCamOff : true);
+                                        setCameraActive(hostCamOn);
+                                        setViewersCount(displayViewerCount);
+                                        setLikesCount(host.likes || 0);
+                                        setClientView("live-room");
+                                      }
                                     }}
                                     className="bg-[#1e1e2d] rounded-xl overflow-hidden border border-[#303040]/70 hover:border-[#ff007f]/50 transition-all cursor-pointer relative group shadow-md"
                                   >
@@ -8036,7 +8035,12 @@ export default function App() {
                                       <img src={displayAvatar} className="w-13 h-13 rounded-full object-cover border-2 border-purple-500 shadow-md group-hover:scale-105 transition-all" alt="host" />
                                       
                                       <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1 z-10 max-w-[75%] bg-transparent">
-                                        {host.category === "pk" ? (
+                                        {isMyOwnCard ? (
+                                          <div className="bg-gradient-to-r from-pink-600 to-purple-600 text-white text-[7px] font-black px-1.5 py-0.5 rounded-md flex items-center space-x-0.5 border border-white/20 shadow-md animate-pulse">
+                                            <span className="w-1 h-1 bg-green-400 rounded-full mr-0.5"></span>
+                                            <span>YOU ARE LIVE</span>
+                                          </div>
+                                        ) : host.category === "pk" ? (
                                           <div className="bg-gradient-to-r from-red-500 via-pink-600 to-yellow-500 text-white text-[7.5px] font-black px-1.5 py-0.5 rounded-md flex items-center space-x-0.5 animate-pulse border border-white/10 shadow-sm shadow-red-500/20">
                                             <span className="text-[9px]">🥊</span>
                                             <span>PK</span>
