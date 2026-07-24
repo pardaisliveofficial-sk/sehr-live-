@@ -33,6 +33,8 @@ export interface Gift {
 }
 
 export interface UserProfile {
+  uid?: string;
+  email?: string;
   username: string;
   uniqueId: string;
   avatar: string;

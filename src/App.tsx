@@ -94,7 +94,7 @@ import { getRankingData } from "./rankingData";
 import { dbDataCache } from "./db/firebaseDb";
 import { SehrLiveLogo } from "./components/SehrLiveLogo";
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from "firebase/auth";
 import firebaseConfig from "../firebase-applet-config.json";
 import { 
   initializeFirestore, 
@@ -671,34 +671,56 @@ export default function App() {
   const [isExpandingCustomGoogle, setIsExpandingCustomGoogle] = useState<boolean>(false);
   const [chooserError, setChooserError] = useState<string>("");
   const [loginError, setLoginError] = useState<string>("");
-  const [loginPhone, setLoginPhone] = useState<string>("");
+  const [loginSuccessMsg, setLoginSuccessMsg] = useState<string>("");
+  const [loginEmail, setLoginEmail] = useState<string>("");
   const [loginOtp, setLoginOtp] = useState<string>("");
   const [isOtpSent, setIsOtpSent] = useState<boolean>(false);
-  const [selectedAuthMethod, setSelectedAuthMethod] = useState<string>("social");
-  const [is2FAEnabled, setIs2FAEnabled] = useState<boolean>(true);
+  const [selectedAuthMethod, setSelectedAuthMethod] = useState<"email" | "google">("email");
+  const [showProfileSetupModal, setShowProfileSetupModal] = useState<boolean>(false);
+  const [setupFullName, setSetupFullName] = useState<string>("");
+  const [setupUsername, setSetupUsername] = useState<string>("");
+  const [setupGender, setSetupGender] = useState<string>("Male");
+  const [is2FAEnabled, setIs2FAEnabled] = useState<boolean>(false);
   const [showTwoFactorModal, setShowTwoFactorModal] = useState<boolean>(false);
   const [twoFactorCode, setTwoFactorCode] = useState<string>("");
 
   // Core User Profile
-  const [user, setUser] = useState<UserProfile>(() => {
-    const savedUser = localStorage.getItem("sehr_user_profile");
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        return {
-          ...DEFAULT_USER,
-          ...parsed,
-          coins: typeof parsed?.coins === "number" ? parsed.coins : (DEFAULT_USER.coins ?? 0),
-          diamonds: typeof parsed?.diamonds === "number" ? parsed.diamonds : (DEFAULT_USER.diamonds ?? 0)
-        };
-      } catch (e) {
-        return DEFAULT_USER;
-      }
-    }
-    return DEFAULT_USER;
-  });
+  const [user, setUser] = useState<UserProfile>(DEFAULT_USER);
 
-  // Sync login status and user profile to localStorage
+  // Restore authenticated session from backend on app load
+  useEffect(() => {
+    const token = localStorage.getItem("sehr_auth_token");
+    if (!token) {
+      setIsLoggedIn(false);
+      return;
+    }
+
+    fetch("/api/v1/auth/me", {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    })
+      .then(res => {
+        if (!res.ok) throw new Error("Session expired or invalid token.");
+        return res.json();
+      })
+      .then(data => {
+        if (data.user) {
+          setUser(data.user);
+          setIsLoggedIn(true);
+        } else {
+          throw new Error("Invalid session response");
+        }
+      })
+      .catch(err => {
+        console.warn("[SEHR AUTH RESTORE] Session verification failed:", err.message);
+        localStorage.removeItem("sehr_auth_token");
+        localStorage.setItem("sehr_is_logged_in", "false");
+        setIsLoggedIn(false);
+      });
+  }, []);
+
+  // Sync login status
   useEffect(() => {
     localStorage.setItem("sehr_is_logged_in", isLoggedIn ? "true" : "false");
   }, [isLoggedIn]);
@@ -2739,7 +2761,7 @@ export default function App() {
   ]);
 
   // Dynamic Live Streams State
-  const [liveStreamsList, setLiveStreamsList] = useState<HostProfile[]>([]);
+  const [liveStreamsList, setLiveStreamsList] = useState<HostProfile[]>(MOCK_HOSTS);
 
   // Couple Rankings State & Boosts (Declared after liveStreamsList to avoid TDZ errors)
   const [coupleBoosts, setCoupleBoosts] = useState<Record<string, number>>(() => {
@@ -5985,159 +6007,170 @@ export default function App() {
       .catch(err => console.error("[LIVE END ERROR] Error deleting host stream on backend:", err));
   };
 
-  // OTP Login triggers
-  const handleSendOtp = (e: React.FormEvent) => {
+  // Email OTP Login Handlers
+  const handleSendEmailOtp = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loginPhone) return;
+    if (!termsAccepted) {
+      setLoginError("Please check and accept the Terms of Service below to authenticate.");
+      return;
+    }
+    if (!loginEmail || !loginEmail.includes("@")) {
+      setLoginError("Please enter a valid email address.");
+      return;
+    }
     setLoginError("");
-    fetch("/api/v1/auth/send-otp", {
+    setLoginSuccessMsg("");
+
+    fetch("/api/v1/auth/send-email-otp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phoneNumber: loginPhone })
+      body: JSON.stringify({ email: loginEmail })
     })
-      .then(res => {
-        if (!res.ok) return res.json().then(data => { throw new Error(data.error || "Failed to send OTP code."); });
-        return res.json();
-      })
-      .then(data => {
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) throw new Error(data.error || "Failed to dispatch OTP code.");
         setIsOtpSent(true);
-        if (data.otp) {
-          setLoginOtp(data.otp);
-        }
+        if (data.otp) setLoginOtp(data.otp);
+        setLoginSuccessMsg(data.message || `OTP dispatched to ${loginEmail}`);
       })
       .catch(err => {
-        console.error("OTP send error:", err);
-        setLoginError(err.message || "Network error. Please try again.");
+        console.error("Send Email OTP error:", err);
+        setLoginError(err.message || "Failed to send verification email. Please try again.");
       });
   };
 
-  const handleVerifyOtp = (e: React.FormEvent) => {
+  const handleVerifyEmailOtp = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loginOtp) return;
+    if (!termsAccepted) {
+      setLoginError("Please check and accept the Terms of Service below to authenticate.");
+      return;
+    }
+    if (!loginOtp) {
+      setLoginError("Please enter the 6-digit OTP verification code.");
+      return;
+    }
     setLoginError("");
-    fetch("/api/v1/auth/verify-otp", {
+
+    fetch("/api/v1/auth/verify-email-otp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phoneNumber: loginPhone, otp: loginOtp })
+      body: JSON.stringify({ email: loginEmail, otp: loginOtp })
     })
-      .then(res => {
-        if (!res.ok) return res.json().then(data => { throw new Error(data.error || "Incorrect OTP code."); });
-        return res.json();
-      })
-      .then(data => {
-        if (data.token && data.user) {
-          localStorage.setItem("sehr_auth_token", data.token);
-          setUser(data.user);
-          if (is2FAEnabled) {
-            setShowTwoFactorModal(true);
-          } else {
-            setIsLoggedIn(true);
-          }
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) throw new Error(data.error || "Invalid verification code.");
+        localStorage.setItem("sehr_auth_token", data.token);
+        setUser(data.user);
+        setIsLoggedIn(true);
+        if (data.isNewUser || !data.user.fullName) {
+          setShowProfileSetupModal(true);
         }
       })
       .catch(err => {
-        console.error("OTP verify error:", err);
-        setLoginError(err.message || "Invalid OTP verification attempt.");
+        console.error("Verify Email OTP error:", err);
+        setLoginError(err.message || "OTP verification failed. Please try again.");
       });
   };
 
+  // Real Google Popup Authentication Handler
   const handleGoogleSignIn = async () => {
     if (!termsAccepted) {
       setLoginError("Please check and accept the Terms of Service below to authenticate.");
       return;
     }
     setLoginError("");
-    setShowGoogleChooser(true);
-  };
-
-  const handleExecuteGoogleLogin = async (email: string, name: string) => {
-    setLoginError("");
     try {
-      const generatedUid = "google_" + Math.floor(100000 + Math.random() * 900000);
-      const photoURL = `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(name || email)}`;
+      const result = await signInWithPopup(clientAuth, googleProvider);
+      const firebaseUser = result.user;
+      if (!firebaseUser) throw new Error("Google Sign-In returned no user credential.");
 
-      // Call full-stack backend endpoint to register/authenticate user and generate session token
       const res = await fetch("/api/v1/auth/google-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: email.trim(),
-          displayName: name.trim() || email.split("@")[0],
-          photoURL,
-          uid: generatedUid
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Google Member",
+          photoURL: firebaseUser.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(firebaseUser.email || "google")}`
         })
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to authenticate on backend server.");
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to authenticate on backend server.");
       }
 
       const data = await res.json();
-
       if (data.token && data.user) {
         localStorage.setItem("sehr_auth_token", data.token);
         setUser(data.user);
         setIsLoggedIn(true);
-        setShowGoogleChooser(false);
-        
-        // Save account to saved list so they can easily switch or log back in
-        const emailLower = email.trim().toLowerCase();
-        const existingList = (() => {
-          const raw = localStorage.getItem("sehr_saved_google_accounts");
-          if (raw) {
-            try { return JSON.parse(raw); } catch (e) { return []; }
-          }
-          return [];
-        })();
-        const filtered = existingList.filter((a: any) => a.email.toLowerCase() !== emailLower);
-        const updatedAccounts = [...filtered, { email: email.trim(), name: name.trim() || email.split("@")[0] }];
-        setSavedGoogleAccounts(updatedAccounts);
-        localStorage.setItem("sehr_saved_google_accounts", JSON.stringify(updatedAccounts));
-        
-        console.log("[SEHR-LIVE] Google login success. Token and user synchronized:", data.user);
+        if (data.isNewUser || !data.user.fullName) {
+          setShowProfileSetupModal(true);
+        }
       } else {
-        throw new Error("Invalid session response from backend server.");
+        throw new Error("Invalid response from server.");
       }
     } catch (err: any) {
       console.error("Google Sign-In Error:", err);
-      const msg = err.message || "Google Authentication failed. Please try again.";
-      setLoginError(msg);
-      setChooserError(msg);
+      setLoginError(err.message || "Google Authentication failed. Please try again.");
     }
   };
 
-  const handleGuestLogin = async () => {
-    if (!termsAccepted) {
-      setLoginError("Please check and accept the Terms of Service below to authenticate.");
+  // Complete Profile Setup
+  const handleCompleteProfileSetup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!setupFullName.trim()) {
+      setLoginError("Please enter your Real Name.");
       return;
     }
-    setLoginError("");
+
+    const token = localStorage.getItem("sehr_auth_token");
     try {
-      // Call full-stack backend endpoint to register a guest session and generate session token
-      const res = await fetch("/api/v1/auth/guest-login", {
+      const res = await fetch("/api/v1/auth/setup-profile", {
         method: "POST",
-        headers: { "Content-Type": "application/json" }
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          fullName: setupFullName.trim(),
+          username: setupUsername.trim() || undefined,
+          gender: setupGender
+        })
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to create guest session on backend server.");
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to update profile.");
       }
 
       const data = await res.json();
-
-      if (data.token && data.user) {
-        localStorage.setItem("sehr_auth_token", data.token);
+      if (data.user) {
         setUser(data.user);
-        setIsLoggedIn(true);
-        console.log("[SEHR-LIVE] Guest login success. Token and user synchronized:", data.user);
-      } else {
-        throw new Error("Invalid guest response from backend server.");
+        setShowProfileSetupModal(false);
       }
     } catch (err: any) {
-      console.error("Guest Login Error:", err);
-      setLoginError(err.message || "Guest Authentication failed. Please try again.");
+      setLoginError(err.message || "Profile setup failed.");
+    }
+  };
+
+  // Universal Logout
+  const handleLogout = async () => {
+    const token = localStorage.getItem("sehr_auth_token");
+    try {
+      await signOut(clientAuth).catch(() => {});
+      if (token) {
+        await fetch("/api/v1/auth/logout", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}` }
+        }).catch(() => {});
+      }
+    } finally {
+      localStorage.removeItem("sehr_auth_token");
+      localStorage.setItem("sehr_is_logged_in", "false");
+      setIsLoggedIn(false);
+      setUser(DEFAULT_USER);
     }
   };
 
@@ -6798,21 +6831,29 @@ export default function App() {
                       <div className="grid grid-cols-2 gap-2 bg-[#1f2833]/40 p-1 rounded-xl border border-[#1f2833]">
                         <button
                           type="button"
-                          onClick={() => { setLoginError("Phone Login Coming Soon"); }}
-                          className="py-2 text-xs font-bold rounded-lg transition-all text-gray-400 hover:text-white"
+                          onClick={() => { setSelectedAuthMethod("email"); setLoginError(""); setLoginSuccessMsg(""); }}
+                          className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                            selectedAuthMethod === "email"
+                              ? "bg-gradient-to-r from-[#7b2cbf] to-[#00f5ff] text-white shadow-md"
+                              : "text-gray-400 hover:text-white"
+                          }`}
                         >
-                          OTP Login
+                          Email OTP
                         </button>
                         <button
                           type="button"
-                          onClick={() => { setSelectedAuthMethod("social"); setLoginError(""); }}
-                          className="py-2 text-xs font-bold rounded-lg transition-all bg-gradient-to-r from-[#7b2cbf] to-[#00f5ff] text-white shadow-md"
+                          onClick={() => { setSelectedAuthMethod("google"); setLoginError(""); setLoginSuccessMsg(""); }}
+                          className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                            selectedAuthMethod === "google"
+                              ? "bg-gradient-to-r from-[#7b2cbf] to-[#00f5ff] text-white shadow-md"
+                              : "text-gray-400 hover:text-white"
+                          }`}
                         >
-                          Social login
+                          Google Auth
                         </button>
                       </div>
 
-                      {/* Terms Warning Alert */}
+                      {/* Error Alert */}
                       {loginError && (
                         <div className="p-2.5 bg-red-950/40 border border-red-500/50 rounded-xl text-[10px] text-red-200 flex items-start space-x-2 animate-bounce">
                           <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
@@ -6820,28 +6861,24 @@ export default function App() {
                         </div>
                       )}
 
-                      {selectedAuthMethod === "phone" ? (
-                        <form onSubmit={(e) => {
-                          e.preventDefault();
-                          if (!termsAccepted) {
-                            setLoginError("Please check and accept the Terms of Service below to authenticate.");
-                            return;
-                          }
-                          setLoginError("");
-                          if (isOtpSent) {
-                            handleVerifyOtp(e);
-                          } else {
-                            handleSendOtp(e);
-                          }
-                        }} className="space-y-3">
+                      {/* Success Alert */}
+                      {loginSuccessMsg && (
+                        <div className="p-2.5 bg-green-950/40 border border-green-500/50 rounded-xl text-[10px] text-green-200 flex items-start space-x-2 animate-fadeIn">
+                          <BadgeCheck className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
+                          <span className="flex-1 font-medium">{loginSuccessMsg}</span>
+                        </div>
+                      )}
+
+                      {selectedAuthMethod === "email" ? (
+                        <form onSubmit={isOtpSent ? handleVerifyEmailOtp : handleSendEmailOtp} className="space-y-3">
                           <div>
-                            <label className="text-[9px] uppercase tracking-wider text-gray-400 block mb-1 font-bold font-mono">Mobile Phone Number</label>
+                            <label className="text-[9px] uppercase tracking-wider text-gray-400 block mb-1 font-bold font-mono">Email Address</label>
                             <input
-                              type="tel"
-                              placeholder="+92 300 1234567"
-                              value={loginPhone}
+                              type="email"
+                              placeholder="user@example.com"
+                              value={loginEmail}
                               onChange={(e) => {
-                                setLoginPhone(e.target.value);
+                                setLoginEmail(e.target.value);
                                 if (loginError) setLoginError("");
                               }}
                               disabled={isOtpSent}
@@ -6851,10 +6888,10 @@ export default function App() {
 
                           {isOtpSent && (
                             <div className="animate-pop-gift bg-[#1e1e2d] p-3 rounded-xl border border-[#ff007f]/20 space-y-1">
-                              <label className="text-[9px] uppercase tracking-wider text-[#00f5ff] block font-bold font-mono">Enter 4-Digit OTP Code</label>
+                              <label className="text-[9px] uppercase tracking-wider text-[#00f5ff] block font-bold font-mono">Enter 6-Digit OTP Code</label>
                               <input
                                 type="text"
-                                placeholder="4589"
+                                placeholder="123456"
                                 value={loginOtp}
                                 onChange={(e) => {
                                   setLoginOtp(e.target.value);
@@ -6862,18 +6899,14 @@ export default function App() {
                                 }}
                                 className="w-full bg-[#12121a] border border-[#00f5ff] rounded-lg px-3 py-2 text-white text-center text-sm font-black focus:outline-none tracking-widest font-mono"
                               />
-                              <p className="text-[9px] text-green-400 flex items-center pt-1 font-mono">
-                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 animate-ping mr-1"></span>
-                                OTP Simulation: Use code <span className="font-bold underline ml-1">4589</span>
-                              </p>
                             </div>
                           )}
 
                           <button
                             type="submit"
-                            className="w-full bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] text-white py-2.5 rounded-xl text-xs font-bold shadow-lg hover:opacity-95 transition-all"
+                            className="w-full bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] text-white py-2.5 rounded-xl text-xs font-bold shadow-lg hover:opacity-95 transition-all cursor-pointer"
                           >
-                            {isOtpSent ? "Verify & Log In" : "Send Verification OTP Code"}
+                            {isOtpSent ? "Verify Code & Log In" : "Send Email OTP Code"}
                           </button>
                         </form>
                       ) : (
@@ -6884,7 +6917,6 @@ export default function App() {
                             onClick={handleGoogleSignIn}
                             className="w-full h-12 bg-white text-gray-900 font-bold rounded-2xl text-xs flex items-center justify-center space-x-3 hover:bg-gray-100 active:scale-[0.98] transition-all shadow-xl shadow-black/20 border border-gray-200 cursor-pointer"
                           >
-                            {/* Google G Brand Logo SVG */}
                             <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
                               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -6893,52 +6925,39 @@ export default function App() {
                             </svg>
                             <span className="text-sm font-black tracking-wide">Continue with Google</span>
                           </button>
-                          {/* Continue as Guest button */}
-                          <button
-                            type="button"
-                            onClick={handleGuestLogin}
-                            className="w-full h-12 bg-gradient-to-r from-[#2c2c3e] to-[#1e1e2c] text-white font-bold rounded-2xl text-xs flex items-center justify-center space-x-3 hover:from-[#35354a] hover:to-[#242435] active:scale-[0.98] transition-all shadow-xl shadow-black/20 border border-white/5 cursor-pointer"
-                          >
-                            <div className="w-5 h-5 rounded-full bg-cyan-500/20 flex items-center justify-center">
-                              <span className="text-[10px]">👤</span>
-                            </div>
-                            <span className="text-sm font-black tracking-wide text-cyan-300">Continue as Guest</span>
-                          </button>
-
-                          {/* Disabled / Coming Soon Methods Divider */}
-                          <div className="pt-2">
-                            <div className="relative flex py-2 items-center">
-                              <div className="flex-grow border-t border-white/5"></div>
-                              <span className="flex-shrink mx-3 text-[8.5px] text-gray-500 font-bold uppercase tracking-widest font-mono">Coming Soon Options</span>
-                              <div className="flex-grow border-t border-white/5"></div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-2 mt-1">
-                              
-                              {/* Apple Sign-in Coming Soon */}
-                              <button
-                                type="button"
-                                onClick={() => setLoginError("Apple Sign In Coming Soon")}
-                                className="flex items-center justify-center space-x-2 p-2.5 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all relative group cursor-pointer"
-                              >
-                                <span className="text-sm saturate-50 group-hover:scale-110 transition-transform"></span>
-                                <span className="text-[9px] text-gray-400 font-bold">Apple ID</span>
-                              </button>
-
-                              {/* Facebook Sign-in Coming Soon */}
-                              <button
-                                type="button"
-                                onClick={() => setLoginError("Facebook Login Coming Soon")}
-                                className="flex items-center justify-center space-x-2 p-2.5 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all relative group cursor-pointer"
-                              >
-                                <span className="text-sm saturate-50 group-hover:scale-110 transition-transform">👤</span>
-                                <span className="text-[9px] text-gray-400 font-bold">Facebook</span>
-                              </button>
-
-                            </div>
-                          </div>
                         </div>
                       )}
+
+                      {/* Disabled / Coming Soon Methods Divider */}
+                      <div className="pt-2">
+                        <div className="relative flex py-2 items-center">
+                          <div className="flex-grow border-t border-white/5"></div>
+                          <span className="flex-shrink mx-3 text-[8.5px] text-gray-500 font-bold uppercase tracking-widest font-mono">Coming Soon Options</span>
+                          <div className="flex-grow border-t border-white/5"></div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 mt-1">
+                          {/* Apple Sign-in Coming Soon */}
+                          <button
+                            type="button"
+                            onClick={() => setLoginError("Apple Sign In Coming Soon")}
+                            className="flex items-center justify-center space-x-2 p-2.5 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all relative group cursor-pointer"
+                          >
+                            <span className="text-sm saturate-50 group-hover:scale-110 transition-transform"></span>
+                            <span className="text-[9px] text-gray-400 font-bold">Apple ID</span>
+                          </button>
+
+                          {/* Facebook Sign-in Coming Soon */}
+                          <button
+                            type="button"
+                            onClick={() => setLoginError("Facebook Login Coming Soon")}
+                            className="flex items-center justify-center space-x-2 p-2.5 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all relative group cursor-pointer"
+                          >
+                            <span className="text-sm saturate-50 group-hover:scale-110 transition-transform">👤</span>
+                            <span className="text-[9px] text-gray-400 font-bold">Facebook</span>
+                          </button>
+                        </div>
+                      </div>
 
                       {/* 2FA Toggle switch */}
                       <div className="flex items-center justify-between border-t border-[#1f2833]/30 pt-3">
@@ -7260,172 +7279,59 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Safe and Professional Google Account Chooser Overlay */}
-                    {showGoogleChooser && (
-                      <div className="absolute inset-0 bg-black/95 z-50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-2xl w-full max-w-[340px] p-6 shadow-2xl flex flex-col justify-between text-gray-900 border border-gray-100 overflow-hidden relative">
-                          
-                          {/* Close button */}
-                          <div className="absolute top-4 right-4">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShowGoogleChooser(false);
-                                setIsExpandingCustomGoogle(false);
-                              }}
-                              className="text-gray-400 hover:text-gray-700 font-bold p-1 transition-colors text-sm"
-                            >
-                              ✕
-                            </button>
+                    {/* Profile Setup Modal for newly verified users */}
+                    {showProfileSetupModal && (
+                      <div className="absolute inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
+                        <div className="bg-[#181824] border border-[#303040] rounded-2xl w-full max-w-[340px] p-5 shadow-2xl flex flex-col text-white space-y-4 relative animate-pop-gift">
+                          <div className="text-center space-y-1">
+                            <h3 className="text-base font-extrabold text-[#00f5ff]">Complete Your Profile</h3>
+                            <p className="text-[10px] text-gray-400">Please provide your details to finish setting up your account on Sehr Live.</p>
                           </div>
 
-                          {/* Google Multi-colored G Logo */}
-                          <div className="flex flex-col items-center text-center mt-1 mb-4">
-                            <svg className="w-9 h-9 shrink-0 mb-3" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
-                              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
-                            </svg>
-                            <h3 className="text-lg font-bold text-gray-900 tracking-tight">Sign in with Google</h3>
-                            <p className="text-[10px] text-gray-500 mt-0.5">to continue to <span className="font-extrabold text-[#7b2cbf]">Sehr Live</span></p>
-                          </div>
-
-                          {/* Accounts list / Custom Login Form */}
-                          <div className="space-y-3 max-h-[260px] overflow-y-auto scrollbar-thin pr-1 text-left">
-                            {savedGoogleAccounts.length > 0 && !isExpandingCustomGoogle ? (
-                              <div className="space-y-2">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Choose an account</p>
-                                {savedGoogleAccounts.map((account) => {
-                                  const initials = account.name ? account.name.substring(0, 2).toUpperCase() : "G";
-                                  return (
-                                    <div 
-                                      key={account.email} 
-                                      className="w-full rounded-xl border border-gray-200 flex items-center justify-between p-2.5 hover:bg-gray-50 transition-all text-left"
-                                    >
-                                      <button
-                                        type="button"
-                                        onClick={() => handleExecuteGoogleLogin(account.email, account.name)}
-                                        className="flex flex-1 items-center space-x-3 text-left bg-transparent cursor-pointer min-w-0"
-                                      >
-                                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#7b2cbf] to-[#ff007f] flex items-center justify-center text-white text-xs font-bold shrink-0">
-                                          {initials}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-xs font-bold text-gray-900 truncate">{account.name}</p>
-                                          <p className="text-[10px] text-gray-500 truncate">{account.email}</p>
-                                        </div>
-                                      </button>
-                                      
-                                      {/* Option to clear this account from local history */}
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const updated = savedGoogleAccounts.filter(a => a.email !== account.email);
-                                          setSavedGoogleAccounts(updated);
-                                          localStorage.setItem("sehr_saved_google_accounts", JSON.stringify(updated));
-                                        }}
-                                        className="text-gray-300 hover:text-red-500 p-1.5 text-xs transition-colors"
-                                        title="Remove account from device"
-                                      >
-                                        ✕
-                                      </button>
-                                    </div>
-                                  );
-                                })}
-
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setCustomGoogleEmail("");
-                                    setCustomGoogleName("");
-                                    setIsExpandingCustomGoogle(true);
-                                  }}
-                                  className="w-full p-2.5 rounded-xl border border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50/20 flex items-center justify-center space-x-2 transition-all text-left text-xs font-bold text-blue-600 py-3 cursor-pointer bg-transparent mt-2"
-                                >
-                                  <span>➕ Use another account</span>
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="p-1 space-y-3 animate-fadeIn">
-                                {chooserError && (
-                                  <div className="p-2.5 bg-red-50 border border-red-200 text-red-600 rounded-xl text-[11px] font-medium leading-relaxed animate-fadeIn">
-                                    ⚠️ {chooserError}
-                                  </div>
-                                )}
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider">Google Email / ID</label>
-                                  <input
-                                    type="email"
-                                    placeholder="yourname@gmail.com"
-                                    value={customGoogleEmail}
-                                    onChange={(e) => {
-                                      setCustomGoogleEmail(e.target.value);
-                                      setChooserError("");
-                                    }}
-                                    className="w-full p-2.5 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none text-gray-900 bg-white"
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider">Display Name</label>
-                                  <input
-                                    type="text"
-                                    placeholder="Sahr Star"
-                                    value={customGoogleName}
-                                    onChange={(e) => {
-                                      setCustomGoogleName(e.target.value);
-                                      setChooserError("");
-                                    }}
-                                    className="w-full p-2.5 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none text-gray-900 bg-white"
-                                  />
-                                </div>
-                                <div className="flex space-x-2 pt-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (!customGoogleEmail || !customGoogleEmail.includes("@")) {
-                                        setChooserError("Please enter a valid Google email address.");
-                                        return;
-                                      }
-                                      setChooserError("");
-                                      handleExecuteGoogleLogin(customGoogleEmail, customGoogleName || customGoogleEmail.split("@")[0]);
-                                    }}
-                                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 rounded-lg transition-all cursor-pointer text-center"
-                                  >
-                                    Sign In & Continue
-                                  </button>
-                                  {savedGoogleAccounts.length > 0 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setChooserError("");
-                                        setIsExpandingCustomGoogle(false);
-                                      }}
-                                      className="bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs px-3 rounded-lg transition-all cursor-pointer"
-                                    >
-                                      Back
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Google Disclaimer Policy text */}
-                          <div className="mt-5 border-t border-gray-100 pt-3 text-[8.5px] text-gray-500 leading-normal text-center space-y-2">
-                            <p>
-                              To continue, Google will share your name, email address, language preference, and profile picture with Sehr Live. Before using this app, you can review Sehr Live's <span className="text-blue-600 cursor-pointer hover:underline">privacy policy</span> and <span className="text-blue-600 cursor-pointer hover:underline">terms of service</span>.
-                            </p>
-                            <div className="flex justify-center space-x-2.5 text-gray-400 font-medium">
-                              <span className="hover:text-gray-600 cursor-pointer">Help</span>
-                              <span>•</span>
-                              <span className="hover:text-gray-600 cursor-pointer">Privacy</span>
-                              <span>•</span>
-                              <span className="hover:text-gray-600 cursor-pointer">Terms</span>
+                          <form onSubmit={handleCompleteProfileSetup} className="space-y-3">
+                            <div>
+                              <label className="text-[9px] font-mono font-bold uppercase text-gray-400 block mb-1">Real Full Name *</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Ali Ahmed"
+                                required
+                                value={setupFullName}
+                                onChange={(e) => setSetupFullName(e.target.value)}
+                                className="w-full bg-[#12121a] border border-[#303040] rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-[#00f5ff]"
+                              />
                             </div>
-                          </div>
 
+                            <div>
+                              <label className="text-[9px] font-mono font-bold uppercase text-gray-400 block mb-1">Preferred Username</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. ali_star"
+                                value={setupUsername}
+                                onChange={(e) => setSetupUsername(e.target.value)}
+                                className="w-full bg-[#12121a] border border-[#303040] rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-[#00f5ff]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[9px] font-mono font-bold uppercase text-gray-400 block mb-1">Gender</label>
+                              <select
+                                value={setupGender}
+                                onChange={(e) => setSetupGender(e.target.value)}
+                                className="w-full bg-[#12121a] border border-[#303040] rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-[#00f5ff]"
+                              >
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                              </select>
+                            </div>
+
+                            <button
+                              type="submit"
+                              className="w-full bg-gradient-to-r from-[#ff007f] to-[#7b2cbf] text-white py-2.5 rounded-xl text-xs font-black shadow-lg hover:opacity-95 transition-all cursor-pointer mt-2"
+                            >
+                              Save Profile & Continue
+                            </button>
+                          </form>
                         </div>
                       </div>
                     )}
@@ -7464,15 +7370,7 @@ export default function App() {
 
                     <button
                       type="button"
-                      onClick={() => {
-                        localStorage.removeItem("sehr_auth_token");
-                        setIsLoggedIn(false);
-                        localStorage.setItem("sehr_is_logged_in", "false");
-                        // Reset banned for local testing when logging out so they are not permanently bricked forever if they want to try again
-                        const unbanned = { ...user, isBanned: false, kycStatus: "none" as const };
-                        setUser(unbanned);
-                        localStorage.setItem("sehr_user_profile", JSON.stringify(unbanned));
-                      }}
+                      onClick={handleLogout}
                       className="w-full bg-red-500 hover:bg-red-600 text-black font-black text-[10px] uppercase py-2.5 rounded-xl transition-all cursor-pointer shadow-lg shadow-red-500/10"
                     >
                       Log Out Account
@@ -21916,10 +21814,8 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => {
-                                localStorage.removeItem("sehr_auth_token");
-                                setIsLoggedIn(false);
+                                handleLogout();
                                 setShowSettingsDrawer(false);
-                                alert("Successfully logged out from Pakistan server stream.");
                               }}
                               className="w-full bg-red-600/20 hover:bg-red-600 border border-red-500/40 hover:text-white text-red-400 py-1.5 rounded-xl text-[10px] font-black transition-all flex items-center justify-center space-x-1"
                             >

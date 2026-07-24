@@ -161,6 +161,25 @@ export const dbDataCache: any = {
   coinSellers: []
 };
 
+export function sanitizeForFirestore(obj: any): any {
+  if (obj === null || obj === undefined) return null;
+  if (typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizeForFirestore(item));
+  }
+  const cleanObj: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) {
+      cleanObj[key] = null;
+    } else if (typeof value === "object" && value !== null) {
+      cleanObj[key] = sanitizeForFirestore(value);
+    } else {
+      cleanObj[key] = value;
+    }
+  }
+  return cleanObj;
+}
+
 // Helper to check if database has been seeded
 export async function checkAndSeedDatabase() {
   if (isFirestoreQuotaExhausted) return;
@@ -186,7 +205,7 @@ export async function checkAndSeedDatabase() {
     const safeSetDoc = async (docRef: any, data: any) => {
       if (isFirestoreQuotaExhausted) return;
       try {
-        await setDoc(docRef, data, { merge: true });
+        await setDoc(docRef, sanitizeForFirestore(data), { merge: true });
       } catch (err) {
         handleQuotaError(err, "database seeding write");
       }
@@ -318,7 +337,7 @@ export async function syncDocument(collectionName: string, docId: string, data: 
   if (isFirestoreQuotaExhausted) return;
   try {
     if (!docId) return;
-    await setDoc(doc(db, collectionName, String(docId)), data, { merge: true });
+    await setDoc(doc(db, collectionName, String(docId)), sanitizeForFirestore(data), { merge: true });
     console.log(`[SEHR-LIVE FIREBASE] Synced document to Firestore: ${collectionName}/${docId}`);
   } catch (err) {
     handleQuotaError(err, `syncDocument ${collectionName}/${docId}`);
@@ -339,7 +358,7 @@ export async function deleteDocument(collectionName: string, docId: string) {
 export async function writeMetadata(docName: "user_profile" | "configurations" | "categories", data: any) {
   if (isFirestoreQuotaExhausted) return;
   try {
-    await setDoc(doc(db, "metadata", docName), data, { merge: true });
+    await setDoc(doc(db, "metadata", docName), sanitizeForFirestore(data), { merge: true });
     console.log(`[SEHR-LIVE FIREBASE] Synced metadata to Firestore: ${docName}`);
   } catch (err) {
     handleQuotaError(err, `writeMetadata ${docName}`);

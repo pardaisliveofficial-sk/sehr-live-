@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import dotenv from "dotenv";
 import fs from "fs";
+import nodemailer from "nodemailer";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
@@ -51,6 +52,84 @@ app.use(express.json());
 // ------------------------------------------------------------------
 const DB_PATH = path.join(process.cwd(), "sehr_live_db.json");
 
+const DEFAULT_DEMO_HOSTS = [
+  {
+    id: "h-sahar_official",
+    name: "Sahar_Live 👑",
+    hostUsername: "sahar_official",
+    role: "Official Host",
+    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 1420,
+    likes: 85200,
+    category: "video",
+    isLive: true,
+    status: "live",
+    statusText: "Lahore Live Concert & Chat 🎵",
+    bio: "Welcome to Sahar Live! Official VIP Host. Spread love and positive energy!",
+    agencyId: "agency-1"
+  },
+  {
+    id: "h-ayesha_vip",
+    name: "Ayesha_Queen 🔥",
+    hostUsername: "ayesha_vip",
+    role: "VIP Streamer",
+    avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 980,
+    likes: 42100,
+    category: "pk",
+    isLive: true,
+    status: "live",
+    statusText: "1v1 PK Battle Active! Need Dragons 🐉",
+    bio: "PK Fighter & Top Ranking Streamer on Sehr Live!",
+    agencyId: "agency-1"
+  },
+  {
+    id: "h-zain_singing",
+    name: "Zain_Singer 🎙️",
+    hostUsername: "zain_singing",
+    role: "Music Host",
+    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 750,
+    likes: 31000,
+    category: "video",
+    isLive: true,
+    status: "live",
+    statusText: "Live Urdu Ghazal & Acoustic Guitar 🎸",
+    bio: "Live music sessions every evening!",
+    agencyId: "agency-2"
+  },
+  {
+    id: "h-zara_star",
+    name: "Zara_Star ✨",
+    hostUsername: "zara_star",
+    role: "Superstar Host",
+    avatar: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 1150,
+    likes: 64500,
+    category: "video",
+    isLive: true,
+    status: "live",
+    statusText: "Chai Chat & Fun Games ☕",
+    bio: "Daily live chat and fan interactions!",
+    agencyId: "agency-1"
+  },
+  {
+    id: "h-ali_pro",
+    name: "Ali_Pro ⚡",
+    hostUsername: "ali_pro",
+    role: "PK Host",
+    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 620,
+    likes: 28900,
+    category: "pk",
+    isLive: true,
+    status: "live",
+    statusText: "Non-stop 1v1 PK Challenge 🏆",
+    bio: "Challenging top hosts live!",
+    agencyId: "agency-2"
+  }
+];
+
 // Define dbData as a reference pointing directly to the real-time replicated Firestore cache
 let dbData: any = dbDataCache;
 
@@ -73,8 +152,10 @@ async function loadDatabase() {
       console.log("[SEHR-LIVE FIREBASE] Pre-populated in-memory cache with local database backup.");
     }
     
-    // Explicitly guarantee hosts array is clean on startup
-    dbDataCache.hosts = [];
+    // Seed default demo live streams if hosts array is empty
+    if (!Array.isArray(dbDataCache.hosts) || dbDataCache.hosts.length === 0) {
+      dbDataCache.hosts = JSON.parse(JSON.stringify(DEFAULT_DEMO_HOSTS));
+    }
 
     // Ensure all registered user accounts have at least 1M (1000000) coins for local testing
     if (Array.isArray(dbDataCache.users)) {
@@ -148,14 +229,16 @@ loadDatabase();
 function authenticateUser(req: any, res: any, next: any) {
   const authHeader = req.headers["authorization"];
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    // Legacy / Guest mode fallback:
-    req.user = dbData.user;
-    return next();
+    return res.status(401).json({ error: "Unauthorized. Authorization Bearer token is required." });
   }
   const token = authHeader.substring(7);
   const session = dbData.sessions?.[token];
   if (session) {
-    const user = dbData.users?.find((u: any) => u.username === session.username);
+    const user = dbData.users?.find((u: any) => 
+      (session.uid && u.uid === session.uid) || 
+      (session.username && u.username === session.username) ||
+      (session.email && u.email === session.email)
+    );
     if (user) {
       req.user = user;
       req.token = token;
@@ -285,32 +368,36 @@ app.get("/api/v1/webrtc/signals/:channelName/:target", (req, res) => {
 // AUTHENTICATION & PROFILE PERSISTENCE ENDPOINTS
 // ------------------------------------------------------------------
 
-// 0. Authenticate or register with Google Authentication details
+// 1. Google Authentication Endpoint
 app.post("/api/v1/auth/google-login", (req, res) => {
   const { email, displayName, photoURL, uid } = req.body;
-  if (!email || typeof email !== "string") {
-    return res.status(400).json({ error: "Email is required for Google Sign-In" });
+  if (!uid || !email || typeof email !== "string") {
+    return res.status(400).json({ error: "UID and Email are required for Google Sign-In" });
   }
 
-  // Construct standard unique username and unique ID from Google details
-  const username = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_") || `google_user_${uid?.substring(0, 5)}`;
-  let user = dbData.users.find((u: any) => u.email === email || u.username === username);
+  const cleanEmail = email.toLowerCase().trim();
+  let user = dbData.users.find((u: any) => u.uid === uid || (u.email && u.email.toLowerCase() === cleanEmail));
 
+  let isNewUser = false;
   if (!user) {
-    // Automatically register a new user using their real Google account profile
+    isNewUser = true;
+    const username = cleanEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_") || `user_${uid.substring(0, 6)}`;
     const suffix = Math.floor(1000 + Math.random() * 9000);
     const uniqueId = `sehr_${suffix}`;
+
     user = {
+      uid,
+      email: cleanEmail,
       username,
       uniqueId,
-      email,
-      avatar: photoURL || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+      fullName: displayName || username,
+      avatar: photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(displayName || cleanEmail)}`,
       coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-      bio: "New Sehr Live member! Verified via Google. 🇵🇰",
+      bio: "Verified Google Member 🇵🇰",
       gender: "Male",
       country: "Pakistan",
       language: "Urdu / Hinglish",
-      coins: 1000000, // starting gift coins (1M) for Google verified sign-ups
+      coins: 1000000,
       diamonds: 0,
       vipLevel: 0,
       userLevel: 1,
@@ -319,189 +406,160 @@ app.post("/api/v1/auth/google-login", (req, res) => {
       xp: 0,
       familyId: "",
       agencyId: "",
-      isVerified: true, // Google accounts are pre-verified
+      isVerified: true,
       isBanned: false,
       twoFactorEnabled: false,
-      fullName: displayName || `User_${username}`,
       dob: "",
       phoneNumber: "",
-      kycStatus: "approved", // pre-approved KYC
+      kycStatus: "approved",
       followersCount: 0,
       followingCount: 0,
       totalLikesCount: 0,
       selectedFrameId: "",
       vipSuspended: false
     };
+
     dbData.users.push(user);
-
-    const adminUser = {
-      username: user.username,
-      fullName: user.fullName,
-      isVerified: user.isVerified,
-      kycStatus: user.kycStatus,
-      isBanned: user.isBanned,
-      coins: user.coins,
-      userLevel: user.userLevel,
-      vipLevel: user.vipLevel
-    };
-    dbData.adminUsersList.push(adminUser);
-
-    // Sync to Firestore
     syncDocument("users", user.username, user);
-    syncDocument("adminUsersList", user.username, adminUser);
   } else {
-    // Existing user - ensure standard properties are fully initialized and not undefined
-    if (photoURL && user.avatar === "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80") {
-      user.avatar = photoURL;
-      syncDocument("users", user.username, user);
+    // Update user record with latest uid and Google info if needed
+    user.uid = uid;
+    user.email = cleanEmail;
+    if (displayName && (!user.fullName || user.fullName === "New User")) {
+      user.fullName = displayName;
     }
+    if (photoURL && (!user.avatar || user.avatar.includes("unsplash"))) {
+      user.avatar = photoURL;
+    }
+    syncDocument("users", user.username, user);
   }
 
-  // Generate session Token
-  const token = `sehr_session_${user.username}_${Math.random().toString(36).substring(2, 10)}`;
+  const token = `sehr_session_${user.uid}_${Math.random().toString(36).substring(2, 10)}`;
   const sessionData = {
+    uid: user.uid,
     username: user.username,
+    email: user.email,
     loginTime: new Date().toISOString()
   };
   dbData.sessions[token] = sessionData;
 
-  // Sync active legacy user reference
-  dbData.user = user;
-
   saveDatabase();
-
   syncDocument("sessions", token, sessionData);
-  writeMetadata("user_profile", user);
 
   res.json({
     success: true,
     message: "Authenticated via Google successfully.",
+    isNewUser,
     token,
     user
   });
 });
 
-// 0.5. Authenticate or register with Guest Authentication details
-app.post("/api/v1/auth/guest-login", (req, res) => {
-  const suffix = Math.floor(10000 + Math.random() * 90000);
-  const username = `guest_${suffix}`;
-  const uniqueId = `sehr_guest_${suffix}`;
+// 2. Dispatch Email Verification OTP Code
+app.post("/api/v1/auth/send-email-otp", async (req, res) => {
+  const { email } = req.body;
+  if (!email || typeof email !== "string" || !email.includes("@")) {
+    return res.status(400).json({ error: "A valid email address is required." });
+  }
 
-  const user = {
-    username,
-    uniqueId,
-    email: "",
-    avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
-    coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-    bio: "Guest Explorer in Sehr Live! 🇵🇰",
-    gender: "Male",
-    country: "Pakistan",
-    language: "Urdu / Hinglish",
-    coins: 1000000, // starting gift coins (1M) for guest verified sign-ups
-    diamonds: 0,
-    vipLevel: 0,
-    userLevel: 1,
-    hostLevel: 1,
-    wealthLevel: 1,
-    xp: 0,
-    familyId: "",
-    agencyId: "",
-    isVerified: false,
-    isBanned: false,
-    twoFactorEnabled: false,
-    fullName: `Guest_${suffix}`,
-    dob: "",
-    phoneNumber: "",
-    kycStatus: "none",
-    followersCount: 0,
-    followingCount: 0,
-    totalLikesCount: 0,
-    selectedFrameId: "",
-    vipSuspended: false
+  const cleanEmail = email.toLowerCase().trim();
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+  if (!dbData.emailOtps) dbData.emailOtps = {};
+  dbData.emailOtps[cleanEmail] = {
+    otp,
+    expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes expiry
   };
-
-  dbData.users.push(user);
-
-  // Sync to Firestore
-  syncDocument("users", user.username, user);
-
-  // Generate session Token
-  const token = `sehr_session_guest_${suffix}`;
-  const sessionData = {
-    username: user.username,
-    loginTime: new Date().toISOString()
-  };
-  dbData.sessions[token] = sessionData;
-
-  // Sync active legacy user reference
-  dbData.user = user;
-
   saveDatabase();
 
-  syncDocument("sessions", token, sessionData);
-  writeMetadata("user_profile", user);
+  console.log(`[SEHR LIVE EMAIL OTP GATEWAY] Dispatched OTP [${otp}] to ${cleanEmail}`);
+
+  // Send real email via nodemailer if SMTP transport is set up
+  try {
+    if (process.env.SMTP_USER) {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || "smtp.gmail.com",
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: process.env.SMTP_SECURE === "true",
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS
+        }
+      });
+
+      await transporter.sendMail({
+        from: `"Sehr Live" <${process.env.SMTP_USER}>`,
+        to: cleanEmail,
+        subject: "Your Sehr Live Email Verification OTP Code",
+        html: `<div style="font-family: Arial, sans-serif; padding: 20px; background: #0f0f18; color: #ffffff; border-radius: 12px;">
+          <h2 style="color: #ff007f;">Sehr Live Email Verification</h2>
+          <p>Your 6-digit verification code is:</p>
+          <div style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #00f5ff; margin: 20px 0;">${otp}</div>
+          <p style="color: #8888aa; font-size: 12px;">This code will expire in 10 minutes. If you did not request this, please ignore.</p>
+        </div>`
+      });
+    }
+  } catch (emailErr) {
+    console.warn("[SEHR LIVE EMAIL] SMTP transport warning:", emailErr);
+  }
 
   res.json({
     success: true,
-    message: "Authenticated as Guest successfully.",
-    token,
-    user
+    message: `Verification OTP code dispatched to ${cleanEmail}. Check your email inbox.`,
+    otp: otp // Included for easy dev/testing verification
   });
 });
 
-// 1. Send OTP (or auto-register if phone is new)
-app.post("/api/v1/auth/send-otp", (req, res) => {
-  const { phoneNumber } = req.body;
-  if (!phoneNumber || typeof phoneNumber !== "string" || phoneNumber.length < 7) {
-    return res.status(400).json({ error: "Invalid mobile phone number format." });
+// 3. Verify Email OTP Code
+app.post("/api/v1/auth/verify-email-otp", (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) {
+    return res.status(400).json({ error: "Email and verification OTP code are required." });
   }
 
-  // Generate random 4-digit OTP
-  const otp = Math.floor(1000 + Math.random() * 9000).toString();
-  dbData.otps[phoneNumber] = otp;
-  saveDatabase();
-  syncDocument("otps", phoneNumber, { otp, timestamp: new Date().toISOString() });
+  const cleanEmail = email.toLowerCase().trim();
+  const stored = dbData.emailOtps?.[cleanEmail];
 
-  console.log(`[SEHR-LIVE PRODUCTION SMS GATEWAY] Generated OTP [${otp}] for phone: ${phoneNumber}`);
-  
-  res.json({
-    success: true,
-    message: "OTP code dispatched via simulated secure SMS carrier gateway.",
-    otp: otp // Return for offline emulation ease and robust testing
-  });
-});
-
-// 2. Verify OTP and authenticate session
-app.post("/api/v1/auth/verify-otp", (req, res) => {
-  const { phoneNumber, otp } = req.body;
-  if (!phoneNumber || !otp) {
-    return res.status(400).json({ error: "Phone number and verification OTP code are required." });
+  if (!stored) {
+    return res.status(401).json({ error: "No OTP code requested for this email or OTP expired." });
   }
 
-  const storedOtp = dbData.otps[phoneNumber];
-  // Allow legacy fallback OTP "4589" OR the real dynamic OTP
-  if (otp !== "4589" && otp !== storedOtp) {
-    return res.status(401).json({ error: "Invalid verification code. Please check and try again." });
+  if (stored.expiresAt && Date.now() > stored.expiresAt) {
+    delete dbData.emailOtps[cleanEmail];
+    saveDatabase();
+    return res.status(401).json({ error: "OTP code has expired. Please request a new OTP code." });
   }
 
-  // Find user by phoneNumber
-  let user = dbData.users.find((u: any) => u.phoneNumber === phoneNumber);
-  
+  if (String(stored.otp).trim() !== String(otp).trim()) {
+    return res.status(401).json({ error: "Invalid OTP code. Please check and try again." });
+  }
+
+  // Delete used OTP code
+  delete dbData.emailOtps[cleanEmail];
+
+  const uid = "email_" + cleanEmail.replace(/[^a-zA-Z0-9]/g, "_");
+  let user = dbData.users.find((u: any) => (u.email && u.email.toLowerCase() === cleanEmail) || u.uid === uid);
+
+  let isNewUser = false;
   if (!user) {
-    // Automatically register new user
+    isNewUser = true;
+    const username = cleanEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_") || `user_${Math.floor(1000 + Math.random() * 9000)}`;
     const suffix = Math.floor(1000 + Math.random() * 9000);
-    const username = `user_${suffix}`;
     const uniqueId = `sehr_${suffix}`;
+
     user = {
+      uid,
+      email: cleanEmail,
       username,
       uniqueId,
-      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+      fullName: "",
+      avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(cleanEmail)}`,
       coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-      bio: "New Sehr Live member! Hello Pakistan! 🇵🇰",
+      bio: "Sehr Live Member 🇵🇰",
       gender: "Male",
       country: "Pakistan",
       language: "Urdu / Hinglish",
-      coins: 1000000, // starting coins (1M)
+      coins: 1000000,
       diamonds: 0,
       vipLevel: 0,
       userLevel: 1,
@@ -510,12 +568,11 @@ app.post("/api/v1/auth/verify-otp", (req, res) => {
       xp: 0,
       familyId: "",
       agencyId: "",
-      isVerified: false,
+      isVerified: true,
       isBanned: false,
       twoFactorEnabled: false,
-      fullName: `User ${suffix}`,
       dob: "",
-      phoneNumber: phoneNumber,
+      phoneNumber: "",
       kycStatus: "none",
       followersCount: 0,
       followingCount: 0,
@@ -523,60 +580,81 @@ app.post("/api/v1/auth/verify-otp", (req, res) => {
       selectedFrameId: "",
       vipSuspended: false
     };
-    dbData.users.push(user);
-    
-    // Push to admin users list
-    const adminUser = {
-      username: user.username,
-      fullName: user.fullName,
-      isVerified: user.isVerified,
-      kycStatus: user.kycStatus,
-      isBanned: user.isBanned,
-      coins: user.coins,
-      userLevel: user.userLevel,
-      vipLevel: user.vipLevel
-    };
-    dbData.adminUsersList.push(adminUser);
 
-    // Sync newly created user & admin user profile to Firestore
+    dbData.users.push(user);
     syncDocument("users", user.username, user);
-    syncDocument("adminUsersList", user.username, adminUser);
   }
 
-  // Generate Session Token
-  const token = `sehr_session_${user.username}_${Math.random().toString(36).substring(2, 10)}`;
+  const token = `sehr_session_${user.uid}_${Math.random().toString(36).substring(2, 10)}`;
   const sessionData = {
+    uid: user.uid,
     username: user.username,
+    email: user.email,
     loginTime: new Date().toISOString()
   };
   dbData.sessions[token] = sessionData;
 
-  // Sync active legacy user reference
-  dbData.user = user;
-  
-  // Clean up used OTP
-  delete dbData.otps[phoneNumber];
   saveDatabase();
-
-  // Firestore sync for session and deleting verified OTP
   syncDocument("sessions", token, sessionData);
-  deleteDocument("otps", phoneNumber);
-  writeMetadata("user_profile", user);
 
   res.json({
     success: true,
-    message: "Authenticated successfully.",
+    message: isNewUser ? "Email verified. Please complete your profile setup." : "Authenticated successfully.",
+    isNewUser: isNewUser || !user.fullName,
     token,
     user
   });
 });
 
-// 3. Get currently authenticated profile (Auth Me)
+// 4. Update Profile Details After Initial Verification / Setup
+app.post("/api/v1/auth/setup-profile", authenticateUser, (req: any, res) => {
+  const { fullName, username, avatar, gender } = req.body;
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  if (fullName && typeof fullName === "string" && fullName.trim().length > 0) {
+    req.user.fullName = fullName.trim();
+  }
+  if (username && typeof username === "string") {
+    const cleanUser = username.trim().replace(/[^a-zA-Z0-9_]/g, "_");
+    if (cleanUser.length > 2) {
+      req.user.username = cleanUser;
+    }
+  }
+  if (avatar && typeof avatar === "string" && avatar.startsWith("http")) {
+    req.user.avatar = avatar;
+  }
+  if (gender && typeof gender === "string") {
+    req.user.gender = gender;
+  }
+
+  saveDatabase();
+  syncDocument("users", req.user.username, req.user);
+
+  res.json({
+    success: true,
+    message: "Profile updated successfully.",
+    user: req.user
+  });
+});
+
+// 5. Get Currently Authenticated User (Auth Me)
 app.get("/api/v1/auth/me", authenticateUser, (req: any, res) => {
   res.json({
     success: true,
     user: req.user
   });
+});
+
+// 6. Logout Current User Session
+app.post("/api/v1/auth/logout", authenticateUser, (req: any, res) => {
+  if (req.token && dbData.sessions[req.token]) {
+    delete dbData.sessions[req.token];
+    deleteDocument("sessions", req.token);
+    saveDatabase();
+  }
+  res.json({ success: true, message: "Logged out successfully" });
 });
 
 // ------------------------------------------------------------------
@@ -687,7 +765,7 @@ app.post("/api/v1/user", authenticateUser, (req: any, res) => {
       fullName: updatedUser.fullName,
       coins: updatedUser.coins,
       isVerified: updatedUser.isVerified,
-      kycStatus: updatedUser.kycStatus
+      kycStatus: updatedUser.kycStatus || "none"
     };
   }
   saveDatabase();
@@ -947,6 +1025,10 @@ const findHostIndex = (id: string) => {
 };
 
 app.get("/api/v1/hosts", (req, res) => {
+  if (!Array.isArray(dbData.hosts) || dbData.hosts.length === 0) {
+    dbData.hosts = JSON.parse(JSON.stringify(DEFAULT_DEMO_HOSTS));
+    saveDatabase();
+  }
   const activeHosts = (dbData.hosts || []).filter((h: any) => h.isLive !== false && h.status !== "ended");
   res.json(activeHosts);
 });

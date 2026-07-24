@@ -39,7 +39,73 @@ export const MOCK_GIFTS: Gift[] = [
   { id: "g-dragon", name: "Golden Dragon", cost: 29999, type: GiftType.LUXURY, icon: "🐉", color: "from-amber-500 to-red-600", animationClass: "animate-bounce" }
 ];
 
-export const MOCK_HOSTS: HostProfile[] = [];
+export const MOCK_HOSTS: HostProfile[] = [
+  {
+    id: "h-sahar_official",
+    name: "Sahar_Live 👑",
+    role: "Official Host",
+    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 1420,
+    likes: 85200,
+    category: "video",
+    isLive: true,
+    statusText: "Lahore Live Concert & Chat 🎵",
+    bio: "Welcome to Sahar Live! Official VIP Host. Spread love and positive energy!",
+    agencyId: "agency-1"
+  },
+  {
+    id: "h-ayesha_vip",
+    name: "Ayesha_Queen 🔥",
+    role: "VIP Streamer",
+    avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 980,
+    likes: 42100,
+    category: "pk",
+    isLive: true,
+    statusText: "1v1 PK Battle Active! Need Dragons 🐉",
+    bio: "PK Fighter & Top Ranking Streamer on Sehr Live!",
+    agencyId: "agency-1"
+  },
+  {
+    id: "h-zain_singing",
+    name: "Zain_Singer 🎙️",
+    role: "Music Host",
+    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 750,
+    likes: 31000,
+    category: "video",
+    isLive: true,
+    statusText: "Live Urdu Ghazal & Acoustic Guitar 🎸",
+    bio: "Live music sessions every evening!",
+    agencyId: "agency-2"
+  },
+  {
+    id: "h-zara_star",
+    name: "Zara_Star ✨",
+    role: "Superstar Host",
+    avatar: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 1150,
+    likes: 64500,
+    category: "video",
+    isLive: true,
+    statusText: "Chai Chat & Fun Games ☕",
+    bio: "Daily live chat and fan interactions!",
+    agencyId: "agency-1"
+  },
+  {
+    id: "h-ali_pro",
+    name: "Ali_Pro ⚡",
+    role: "PK Host",
+    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 620,
+    likes: 28900,
+    category: "pk",
+    isLive: true,
+    statusText: "Non-stop 1v1 PK Challenge 🏆",
+    bio: "Challenging top hosts live!",
+    agencyId: "agency-2"
+  }
+];
 
 export const MOCK_FAMILIES: Family[] = [];
 
