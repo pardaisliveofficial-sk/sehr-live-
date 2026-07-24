@@ -296,7 +296,24 @@ export function startFirestoreSynchronization() {
       snapshot.forEach(docSnap => {
         items.push(docSnap.data());
       });
-      dbDataCache[colName] = items;
+      if (colName === "hosts") {
+        // Merge items from Firestore with active in-memory hosts to prevent wiping live streams
+        const existingActive = (dbDataCache.hosts || []).filter((h: any) => h && h.isLive === true && h.status === "live");
+        const mergedMap = new Map<string, any>();
+        items.forEach((item: any) => {
+          if (item && item.id && (item.isLive === true || item.status === "live")) {
+            mergedMap.set(item.id, item);
+          }
+        });
+        existingActive.forEach((activeH: any) => {
+          if (activeH && activeH.id && !mergedMap.has(activeH.id)) {
+            mergedMap.set(activeH.id, activeH);
+          }
+        });
+        dbDataCache.hosts = Array.from(mergedMap.values());
+      } else {
+        dbDataCache[colName] = items;
+      }
     }, err => handleQuotaError(err, `Sync list ${colName}`));
   });
 

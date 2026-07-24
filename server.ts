@@ -152,10 +152,9 @@ async function loadDatabase() {
       console.log("[SEHR-LIVE FIREBASE] Pre-populated in-memory cache with local database backup.");
     }
     
-    // Ensure hosts array is initialized
-    if (!Array.isArray(dbDataCache.hosts)) {
-      dbDataCache.hosts = [];
-    }
+    // 5. Ensure hosts array is initialized and strictly empty on server boot so lingering offline hosts do not persist
+    dbDataCache.hosts = [];
+    saveDatabase();
 
     // Ensure all registered user accounts have at least 1M (1000000) coins for local testing
     if (Array.isArray(dbDataCache.users)) {

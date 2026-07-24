@@ -4142,6 +4142,7 @@ export default function App() {
           hostUsername: user.username,
           name: user.username,
           avatar: user.avatar,
+          hostUid: user.uniqueId || user.username,
           hostLevel: user.userLevel || 1,
           level: user.userLevel || 1,
           vipLevel: user.vipLevel || 0,
@@ -4153,6 +4154,11 @@ export default function App() {
           coHostUsername: userLiveCoHost?.username,
           guestModeActive: userLiveGuestModeActive,
           guestSeats: userLiveGuestSeats,
+          category: (prepLiveCategory === "PK" || prepLiveCategory === "1v1" || userLivePkActive) ? "pk" : "video",
+          subCategory: prepLiveCategory || "Solo",
+          channelName: `room_${user.uniqueId || user.username || "sehr_1001"}`,
+          statusText: prepLiveTitle || "Live Stream Active",
+          isLive: true,
           status: "live",
           updatedAt: new Date().toISOString()
         })
@@ -4568,7 +4574,7 @@ export default function App() {
 
     fetchInitial();
 
-    // Polling interval for real-time synchronization with Admin dashboard actions (every 3 seconds)
+    // Polling interval for real-time synchronization with Admin dashboard actions (every 1.2 seconds)
     const pollInterval = setInterval(() => {
       fetch("/api/v1/config")
         .then(res => res.json())
@@ -5755,7 +5761,8 @@ export default function App() {
     const token = localStorage.getItem("sehr_auth_token");
     const hostId = `h-${user.uniqueId || user.username || "sehr_1001"}`;
     const hostChannelName = `room_${user.uniqueId || user.username || "sehr_1001"}`;
-    const liveCategory = prepLiveCategory === "PK" ? "pk" : "video"; // Video or PK stream (never audio for camera live)
+    const isPkOr1v1 = prepLiveCategory === "PK" || prepLiveCategory === "1v1" || prepPkEnabled;
+    const liveCategory = isPkOr1v1 ? "pk" : "video"; // Video or PK stream (never audio for camera live)
     const newHostData = {
       id: hostId,
       name: user.username || "Sehr_User",
@@ -7881,8 +7888,17 @@ export default function App() {
                             <input
                               type="text"
                               value={feedSearchQuery}
-                              onChange={(e) => setFeedSearchQuery(e.target.value)}
-                              placeholder="Search by host name, category, or topic..."
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setFeedSearchQuery(val);
+                                fetch("/api/v1/hosts")
+                                  .then(r => r.json())
+                                  .then(data => {
+                                    if (Array.isArray(data)) setLiveStreamsList(data);
+                                  })
+                                  .catch(err => console.error("[LIVE SEARCH QUERY ERROR]:", err));
+                              }}
+                              placeholder="Search by host name, username, ID, or topic..."
                               className="w-full bg-[#1c1c27] text-white text-[10px] font-medium pl-9 pr-8 py-2 rounded-lg border border-[#303040] focus:border-[#ff007f]/50 focus:outline-none transition-all placeholder:text-gray-500 font-sans"
                             />
                             {feedSearchQuery && (
@@ -7934,9 +7950,11 @@ export default function App() {
 
                             // Category Filter
                             const hostCat = host.category || "video";
+                            const hostSubCat = (host.subCategory || "").toLowerCase();
+                            const isHostPk = hostCat === "pk" || hostSubCat === "pk" || hostSubCat === "1v1" || host.pkActive === true;
                             if (feedCategory !== "all") {
-                              if (feedCategory === "video" && hostCat === "pk") return false;
-                              if (feedCategory === "pk" && hostCat !== "pk") return false;
+                              if (feedCategory === "video" && isHostPk) return false;
+                              if (feedCategory === "pk" && !isHostPk) return false;
                             }
                             
                             // Following Tab Filter
@@ -7946,15 +7964,17 @@ export default function App() {
                             
                             // Search query Filter (Search by Name, Username, Host UID, ID, Role, Title, SubCategory)
                             if (feedSearchQuery.trim()) {
-                              const query = feedSearchQuery.trim().toLowerCase();
-                              const nameMatch = host.name ? host.name.toLowerCase().includes(query) : false;
-                              const usernameMatch = host.hostUsername ? host.hostUsername.toLowerCase().includes(query) : false;
-                              const uidMatch = host.hostUid ? String(host.hostUid).toLowerCase().includes(query) : false;
-                              const idMatch = host.id ? String(host.id).toLowerCase().includes(query) : false;
-                              const roleMatch = host.role ? host.role.toLowerCase().includes(query) : false;
-                              const statusMatch = host.statusText ? host.statusText.toLowerCase().includes(query) : false;
-                              const subCatMatch = host.subCategory ? host.subCategory.toLowerCase().includes(query) : false;
-                              return nameMatch || usernameMatch || uidMatch || idMatch || roleMatch || statusMatch || subCatMatch;
+                              const rawQ = feedSearchQuery.trim().toLowerCase();
+                              const cleanQ = rawQ.replace(/^@/, "");
+                              const nameMatch = host.name ? (host.name.toLowerCase().includes(rawQ) || host.name.toLowerCase().includes(cleanQ)) : false;
+                              const usernameMatch = host.hostUsername ? (host.hostUsername.toLowerCase().includes(rawQ) || host.hostUsername.toLowerCase().includes(cleanQ)) : false;
+                              const altUsernameMatch = host.username ? (host.username.toLowerCase().includes(rawQ) || host.username.toLowerCase().includes(cleanQ)) : false;
+                              const uidMatch = host.hostUid ? String(host.hostUid).toLowerCase().includes(cleanQ) : false;
+                              const idMatch = host.id ? String(host.id).toLowerCase().includes(cleanQ) : false;
+                              const roleMatch = host.role ? host.role.toLowerCase().includes(cleanQ) : false;
+                              const statusMatch = host.statusText ? host.statusText.toLowerCase().includes(cleanQ) : false;
+                              const subCatMatch = host.subCategory ? host.subCategory.toLowerCase().includes(cleanQ) : false;
+                              return nameMatch || usernameMatch || altUsernameMatch || uidMatch || idMatch || roleMatch || statusMatch || subCatMatch;
                             }
                             
                             return true;
