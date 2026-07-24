@@ -227,6 +227,61 @@ app.post("/api/agora/token", authenticateUser, handleAgoraTokenRequest);
 app.post("/api/v1/agora/token", authenticateUser, handleAgoraTokenRequest);
 
 // ------------------------------------------------------------------
+// REAL-TIME WEBRTC CROSS-DEVICE SIGNALING ENGINE
+// ------------------------------------------------------------------
+let signalCounter = 0;
+const webrtcSignalStore: Record<string, Array<{ seq: number; from: string; type: string; data: any; timestamp: number }>> = {};
+
+app.post("/api/v1/webrtc/signal", (req, res) => {
+  try {
+    const { channelName, target, from, type, data } = req.body || {};
+    if (!channelName || !type) {
+      return res.status(400).json({ error: "channelName and type are required" });
+    }
+    const cleanChannel = String(channelName).replace(/[^a-zA-Z0-9_-]/g, "");
+    const key = `${cleanChannel}_${target || "all"}`;
+    if (!webrtcSignalStore[key]) {
+      webrtcSignalStore[key] = [];
+    }
+    signalCounter++;
+    const newSignal = {
+      seq: signalCounter,
+      from: from || "anon",
+      type,
+      data,
+      timestamp: Date.now()
+    };
+    webrtcSignalStore[key].push(newSignal);
+    
+    // Keep last 200 signals per key
+    if (webrtcSignalStore[key].length > 200) {
+      webrtcSignalStore[key] = webrtcSignalStore[key].slice(-200);
+    }
+    return res.json({ success: true, seq: signalCounter });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/v1/webrtc/signals/:channelName/:target", (req, res) => {
+  try {
+    const { channelName, target } = req.params;
+    const cleanChannel = String(channelName).replace(/[^a-zA-Z0-9_-]/g, "");
+    const key = `${cleanChannel}_${target}`;
+    const sinceSeq = Number(req.query.sinceSeq || req.query.since || 0);
+
+    const list = webrtcSignalStore[key] || [];
+    // Support both seq filter and fallback timestamp filter
+    const newSignals = list.filter((s) => s.seq > sinceSeq || (sinceSeq > 1000000000 && s.timestamp > sinceSeq));
+    const maxSeq = list.length > 0 ? Math.max(...list.map(s => s.seq)) : sinceSeq;
+
+    return res.json({ signals: newSignals, maxSeq, timestamp: Date.now() });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ------------------------------------------------------------------
 // AUTHENTICATION & PROFILE PERSISTENCE ENDPOINTS
 // ------------------------------------------------------------------
 
