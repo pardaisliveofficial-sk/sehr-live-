@@ -4207,6 +4207,14 @@ export default function App() {
   useEffect(() => {
     if (clientView !== "live-room" || !activeHost) return;
 
+    // Safety: As a viewer in live-room, ensure local cameraStream is completely killed so viewer never sees/publishes local camera
+    if (cameraStream) {
+      try {
+        cameraStream.getTracks().forEach(track => track.stop());
+      } catch (e) {}
+      setCameraStream(null);
+    }
+
     const hostId = activeHost.id;
     console.log(`[LIVE VIEWER JOIN ATTEMPT] Joining backend room: ${hostId} (@${activeHost.hostUsername || activeHost.name})`);
 
@@ -10116,7 +10124,7 @@ export default function App() {
                                     `room_${activeHost.name}`))))
                                   }
                                   role="subscriber"
-                                  videoMuted={activeHost.cameraEnabled === false || activeHost.isCamOff === true || !cameraActive}
+                                  videoMuted={activeHost.cameraEnabled === false || activeHost.isCamOff === true || activeHost.cameraMuted === true}
                                   hostAvatar={activeHost.avatar || activeHost.hostAvatar || liveBroadcasterAvatar}
                                   hostName={activeHost.name || activeHost.hostUsername || liveBroadcasterName}
                                 />

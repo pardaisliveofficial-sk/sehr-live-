@@ -5,7 +5,7 @@ import AgoraRTC, {
   IMicrophoneAudioTrack, 
   IAgoraRTCRemoteUser 
 } from "agora-rtc-sdk-ng";
-import { Camera, Volume2, Radio, Activity } from "lucide-react";
+import { Camera, Volume2, Radio } from "lucide-react";
 
 // Disable default Agora console logging in production
 AgoraRTC.setLogLevel(3);
@@ -20,6 +20,17 @@ interface AgoraStreamProps {
   hostName?: string;
   onStatusChange?: (status: "idle" | "connecting" | "connected" | "error" | "simulated", details?: string) => void;
 }
+
+const sanitizeChannel = (ch: string) => {
+  if (!ch) return "room_default";
+  let str = String(ch).trim().toLowerCase();
+  if (str.startsWith("h-")) {
+    str = "room_" + str.substring(2);
+  } else if (!str.startsWith("room_")) {
+    str = "room_" + str;
+  }
+  return str.replace(/[^a-zA-Z0-9_-]/g, "");
+};
 
 export const AgoraStream: React.FC<AgoraStreamProps> = ({
   channelName,
@@ -41,15 +52,19 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
   const [hasRemoteVideo, setHasRemoteVideo] = useState<boolean>(false);
   const [audioBlocked, setAudioBlocked] = useState<boolean>(false);
   
-  // Cross-Device WebRTC P2P States
+  // WebRTC P2P States
   const [remoteHostCameraMuted, setRemoteHostCameraMuted] = useState<boolean>(false);
   const [p2pConnected, setP2pConnected] = useState<boolean>(false);
+  
+  // References
   const peerConnectionsRef = useRef<{ [subId: string]: RTCPeerConnection }>({});
+  const hostIceQueuesRef = useRef<{ [subId: string]: RTCIceCandidateInit[] }>({});
   const localStreamRef = useRef<MediaStream | null>(null);
   const subIdRef = useRef<string>("sub_" + Math.random().toString(36).substring(2, 9));
   const subPcRef = useRef<RTCPeerConnection | null>(null);
+  const subIceQueueRef = useRef<RTCIceCandidateInit[]>([]);
 
-  // Separate sequence number refs for robust polling
+  // Sequence tracking refs for polling
   const hostSeqRef = useRef<number>(0);
   const subSeqRef = useRef<number>(0);
   const allSeqRef = useRef<number>(0);
@@ -63,6 +78,20 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
   useEffect(() => {
     mutedRef.current = muted;
   }, [muted]);
+
+  const hasRemoteVideoRef = useRef<boolean>(hasRemoteVideo);
+  useEffect(() => {
+    hasRemoteVideoRef.current = hasRemoteVideo;
+  }, [hasRemoteVideo]);
+
+  const isCameraOff = role === "publisher" 
+    ? Boolean(videoMuted) 
+    : Boolean(videoMuted || remoteHostCameraMuted);
+
+  const isCameraOffRef = useRef<boolean>(isCameraOff);
+  useEffect(() => {
+    isCameraOffRef.current = isCameraOff;
+  }, [isCameraOff]);
 
   // App Streaming Status
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error" | "simulated">("idle");
@@ -79,8 +108,9 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
     }
   }, [status, statusDetails, onStatusChange]);
 
-  // Handle local track mute / unmute updates for Publisher
+  // Handle local track mute / unmute updates for Publisher ONLY
   useEffect(() => {
+    if (role !== "publisher") return;
     if (localAudioTrack) {
       localAudioTrack.setEnabled(!muted).catch(() => {});
     }
@@ -89,9 +119,10 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         t.enabled = !muted;
       });
     }
-  }, [muted, localAudioTrack]);
+  }, [muted, localAudioTrack, role]);
 
   useEffect(() => {
+    if (role !== "publisher") return;
     if (localVideoTrack) {
       localVideoTrack.setEnabled(!videoMuted).catch(() => {});
     }
@@ -100,7 +131,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         t.enabled = !videoMuted;
       });
     }
-  }, [videoMuted, localVideoTrack]);
+  }, [videoMuted, localVideoTrack, role]);
 
   // Main Streaming Engine Effect
   useEffect(() => {
@@ -111,8 +142,10 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
     let bc: BroadcastChannel | null = null;
     let pollInterval: any = null;
     let stateInterval: any = null;
+    let initial5sTimer: any = null;
+    let watchdogInterval: any = null;
 
-    const cleanChannel = String(channelName || "default_room").toLowerCase().trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    const cleanChannel = sanitizeChannel(channelName);
 
     const postSignal = (target: string, type: string, data?: any) => {
       if (isUnmounted) return;
@@ -128,6 +161,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         muted: mutedRef.current,
         avatarUrl,
         hostName,
+        forceReconnect: data?.forceReconnect,
         ...data
       };
 
@@ -230,7 +264,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             startP2pStream();
           }
         } else {
-          // SUBSCRIBER MODE (Agora SDK)
+          // SUBSCRIBER MODE (Agora SDK) - NEVER CAPTURE LOCAL CAM/MIC
           const handleUserPublished = async (user: IAgoraRTCRemoteUser, mediaType: "video" | "audio") => {
             if (isUnmounted) return;
             await agoraClient.subscribe(user, mediaType);
@@ -284,14 +318,21 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
     // 3. WebRTC Direct Cross-Device & P2P Stream Engine
     const startP2pStream = async () => {
       if (isUnmounted) return;
-      const channelKey = `sehr_webrtc_v5_${cleanChannel}`;
+      const channelKey = `sehr_webrtc_v7_${cleanChannel}`;
       bc = new BroadcastChannel(channelKey);
 
-      const iceServers = [
-        { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302", "stun:stun3.l.google.com:19302", "stun:stun4.l.google.com:19302"] }
+      const iceServers: RTCIceServer[] = [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+        { urls: "stun:stun3.l.google.com:19302" },
+        { urls: "stun:stun4.l.google.com:19302" },
+        { urls: "stun:stun.services.mozilla.com" },
+        { urls: "stun:global.stun.twilio.com:3478" }
       ];
 
       if (role === "publisher") {
+        // HOST / PUBLISHER MODE: CAPTURES HOST CAMERA & MIC ONLY
         setStatusDetails("Starting camera & microphone...");
         let stream: MediaStream | null = null;
         try {
@@ -303,7 +344,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           try {
             stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
           } catch (e2) {
-            console.warn("[P2P] Camera access failed, continuing in fallback mode");
+            console.warn("[P2P HOST] Camera access warning:", e2);
           }
         }
 
@@ -318,14 +359,20 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           stream.getAudioTracks().forEach(t => t.enabled = !mutedRef.current);
 
           if (containerRef.current) {
-            containerRef.current.innerHTML = "";
-            const videoEl = document.createElement("video");
-            videoEl.srcObject = stream;
-            videoEl.autoplay = true;
-            videoEl.playsInline = true;
-            videoEl.muted = true; // Host suppresses local audio feedback
-            videoEl.className = `w-full h-full object-cover ${facingMode === "user" ? "scale-x-[-1]" : ""}`;
-            containerRef.current.appendChild(videoEl);
+            let videoEl = containerRef.current.querySelector("video") as HTMLVideoElement;
+            if (!videoEl) {
+              containerRef.current.innerHTML = "";
+              videoEl = document.createElement("video");
+              videoEl.autoplay = true;
+              videoEl.playsInline = true;
+              videoEl.muted = true; // Host suppresses local audio feedback
+              videoEl.className = `w-full h-full object-cover ${facingMode === "user" ? "scale-x-[-1]" : ""}`;
+              containerRef.current.appendChild(videoEl);
+            }
+            if (videoEl.srcObject !== stream) {
+              videoEl.srcObject = stream;
+            }
+            videoEl.play().catch(() => {});
           }
         }
 
@@ -345,7 +392,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           const { type, from, sdp, candidate, subId, forceReconnect } = signalData;
           const subscriberId = subId || from;
 
-          if (type === "SUBSCRIBER_JOIN" && subscriberId && stream) {
+          if (type === "SUBSCRIBER_JOIN" && subscriberId) {
             let pc = peerConnectionsRef.current[subscriberId];
             const isClosedOrFailed = !pc || forceReconnect || pc.signalingState === "closed" || pc.connectionState === "failed" || pc.connectionState === "disconnected";
             
@@ -355,10 +402,13 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
               }
               pc = new RTCPeerConnection({ iceServers });
               peerConnectionsRef.current[subscriberId] = pc;
+              hostIceQueuesRef.current[subscriberId] = [];
 
-              stream.getTracks().forEach(track => {
-                try { pc!.addTrack(track, stream!); } catch (e) {}
-              });
+              if (localStreamRef.current) {
+                localStreamRef.current.getTracks().forEach(track => {
+                  try { pc!.addTrack(track, localStreamRef.current!); } catch (e) {}
+                });
+              }
 
               pc.onicecandidate = (e) => {
                 if (e.candidate) {
@@ -369,6 +419,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
               pc.onconnectionstatechange = () => {
                 if (pc?.connectionState === "failed" || pc?.connectionState === "closed") {
                   delete peerConnectionsRef.current[subscriberId];
+                  delete hostIceQueuesRef.current[subscriberId];
                 }
               };
 
@@ -382,13 +433,26 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             }
           } else if (type === "ANSWER" && subscriberId) {
             const pc = peerConnectionsRef.current[subscriberId];
-            if (pc && pc.signalingState === "have-local-offer") {
-              await pc.setRemoteDescription(new RTCSessionDescription(sdp)).catch(() => {});
+            if (pc && (pc.signalingState === "have-local-offer" || pc.signalingState === "stable")) {
+              try {
+                await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+                // Drain queued ICE candidates
+                const queue = hostIceQueuesRef.current[subscriberId] || [];
+                for (const cand of queue) {
+                  await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+                }
+                hostIceQueuesRef.current[subscriberId] = [];
+              } catch (e) {}
             }
           } else if (type === "ICE_CANDIDATE" && subscriberId) {
             const pc = peerConnectionsRef.current[subscriberId];
-            if (pc && candidate && pc.remoteDescription) {
-              await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+            if (pc && candidate) {
+              if (pc.remoteDescription) {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+              } else {
+                if (!hostIceQueuesRef.current[subscriberId]) hostIceQueuesRef.current[subscriberId] = [];
+                hostIceQueuesRef.current[subscriberId].push(candidate);
+              }
             }
           }
         };
@@ -413,10 +477,10 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
               }
             }
           } catch (e) {}
-        }, 500);
+        }, 350);
 
       } else {
-        // SUBSCRIBER (VIEWER) P2P MODE - NEVER PUBLISHES LOCAL CAMERA/MIC
+        // SUBSCRIBER (VIEWER) P2P MODE - NEVER CAPTURES LOCAL CAMERA/MIC
         setStatusDetails("Connecting to Host live video feed...");
 
         const setupSubscriberPc = () => {
@@ -429,9 +493,10 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           
           const pc = new RTCPeerConnection({ iceServers });
           subPcRef.current = pc;
+          subIceQueueRef.current = [];
 
           pc.ontrack = (event) => {
-            const stream = event.streams[0] || new MediaStream([event.track]);
+            const remoteStream = event.streams[0] || new MediaStream([event.track]);
             if (containerRef.current) {
               let videoEl = containerRef.current.querySelector("video") as HTMLVideoElement;
               if (!videoEl) {
@@ -439,19 +504,31 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
                 videoEl = document.createElement("video");
                 videoEl.autoplay = true;
                 videoEl.playsInline = true;
-                videoEl.muted = false; // UNMUTED REAL AUDIO FROM HOST
                 videoEl.className = "w-full h-full object-cover";
                 containerRef.current.appendChild(videoEl);
               }
 
-              if (videoEl.srcObject !== stream) {
-                videoEl.srcObject = stream;
+              if (videoEl.srcObject !== remoteStream) {
+                videoEl.srcObject = remoteStream;
               }
 
+              // Mute initially to bypass browser autoplay restrictions
+              videoEl.muted = true;
               videoEl.play().then(() => {
-                setAudioBlocked(false);
+                // Attempt unmuting audio once video rendering is active
+                videoEl.muted = false;
+                if (videoEl.paused) {
+                  videoEl.muted = true;
+                  videoEl.play().catch(() => {});
+                  setAudioBlocked(true);
+                } else {
+                  setAudioBlocked(false);
+                }
               }).catch(() => {
-                setAudioBlocked(true);
+                videoEl.muted = true;
+                videoEl.play().then(() => {
+                  setAudioBlocked(true);
+                }).catch(() => {});
               });
             }
 
@@ -474,6 +551,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
               setStatusDetails("Connected to Broadcaster Stream");
             } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
               setP2pConnected(false);
+              setHasRemoteVideo(false);
               // Request immediate reconnection from Host
               postSignal("host", "SUBSCRIBER_JOIN", { subId: subIdRef.current, forceReconnect: true });
             }
@@ -498,14 +576,24 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
                 postSignal("host", "ANSWER", { sdp: answer, subId: subIdRef.current });
+
+                // Drain queued ICE candidates
+                for (const cand of subIceQueueRef.current) {
+                  await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+                }
+                subIceQueueRef.current = [];
               } catch (e) {
                 console.error("[P2P SUB] Offer handle error:", e);
               }
             }
           } else if (type === "ICE_CANDIDATE") {
             const pc = subPcRef.current;
-            if (pc && candidate && pc.remoteDescription) {
-              await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+            if (pc && candidate) {
+              if (pc.remoteDescription) {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+              } else {
+                subIceQueueRef.current.push(candidate);
+              }
             }
           }
         };
@@ -514,14 +602,33 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           bc.onmessage = (msg) => processIncomingSubscriberSignal(msg.data);
         }
 
-        // Send JOIN message periodically ONLY UNTIL connected
-        const sendJoin = () => {
-          if (!subPcRef.current || subPcRef.current.connectionState !== "connected") {
-            postSignal("host", "SUBSCRIBER_JOIN", { subId: subIdRef.current });
+        // Send JOIN message periodically until connected
+        const sendJoin = (force = false) => {
+          if (force || !subPcRef.current || subPcRef.current.connectionState !== "connected" || !hasRemoteVideoRef.current) {
+            postSignal("host", "SUBSCRIBER_JOIN", { subId: subIdRef.current, forceReconnect: force });
           }
         };
         sendJoin();
-        stateInterval = setInterval(sendJoin, 1200);
+        stateInterval = setInterval(() => sendJoin(false), 1200);
+
+        // 5-SECOND INITIAL CONNECTION TIMEOUT & RECOVERY
+        initial5sTimer = setTimeout(() => {
+          if (!hasRemoteVideoRef.current && !isCameraOffRef.current) {
+            console.warn("[P2P SUB] Initial 5s timeout reached with no remote video. Triggering stream recovery...");
+            sendJoin(true);
+          }
+        }, 5000);
+
+        // STREAM WATCHDOG: Automatically rebind & recover if video stalls or drops
+        watchdogInterval = setInterval(() => {
+          if (!isCameraOffRef.current) {
+            const videoEl = containerRef.current?.querySelector("video");
+            const isStalled = videoEl && (videoEl.paused || videoEl.readyState < 2);
+            if (!hasRemoteVideoRef.current || isStalled) {
+              sendJoin(true);
+            }
+          }
+        }, 3000);
 
         // Poll HTTP signaling server for host signals using separate sequence refs
         pollInterval = setInterval(async () => {
@@ -547,7 +654,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
               await processIncomingSubscriberSignal(s.data);
             }
           } catch (e) {}
-        }, 500);
+        }, 350);
       }
     };
 
@@ -557,6 +664,8 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
       isUnmounted = true;
       if (pollInterval) clearInterval(pollInterval);
       if (stateInterval) clearInterval(stateInterval);
+      if (initial5sTimer) clearTimeout(initial5sTimer);
+      if (watchdogInterval) clearInterval(watchdogInterval);
       if (bc) bc.close();
       if (activeVideoTrack) {
         activeVideoTrack.stop();
@@ -582,11 +691,6 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
       }
     };
   }, [channelName, role, facingMode]);
-
-  // Determine if Camera is turned off (Host toggles off OR subscriber receives camera off signal)
-  const isCameraOff = role === "publisher" 
-    ? Boolean(videoMuted) 
-    : Boolean(videoMuted || remoteHostCameraMuted);
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-[#0a0814] flex items-center justify-center select-none">
@@ -670,10 +774,11 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           onClick={() => {
             const videoEl = containerRef.current?.querySelector("video");
             if (videoEl) {
+              videoEl.muted = false;
               videoEl.play().then(() => setAudioBlocked(false)).catch(() => {});
             }
           }}
-          className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30 bg-pink-600/90 hover:bg-pink-500 text-white text-xs font-bold px-4 py-2 rounded-full shadow-2xl backdrop-blur-md flex items-center space-x-2 border border-white/20 animate-bounce"
+          className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30 bg-pink-600/90 hover:bg-pink-500 text-white text-xs font-bold px-4 py-2 rounded-full shadow-2xl backdrop-blur-md flex items-center space-x-2 border border-white/20 animate-bounce cursor-pointer"
         >
           <Volume2 className="w-4 h-4" />
           <span>Tap screen to unmute live audio</span>
