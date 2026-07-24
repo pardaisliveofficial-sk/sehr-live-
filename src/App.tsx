@@ -2083,25 +2083,23 @@ export default function App() {
       vipLevel,
     };
     setJoinNotifs(prev => [...prev, newNotif]);
-    // Auto-remove after 5 seconds (5000ms)
+    // Auto-remove after 5 seconds
     setTimeout(() => {
       setJoinNotifs(prev => prev.filter(n => n.id !== newNotif.id));
     }, 5000);
 
-    // If level is 10 or above, also trigger the premium sliding entry banner bar (patti)
-    if (userLevel >= 10) {
-      const newBanner: EntryBanner = {
-        id: "banner-" + Math.random().toString(36).substring(2, 9) + "-" + Date.now(),
-        username,
-        userLevel,
-        vipLevel,
-      };
-      setActiveEntryBanners(prev => [...prev, newBanner]);
-      // Remove after 6 seconds (to allow 0.4s enter, 5.2s pause, 0.4s exit)
-      setTimeout(() => {
-        setActiveEntryBanners(prev => prev.filter(b => b.id !== newBanner.id));
-      }, 6000);
-    }
+    // Trigger sliding entry banner bar (patti) for joining user
+    const newBanner: EntryBanner = {
+      id: "banner-" + Math.random().toString(36).substring(2, 9) + "-" + Date.now(),
+      username,
+      userLevel: userLevel || 1,
+      vipLevel: vipLevel || 0,
+    };
+    setActiveEntryBanners(prev => [...prev, newBanner]);
+    // Auto-remove entry banner after 5 seconds
+    setTimeout(() => {
+      setActiveEntryBanners(prev => prev.filter(b => b.id !== newBanner.id));
+    }, 5000);
   };
 
   // ==========================================
@@ -3088,6 +3086,8 @@ export default function App() {
   const lastHostGiftEventTimestamp = useRef<number>(0);
   const lastViewerGiftEventTimestamp = useRef<number>(0);
   const lastViewerLikeEventTimestamp = useRef<number>(0);
+  const lastHostJoinEventTimestamp = useRef<number>(0);
+  const lastViewerJoinEventTimestamp = useRef<number>(0);
   const userLiveMessagesRef = useRef<ChatMessage[]>([]);
   const [userLiveMessages, _setUserLiveMessages] = useState<ChatMessage[]>([]);
   const setUserLiveMessages = (val: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
@@ -4094,38 +4094,17 @@ export default function App() {
       } else {
         setViewerLiveGuestModeActive(false);
       }
-
-      // Reset join notifications for clean entrance
-      setJoinNotifs([]);
-
-      // Trigger user themselves joining after a short delay
-      const t1 = setTimeout(() => {
-        triggerJoinNotif(user.username, user.userLevel, user.vipLevel);
-      }, 350);
-
-      // Trigger another dynamic join event 1.8 seconds later
-      const dynamicJoiners = ["Saif_Ali_VIP", "Malik_Sheraz_40", "Raja_G_Level40", "Ayesha_Gull", "Sardar_Sb_VIP"];
-      const t2 = setTimeout(() => {
-        const name = dynamicJoiners[Math.floor(Math.random() * dynamicJoiners.length)];
-        const lvl = Math.floor(Math.random() * 20) + 30; // Level 30 - 50
-        const vip = Math.floor(Math.random() * 3) + 1; // VIP 1 - 3
-        triggerJoinNotif(name, lvl, vip);
-      }, 1800);
-
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-      };
     } else {
       setJoinNotifs([]);
+      setActiveEntryBanners([]);
     }
-  }, [clientView, activeHost]);
+  }, [clientView, activeHost?.id, activeHost?.category]);
 
-  // Host Side Live State Synchronizer (Pushes camera status, pulls viewers, comments, gifts & likes in real-time)
+  // Host Side Live State Synchronizer (Pushes camera status, pulls viewers, comments, gifts, likes & join events in real-time)
   useEffect(() => {
     if (clientView !== "user-live" || !user?.username) return;
 
-    const hostId = user.uid || user.username;
+    const hostId = `h-${user.uniqueId || user.username || "sehr_1001"}`;
     const syncHostState = () => {
       fetch(`/api/v1/hosts/${hostId}`, {
         method: "PUT",
@@ -4173,6 +4152,11 @@ export default function App() {
           if (Array.isArray(data.comments)) {
             setUserLiveMessages(data.comments);
           }
+          // Process incoming real-time viewer join events
+          if (data.lastJoinEvent && data.lastJoinEvent.timestamp > lastHostJoinEventTimestamp.current) {
+            lastHostJoinEventTimestamp.current = data.lastJoinEvent.timestamp;
+            triggerJoinNotif(data.lastJoinEvent.username, data.lastJoinEvent.userLevel, data.lastJoinEvent.vipLevel);
+          }
           // Process incoming live double-tap like events from viewers
           if (data.lastLikeEvent && data.lastLikeEvent.timestamp > lastHostLikeEventTimestamp.current) {
             lastHostLikeEventTimestamp.current = data.lastLikeEvent.timestamp;
@@ -4215,7 +4199,7 @@ export default function App() {
     syncHostState();
     const interval = setInterval(syncHostState, 1000);
     return () => clearInterval(interval);
-  }, [clientView, user?.username, user?.uid, user?.avatar, user?.userLevel, user?.vipLevel, userLiveCam, userLivePkActive, userLivePkScoreMy, userLivePkScoreOther, userLiveCoHost?.username, userLiveGuestModeActive, userLiveGuestSeats]);
+  }, [clientView, user?.username, user?.uid, user?.avatar, user?.uniqueId, user?.userLevel, user?.vipLevel, userLiveCam, userLivePkActive, userLivePkScoreMy, userLivePkScoreOther, userLiveCoHost?.username, userLiveGuestModeActive, userLiveGuestSeats]);
 
   // Real-time backend viewer join/leave presence & live state synchronization for active live-room
   useEffect(() => {
@@ -4272,6 +4256,12 @@ export default function App() {
           // Sync real-time comments from backend
           if (Array.isArray(data.comments)) {
             setChatMessages(data.comments);
+          }
+
+          // Process real-time join events on viewer side
+          if (data.lastJoinEvent && data.lastJoinEvent.timestamp > lastViewerJoinEventTimestamp.current) {
+            lastViewerJoinEventTimestamp.current = data.lastJoinEvent.timestamp;
+            triggerJoinNotif(data.lastJoinEvent.username, data.lastJoinEvent.userLevel, data.lastJoinEvent.vipLevel);
           }
 
           // Sync PK battle score & active state
@@ -8001,7 +7991,7 @@ export default function App() {
                         {(() => {
                           const filteredHosts = liveStreamsList.filter(host => {
                             // Only active live streams
-                            if (host.isLive === false) return false;
+                            if (host.isLive === false || host.status === "ended" || host.status === "offline") return false;
 
                             // Filter out audio category since it belongs in Party Hub
                             if (host.category === "audio") return false;
@@ -8012,9 +8002,10 @@ export default function App() {
                             }
 
                             // Category Filter
+                            const hostCat = host.category || "video";
                             if (feedCategory !== "all") {
-                              if (feedCategory === "video" && host.category === "pk") return false;
-                              if (feedCategory === "pk" && host.category !== "pk") return false;
+                              if (feedCategory === "video" && hostCat === "pk") return false;
+                              if (feedCategory === "pk" && hostCat !== "pk") return false;
                             }
                             
                             // Following Tab Filter
@@ -10086,7 +10077,6 @@ export default function App() {
 
                         {/* STREAM VIEWPORT: DYNAMIC BACKGROUND DEPENDING ON ROOM TYPE */}
                         <div
-                          onDoubleClick={triggerDoubleTapLike}
                           onClick={handleScreenClickOrTouch}
                           className="flex-1 w-full relative bg-gradient-to-b from-[#090710] via-[#120f21] to-[#090710] flex flex-col justify-center items-center overflow-hidden"
                         >

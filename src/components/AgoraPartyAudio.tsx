@@ -19,14 +19,15 @@ interface AgoraPartyAudioProps {
   onStatusChange?: (status: "idle" | "connecting" | "connected" | "error", details?: string) => void;
 }
 
-// Generate deterministic numeric UID for Agora from username
+// Generate unique numeric UID for Agora (username hash + random session offset to prevent UID_CONFLICT)
 const getNumericUid = (str: string): number => {
   let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
+  for (let i = 0; i < (str || "guest").length; i++) {
+    hash = (hash << 5) - hash + (str || "guest").charCodeAt(i);
     hash |= 0;
   }
-  return (Math.abs(hash) % 200000000) + 10000;
+  const sessionRand = Math.floor(Math.random() * 89999) + 10000;
+  return ((Math.abs(hash) % 1000) * 100000) + sessionRand;
 };
 
 export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
@@ -196,13 +197,33 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
         const initialAgoraRole = userRole === "listener" ? "audience" : "host";
         await agoraClient.setClientRole(initialAgoraRole);
 
-        // Join voice room
-        await agoraClient.join(
-          tokenData.appId,
-          tokenData.channelName,
-          tokenData.token || null,
-          tokenData.uid || numericUid
-        );
+        // Join voice room with UID conflict safety
+        const targetJoinUid = tokenData.uid || numericUid;
+        try {
+          await agoraClient.join(
+            tokenData.appId,
+            tokenData.channelName,
+            tokenData.token || null,
+            targetJoinUid
+          );
+        } catch (joinErr: any) {
+          if (
+            joinErr?.code === "UID_CONFLICT" ||
+            joinErr?.name === "AgoraRTCError" ||
+            String(joinErr).includes("UID_CONFLICT")
+          ) {
+            console.warn("[AgoraPartyAudio] UID_CONFLICT detected. Retrying join with fresh unique numeric UID...");
+            const fallbackUid = Math.floor(Math.random() * 89999999) + 10000000;
+            await agoraClient.join(
+              tokenData.appId,
+              tokenData.channelName,
+              tokenData.token || null,
+              fallbackUid
+            );
+          } else {
+            throw joinErr;
+          }
+        }
 
         if (isUnmounted) return;
 

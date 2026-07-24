@@ -876,8 +876,24 @@ app.post("/api/v1/categories", (req, res) => {
 });
 
 // Hosts endpoints
+const findHostIndex = (id: string) => {
+  if (!id) return -1;
+  const cleanId = id.replace(/^h-/, "");
+  return dbData.hosts.findIndex((h: any) => 
+    h.id === id || 
+    h.id === `h-${cleanId}` ||
+    h.hostUsername === id || 
+    h.hostUsername === cleanId || 
+    h.name === id || 
+    h.name === cleanId ||
+    h.hostUid === id ||
+    h.hostUid === cleanId
+  );
+};
+
 app.get("/api/v1/hosts", (req, res) => {
-  res.json(dbData.hosts || []);
+  const activeHosts = (dbData.hosts || []).filter((h: any) => h.isLive !== false && h.status !== "ended");
+  res.json(activeHosts);
 });
 
 app.post("/api/v1/hosts", (req, res) => {
@@ -888,6 +904,8 @@ app.post("/api/v1/hosts", (req, res) => {
   const newHost = {
     id: hostId,
     isLive: true,
+    status: "live",
+    category: hostData.category || "video",
     viewers: hostData.viewers || 0,
     realViewerCount: hostData.realViewerCount || 0,
     likes: hostData.likes || 0,
@@ -899,17 +917,14 @@ app.post("/api/v1/hosts", (req, res) => {
     updatedAt: new Date().toISOString()
   };
 
-  const existingIdx = dbData.hosts.findIndex((h: any) => 
-    h.id === hostId || 
-    (h.hostUsername && h.hostUsername === hostUsername) || 
-    (h.name && h.name === hostData.name)
-  );
+  const existingIdx = findHostIndex(hostId);
 
   if (existingIdx !== -1) {
     dbData.hosts[existingIdx] = {
       ...dbData.hosts[existingIdx],
       ...newHost,
-      isLive: true
+      isLive: true,
+      status: "live"
     };
     saveDatabase();
     syncDocument("hosts", hostId, dbData.hosts[existingIdx]);
@@ -926,9 +941,9 @@ app.post("/api/v1/hosts", (req, res) => {
 
 app.get("/api/v1/hosts/:id", (req, res) => {
   const { id } = req.params;
-  const host = dbData.hosts.find((h: any) => h.id === id || h.hostUsername === id || h.name === id);
-  if (host) {
-    res.json(host);
+  const index = findHostIndex(id);
+  if (index !== -1) {
+    res.json(dbData.hosts[index]);
   } else {
     res.status(404).json({ error: "Host not found" });
   }
@@ -936,7 +951,7 @@ app.get("/api/v1/hosts/:id", (req, res) => {
 
 app.put("/api/v1/hosts/:id", (req, res) => {
   const { id } = req.params;
-  const index = dbData.hosts.findIndex((h: any) => h.id === id || h.hostUsername === id || h.name === id);
+  const index = findHostIndex(id);
   if (index !== -1) {
     const existing = dbData.hosts[index];
     const updateData = { ...req.body };
@@ -954,12 +969,15 @@ app.put("/api/v1/hosts/:id", (req, res) => {
     if (existing.likes !== undefined && (updateData.likes === undefined || updateData.likes < existing.likes)) {
       updateData.likes = existing.likes;
     }
-    // Safely preserve last gift/like events if omitted
+    // Safely preserve last gift/like/join events if omitted
     if (updateData.lastGiftEvent === undefined && existing.lastGiftEvent) {
       updateData.lastGiftEvent = existing.lastGiftEvent;
     }
     if (updateData.lastLikeEvent === undefined && existing.lastLikeEvent) {
       updateData.lastLikeEvent = existing.lastLikeEvent;
+    }
+    if (updateData.lastJoinEvent === undefined && existing.lastJoinEvent) {
+      updateData.lastJoinEvent = existing.lastJoinEvent;
     }
     if (updateData.pkScoreHost === undefined && existing.pkScoreHost !== undefined) {
       updateData.pkScoreHost = existing.pkScoreHost;
@@ -994,7 +1012,7 @@ app.put("/api/v1/hosts/:id", (req, res) => {
 app.post("/api/v1/hosts/:id/like", (req, res) => {
   const { id } = req.params;
   const { count = 1, senderUsername, xPercent, yPercent } = req.body || {};
-  const index = dbData.hosts.findIndex((h: any) => h.id === id || h.hostUsername === id || h.name === id);
+  const index = findHostIndex(id);
   if (index !== -1) {
     const host = dbData.hosts[index];
     host.likes = (host.likes || 0) + Number(count);
@@ -1015,10 +1033,14 @@ app.post("/api/v1/hosts/:id/like", (req, res) => {
 
 app.delete("/api/v1/hosts/:id", (req, res) => {
   const { id } = req.params;
-  const hostToDelete = dbData.hosts.find((h: any) => h.id === id || h.hostUsername === id || h.name === id);
-  const targetId = hostToDelete ? hostToDelete.id : id;
+  const index = findHostIndex(id);
+  const targetId = index !== -1 ? dbData.hosts[index].id : id;
   
-  dbData.hosts = dbData.hosts.filter((h: any) => h.id !== id && h.hostUsername !== id && h.name !== id);
+  if (index !== -1) {
+    dbData.hosts.splice(index, 1);
+  } else {
+    dbData.hosts = dbData.hosts.filter((h: any) => h.id !== id && h.hostUsername !== id && h.name !== id);
+  }
   saveDatabase();
   deleteDocument("hosts", targetId);
   console.log(`[LIVE SERVER SUCCESS] Ended/Deleted host stream: ${id} (targetId: ${targetId})`);
@@ -1032,18 +1054,25 @@ app.post("/api/v1/hosts/:id/join", (req, res) => {
   if (!username) {
     return res.status(400).json({ error: "Username is required to join" });
   }
-  const index = dbData.hosts.findIndex((h: any) => h.id === id || h.hostUsername === id || h.name === id);
+  const index = findHostIndex(id);
   if (index !== -1) {
     const host = dbData.hosts[index];
     if (!host.connectedViewers) {
       host.connectedViewers = [];
     }
-    // Avoid duplicates
+    // Avoid duplicate entries in list
     if (!host.connectedViewers.some((v: any) => v.username === username)) {
       host.connectedViewers.push({ userId: userId || username, username, avatar: avatar || "", level: level || 1, vipLevel: vipLevel || 0 });
     }
     host.viewers = host.connectedViewers.length;
     host.realViewerCount = host.connectedViewers.length;
+    host.lastJoinEvent = {
+      id: `join-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      username,
+      userLevel: level || 1,
+      vipLevel: vipLevel || 0,
+      timestamp: Date.now()
+    };
     saveDatabase();
     syncDocument("hosts", host.id, host);
     console.log(`[LIVE SERVER SUCCESS] User @${username} joined live room ${host.id} (total viewers: ${host.realViewerCount})`);
@@ -1060,7 +1089,7 @@ app.post("/api/v1/hosts/:id/leave", (req, res) => {
   if (!username) {
     return res.status(400).json({ error: "Username is required to leave" });
   }
-  const index = dbData.hosts.findIndex((h: any) => h.id === id || h.hostUsername === id || h.name === id);
+  const index = findHostIndex(id);
   if (index !== -1) {
     const host = dbData.hosts[index];
     if (host.connectedViewers) {
@@ -1086,7 +1115,7 @@ app.post("/api/v1/hosts/:id/comments", (req, res) => {
   if (!message || !username) {
     return res.status(400).json({ error: "Username and message are required" });
   }
-  const index = dbData.hosts.findIndex((h: any) => h.id === id);
+  const index = findHostIndex(id);
   if (index !== -1) {
     const host = dbData.hosts[index];
     if (!host.comments) {
@@ -1104,7 +1133,7 @@ app.post("/api/v1/hosts/:id/comments", (req, res) => {
     };
     host.comments.push(newComment);
     saveDatabase();
-    syncDocument("hosts", id, host);
+    syncDocument("hosts", host.id, host);
     res.status(201).json(host.comments);
   } else {
     res.status(404).json({ error: "Host not found" });
@@ -1368,17 +1397,26 @@ app.post("/api/v1/pk/end", (req, res) => {
 
 // Party Hub & 12-Seat Audio Party endpoints
 app.get("/api/v1/parties", (req, res) => {
-  res.json(dbData.parties || []);
+  const activeParties = (dbData.parties || []).filter((p: any) => p.status !== "ended");
+  res.json(activeParties);
 });
 
 app.post("/api/v1/parties", (req, res) => {
   const { title, hostUsername, hostAvatar, category, isPublic, password, language, description } = req.body;
-  const id = `party-${Date.now()}`;
+  
+  if (!dbData.parties) {
+    dbData.parties = [];
+  }
+
+  // Check if an active party already exists for this host
+  const existingIdx = dbData.parties.findIndex((p: any) => p.hostUsername === hostUsername && p.status !== "ended");
+  
+  const id = existingIdx !== -1 ? dbData.parties[existingIdx].id : `party-${Date.now()}`;
   const newParty = {
     id,
     title: title || "Sehr Live Audio Lounge",
-    hostUsername,
-    hostAvatar,
+    hostUsername: hostUsername || "Host",
+    hostAvatar: hostAvatar || "",
     category: category || "Music",
     participantCount: 1,
     maxCapacity: 12,
@@ -1388,7 +1426,7 @@ app.post("/api/v1/parties", (req, res) => {
     description: description || "",
     status: "active",
     connectedViewers: [{ userId: hostUsername, username: hostUsername, avatar: hostAvatar || "", level: 1, vipLevel: 0 }],
-    seats: [
+    seats: existingIdx !== -1 ? dbData.parties[existingIdx].seats : [
       { id: 1, name: hostUsername, avatar: hostAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80", isMuted: false, isLocked: false },
       { id: 2, name: null, avatar: null, isMuted: false, isLocked: false },
       { id: 3, name: null, avatar: null, isMuted: false, isLocked: false },
@@ -1412,13 +1450,20 @@ app.post("/api/v1/parties", (req, res) => {
       }
     ]
   };
-  if (!dbData.parties) {
-    dbData.parties = [];
+
+  if (existingIdx !== -1) {
+    dbData.parties[existingIdx] = { ...dbData.parties[existingIdx], ...newParty, status: "active" };
+    saveDatabase();
+    syncDocument("parties", id, dbData.parties[existingIdx]);
+    console.log(`[SEHR-LIVE PARTY] Updated existing party room: ${id} by @${hostUsername}`);
+    return res.status(200).json(dbData.parties[existingIdx]);
+  } else {
+    dbData.parties.push(newParty);
+    saveDatabase();
+    syncDocument("parties", id, newParty);
+    console.log(`[SEHR-LIVE PARTY] Created new party room: ${id} by @${hostUsername}`);
+    return res.status(201).json(newParty);
   }
-  dbData.parties.push(newParty);
-  saveDatabase();
-  syncDocument("parties", id, newParty);
-  res.status(201).json(newParty);
 });
 
 app.post("/api/v1/parties/:id/join", (req, res) => {
@@ -1463,6 +1508,16 @@ app.post("/api/v1/parties/:id/leave", (req, res) => {
 
     if (party.lastSeen && username) {
       delete party.lastSeen[username];
+    }
+
+    // If host leaves or no users remain, close the party room
+    if (username === party.hostUsername || party.participantCount === 0) {
+      party.status = "ended";
+      dbData.parties = dbData.parties.filter((p: any) => p.id !== id);
+      saveDatabase();
+      deleteDocument("parties", id);
+      console.log(`[SEHR-LIVE PARTY] Host/all left. Closed party room: ${id}`);
+      return res.json({ message: "Party closed as host left", party });
     }
 
     console.log(`[SEHR-LIVE PARTY] User ${username} left party ${id}. Seats cleared immediately.`);

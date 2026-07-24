@@ -115,6 +115,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
 
       // Fetch Secure Token from Backend
       let tokenData: any = null;
+      const requestUid = Math.floor(Math.random() * 89999999) + 10000000;
       try {
         const token = localStorage.getItem("sehr_auth_token");
         const res = await fetch("/api/v1/agora/token", {
@@ -126,7 +127,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           body: JSON.stringify({
             channelName,
             role,
-            uid: Math.floor(Math.random() * 100000) + 1
+            uid: requestUid
           })
         });
 
@@ -154,13 +155,33 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         activeClient = agoraClient;
         setClient(agoraClient);
 
-        // Join Agora Room
-        await agoraClient.join(
-          tokenData.appId,
-          tokenData.channelName,
-          tokenData.token,
-          tokenData.uid
-        );
+        // Join Agora Room with UID conflict protection
+        const targetStreamUid = tokenData.uid || requestUid;
+        try {
+          await agoraClient.join(
+            tokenData.appId,
+            tokenData.channelName,
+            tokenData.token,
+            targetStreamUid
+          );
+        } catch (joinErr: any) {
+          if (
+            joinErr?.code === "UID_CONFLICT" ||
+            joinErr?.name === "AgoraRTCError" ||
+            String(joinErr).includes("UID_CONFLICT")
+          ) {
+            console.warn("[AgoraStream] UID_CONFLICT detected on join. Retrying with fresh unique numeric UID...");
+            const fallbackUid = Math.floor(Math.random() * 89999999) + 10000000;
+            await agoraClient.join(
+              tokenData.appId,
+              tokenData.channelName,
+              tokenData.token,
+              fallbackUid
+            );
+          } else {
+            throw joinErr;
+          }
+        }
 
         if (isUnmounted) return;
 
