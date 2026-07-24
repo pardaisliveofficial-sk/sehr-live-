@@ -6004,6 +6004,17 @@ export default function App() {
     // Call delete endpoint to end stream on backend
     const token = localStorage.getItem("sehr_auth_token");
     const hostId = `h-${user.uniqueId || user.username || "sehr_1001"}`;
+    
+    // Immediately clear from local stream feed state
+    setLiveStreamsList(prev => prev.filter(h => 
+      h.id !== hostId && 
+      h.id !== `h-${user.username}` &&
+      h.hostUsername !== user.username && 
+      h.name !== user.username &&
+      h.hostUid !== user.uniqueId &&
+      h.hostUid !== user.username
+    ));
+
     console.log("[LIVE END ATTEMPT] Deleting active host session on backend:", hostId);
     
     fetch(`/api/v1/hosts/${hostId}`, {
@@ -6015,7 +6026,15 @@ export default function App() {
       .then(res => res.json())
       .then(data => {
         console.log("[LIVE END SUCCESS] Deleted active host stream on backend:", data);
-        setLiveStreamsList(prev => prev.filter(h => h.id !== hostId && h.hostUsername !== user.username && h.name !== user.username));
+        fetch(`/api/v1/hosts/${hostId}/unload-end`, { method: "POST" }).catch(() => {});
+        setLiveStreamsList(prev => prev.filter(h => 
+          h.id !== hostId && 
+          h.id !== `h-${user.username}` &&
+          h.hostUsername !== user.username && 
+          h.name !== user.username &&
+          h.hostUid !== user.uniqueId &&
+          h.hostUid !== user.username
+        ));
       })
       .catch(err => console.error("[LIVE END ERROR] Error deleting host stream on backend:", err));
   };
@@ -7939,6 +7958,19 @@ export default function App() {
                             if (!host) return false;
                             // Only active live streams
                             if (host.isLive === false || host.status === "ended" || host.status === "offline") return false;
+
+                            // Always filter out user's own card from the stream feed so user never sees their own card in the live list
+                            const myUsername = (user.username || "").toLowerCase();
+                            const myUniqueId = String(user.uniqueId || "").toLowerCase();
+                            const hostUser = (host.hostUsername || host.username || "").toLowerCase();
+                            const hostName = (host.name || "").toLowerCase();
+                            const hostUid = String(host.hostUid || "").toLowerCase();
+                            const hostId = (host.id || "").toLowerCase().replace(/^h-/, "");
+
+                            const isMyCard = 
+                              (myUsername && (hostUser === myUsername || hostName === myUsername || hostId === myUsername)) ||
+                              (myUniqueId && (hostUid === myUniqueId || hostId === myUniqueId || hostUser === myUniqueId));
+                            if (isMyCard) return false;
 
                             // Filter out audio category since it belongs in Party Hub
                             if (host.category === "audio") return false;

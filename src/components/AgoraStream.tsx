@@ -8,7 +8,7 @@ import AgoraRTC, {
 import { Camera, Volume2, Radio } from "lucide-react";
 
 // Disable default Agora console logging in production
-AgoraRTC.setLogLevel(3);
+AgoraRTC.setLogLevel(4);
 
 interface AgoraStreamProps {
   channelName: string;
