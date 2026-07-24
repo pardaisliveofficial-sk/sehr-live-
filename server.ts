@@ -920,9 +920,19 @@ app.post("/api/v1/hosts", (req, res) => {
   const existingIdx = findHostIndex(hostId);
 
   if (existingIdx !== -1) {
+    const existing = dbData.hosts[existingIdx];
+    const commentsToKeep = (newHost.comments && newHost.comments.length > 0) ? newHost.comments : (existing.comments || []);
+    const connectedToKeep = (newHost.connectedViewers && newHost.connectedViewers.length > 0) ? newHost.connectedViewers : (existing.connectedViewers || []);
+    const realViewerCountToKeep = Math.max(newHost.realViewerCount || 0, connectedToKeep.length, existing.realViewerCount || 0);
+    const likesToKeep = Math.max(newHost.likes || 0, existing.likes || 0);
+
     dbData.hosts[existingIdx] = {
-      ...dbData.hosts[existingIdx],
+      ...existing,
       ...newHost,
+      comments: commentsToKeep,
+      connectedViewers: connectedToKeep,
+      realViewerCount: realViewerCountToKeep,
+      likes: likesToKeep,
       isLive: true,
       status: "live"
     };
@@ -956,8 +966,8 @@ app.put("/api/v1/hosts/:id", (req, res) => {
     const existing = dbData.hosts[index];
     const updateData = { ...req.body };
 
-    // Safely preserve comments if not provided in updateData
-    if (updateData.comments === undefined && existing.comments) {
+    // Safely preserve comments if omitted or empty array in updateData while existing has comments
+    if ((updateData.comments === undefined || (Array.isArray(updateData.comments) && updateData.comments.length === 0)) && existing.comments && existing.comments.length > 0) {
       updateData.comments = existing.comments;
     }
     // Safely preserve connectedViewers if not provided in updateData

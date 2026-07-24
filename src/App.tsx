@@ -4160,11 +4160,13 @@ export default function App() {
           // Process incoming live double-tap like events from viewers
           if (data.lastLikeEvent && data.lastLikeEvent.timestamp > lastHostLikeEventTimestamp.current) {
             lastHostLikeEventTimestamp.current = data.lastLikeEvent.timestamp;
-            const screenW = window.innerWidth || 360;
-            const screenH = window.innerHeight || 640;
-            const xPct = data.lastLikeEvent.xPercent !== undefined ? data.lastLikeEvent.xPercent : (Math.random() * 60 + 20);
-            const yPct = data.lastLikeEvent.yPercent !== undefined ? data.lastLikeEvent.yPercent : (Math.random() * 40 + 40);
-            triggerDoubleTapHeart((xPct / 100) * screenW, (yPct / 100) * screenH, screenW);
+            if (data.lastLikeEvent.senderUsername !== user.username) {
+              const screenW = window.innerWidth || 360;
+              const screenH = window.innerHeight || 640;
+              const xPct = data.lastLikeEvent.xPercent !== undefined ? data.lastLikeEvent.xPercent : (Math.random() * 60 + 20);
+              const yPct = data.lastLikeEvent.yPercent !== undefined ? data.lastLikeEvent.yPercent : (Math.random() * 40 + 40);
+              triggerDoubleTapHeart((xPct / 100) * screenW, (yPct / 100) * screenH, screenW);
+            }
           }
           // Process incoming live gifts sent by viewers
           if (data.lastGiftEvent && data.lastGiftEvent.timestamp > lastHostGiftEventTimestamp.current) {
@@ -4301,11 +4303,13 @@ export default function App() {
           // Process like events for viewer heart animations
           if (data.lastLikeEvent && data.lastLikeEvent.timestamp > lastViewerLikeEventTimestamp.current) {
             lastViewerLikeEventTimestamp.current = data.lastLikeEvent.timestamp;
-            const screenW = window.innerWidth || 360;
-            const screenH = window.innerHeight || 640;
-            const xPct = data.lastLikeEvent.xPercent !== undefined ? data.lastLikeEvent.xPercent : (Math.random() * 60 + 20);
-            const yPct = data.lastLikeEvent.yPercent !== undefined ? data.lastLikeEvent.yPercent : (Math.random() * 40 + 40);
-            triggerDoubleTapHeart((xPct / 100) * screenW, (yPct / 100) * screenH, screenW);
+            if (data.lastLikeEvent.senderUsername !== user.username) {
+              const screenW = window.innerWidth || 360;
+              const screenH = window.innerHeight || 640;
+              const xPct = data.lastLikeEvent.xPercent !== undefined ? data.lastLikeEvent.xPercent : (Math.random() * 60 + 20);
+              const yPct = data.lastLikeEvent.yPercent !== undefined ? data.lastLikeEvent.yPercent : (Math.random() * 40 + 40);
+              triggerDoubleTapHeart((xPct / 100) * screenW, (yPct / 100) * screenH, screenW);
+            }
           }
 
           setActiveHost(prev => {
@@ -5713,6 +5717,7 @@ export default function App() {
     // Dynamic Live Session: POST host to database
     const token = localStorage.getItem("sehr_auth_token");
     const hostId = `h-${user.uniqueId || user.username || "sehr_1001"}`;
+    const hostChannelName = `room_${user.uniqueId || user.username || "sehr_1001"}`;
     const liveCategory = prepLiveCategory === "PK" ? "pk" : "video"; // Video or PK stream (never audio for camera live)
     const newHostData = {
       id: hostId,
@@ -5728,7 +5733,9 @@ export default function App() {
       bio: user.bio || "Senior Live Stream Creator on Sehr Live! 🌟",
       agencyId: user.agencyId || "",
       liveSessionId: `session-${Date.now()}`,
-      channelName: hostId,
+      channelName: hostChannelName,
+      cameraEnabled: true,
+      isCamOff: false,
       hostUid: user.uniqueId || user.username,
       hostUsername: user.username,
       hostAvatar: user.avatar,
@@ -5869,7 +5876,7 @@ export default function App() {
     setUserLiveChatInput("");
 
     // Post host message to backend room API so all viewers receive it in real-time
-    const hostId = user.uid || user.username;
+    const hostId = `h-${user.uniqueId || user.username || "sehr_1001"}`;
     fetch(`/api/v1/hosts/${hostId}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -5881,7 +5888,17 @@ export default function App() {
         avatar: user.avatar || "",
         isSystem: false
       })
-    }).catch(err => console.error("Error posting host comment to backend room:", err));
+    })
+      .then(res => {
+        if (res.ok) return res.json();
+        return null;
+      })
+      .then(updatedComments => {
+        if (Array.isArray(updatedComments)) {
+          setUserLiveMessages(updatedComments);
+        }
+      })
+      .catch(err => console.error("Error posting host comment to backend room:", err));
 
     // Setup a nice interactive response from viewers in Roman Urdu/Urdu
     setTimeout(() => {
@@ -10092,9 +10109,11 @@ export default function App() {
                                     (activeHost.uniqueId ? `room_${activeHost.uniqueId}` :
                                     (activeHost.username ? `room_${activeHost.username}` :
                                     (activeHost.hostUsername ? `room_${activeHost.hostUsername}` :
-                                    `room_${activeHost.id || activeHost.name}`)))
+                                    (activeHost.id ? `room_${activeHost.id.replace(/^h-/, '')}` :
+                                    `room_${activeHost.name}`))))
                                   }
                                   role="subscriber"
+                                  videoMuted={activeHost.cameraEnabled === false || activeHost.isCamOff === true}
                                   hostAvatar={activeHost.avatar}
                                   hostName={activeHost.name}
                                 />
@@ -14164,7 +14183,7 @@ export default function App() {
                                   <div className="flex items-center space-x-1.5">
                                     <div className="bg-black/45 backdrop-blur-md px-2 py-1 rounded-full border border-white/5 flex items-center space-x-1 text-[9px] font-black text-white font-mono shadow-md">
                                       <Eye className="w-3 h-3 text-[#66fcf1]" />
-                                      <span>{(userLiveViewers / 1000).toFixed(1)}K</span>
+                                      <span>{userLiveViewers >= 1000 ? `${(userLiveViewers / 1000).toFixed(1)}K` : userLiveViewers}</span>
                                     </div>
                                     <button
                                       onClick={() => {
@@ -14637,7 +14656,7 @@ export default function App() {
                                     {/* Viewers count */}
                                     <div className="bg-black/45 px-1.5 py-0.5 rounded border border-white/5 text-[7.5px] text-white font-mono font-black flex items-center space-x-0.5">
                                       <span className="text-emerald-400">●</span>
-                                      <span>{(userLiveViewers / 1000).toFixed(1)}K</span>
+                                      <span>{userLiveViewers >= 1000 ? `${(userLiveViewers / 1000).toFixed(1)}K` : userLiveViewers}</span>
                                     </div>
                                     {/* Multi-function Close Button */}
                                     <button
@@ -15204,8 +15223,17 @@ export default function App() {
                                       {/* Camera ON/OFF */}
                                       <button
                                         onClick={() => {
-                                          setUserLiveCam(!userLiveCam);
-                                          alert(userLiveCam ? "📹 Camera Feed is now OFF (Privacy Mode Active)" : "📹 Camera Feed is now ON");
+                                          const nextCam = !userLiveCam;
+                                          setUserLiveCam(nextCam);
+                                          const hostId = `h-${user.uniqueId || user.username || "sehr_1001"}`;
+                                          fetch(`/api/v1/hosts/${hostId}`, {
+                                            method: "PUT",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({
+                                              cameraEnabled: nextCam,
+                                              isCamOff: !nextCam
+                                            })
+                                          }).catch(err => console.error("Error syncing camera state:", err));
                                         }}
                                         className={`w-7.5 h-7.5 rounded-full flex items-center justify-center transition-all ${
                                           userLiveCam ? "bg-[#ff007f] text-white" : "bg-white/10 text-gray-400 border border-white/5"
@@ -15258,44 +15286,16 @@ export default function App() {
                             
                             {/* CAMERA VIEWPORT BACKGROUND SIMULATION */}
                             <div className="absolute inset-0 z-0 bg-black flex">
-                              {userLiveCam ? (
-                                <div className="w-full h-full relative animate-fade-in overflow-hidden">
-                                  <AgoraStream
-                                    channelName={`room_${DEFAULT_USER.uniqueId || DEFAULT_USER.username}`}
-                                    role="publisher"
-                                    muted={!userLiveMic}
-                                    videoMuted={!userLiveCam}
-                                    hostAvatar={DEFAULT_USER.avatar}
-                                    hostName={DEFAULT_USER.username}
-                                  />
-                                </div>
-                              ) : (
-                                <div className="relative w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#181328] via-[#0d0918] to-[#181328] overflow-hidden select-none p-4">
-                                  <img 
-                                    src={user.avatar || liveBroadcasterAvatar}
-                                    className="absolute inset-0 w-full h-full object-cover opacity-20 blur-2xl scale-125"
-                                    alt="blur background"
-                                  />
-                                  <div className="relative z-10 flex flex-col items-center justify-center space-y-3">
-                                    <div className="relative">
-                                      <img
-                                        src={user.avatar || liveBroadcasterAvatar}
-                                        className="w-28 h-28 rounded-full object-cover border-4 border-pink-500/70 shadow-2xl"
-                                        alt={user.username || liveBroadcasterName}
-                                      />
-                                      <div className="absolute bottom-0 right-0 bg-gray-900/90 text-pink-400 p-1.5 rounded-full border border-pink-500/40 shadow">
-                                        <CameraOff className="w-4 h-4" />
-                                      </div>
-                                    </div>
-                                    <div className="text-center space-y-1">
-                                      <h3 className="text-sm font-black text-white uppercase tracking-wider">{user.username || liveBroadcasterName}</h3>
-                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30 tracking-widest uppercase">
-                                        📷 Camera Off
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
+                              <div className="w-full h-full relative overflow-hidden">
+                                <AgoraStream
+                                  channelName={userLivePkChannelName || `room_${user.uniqueId || user.username || "sehr_1001"}`}
+                                  role="publisher"
+                                  muted={!userLiveMic}
+                                  videoMuted={!userLiveCam}
+                                  hostAvatar={user.avatar || DEFAULT_USER.avatar}
+                                  hostName={user.username || DEFAULT_USER.username}
+                                />
+                              </div>
                               <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/15 to-black/60 pointer-events-none"></div>
                             </div>
 
@@ -15324,23 +15324,38 @@ export default function App() {
                                 </div>
                               </div>
 
-                              {/* Center-Right Contributors List */}
-                              <div className="flex items-center space-x-1.5">
-                                {liveRoomTopGifters.map((viewer, idx) => (
-                                  <div key={viewer.id || idx} className="flex flex-col items-center bg-transparent">
-                                    <img src={viewer.avatar} className="w-6.5 h-6.5 rounded-full border border-white/20 object-cover shadow" title={viewer.username} />
-                                    <span className="text-[7px] text-gray-200 font-black font-mono scale-90 mt-0.5">
-                                      {viewer.coinsContributed >= 1000 ? `${(viewer.coinsContributed / 1000).toFixed(1)}K` : viewer.coinsContributed}
-                                    </span>
-                                  </div>
-                                ))}
+                              {/* Center-Right Connected Viewers & Contributors List */}
+                              <div className="flex items-center space-x-1.5 overflow-x-auto max-w-[120px] no-scrollbar">
+                                {userLiveViewerList.length > 0 ? (
+                                  userLiveViewerList.map((viewer, idx) => (
+                                    <div key={viewer.userId || viewer.username || idx} className="flex flex-col items-center bg-transparent shrink-0">
+                                      <img
+                                        src={viewer.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80"}
+                                        className="w-6.5 h-6.5 rounded-full border border-emerald-400/80 object-cover shadow"
+                                        title={`@${viewer.username} (Lv.${viewer.level || 1})`}
+                                      />
+                                      <span className="text-[6px] text-emerald-300 font-mono font-bold scale-90 mt-0.5 truncate max-w-[35px]">
+                                        @{viewer.username}
+                                      </span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  liveRoomTopGifters.map((viewer, idx) => (
+                                    <div key={viewer.id || idx} className="flex flex-col items-center bg-transparent shrink-0">
+                                      <img src={viewer.avatar} className="w-6.5 h-6.5 rounded-full border border-white/20 object-cover shadow" title={viewer.username} />
+                                      <span className="text-[7px] text-gray-200 font-black font-mono scale-90 mt-0.5">
+                                        {viewer.coinsContributed >= 1000 ? `${(viewer.coinsContributed / 1000).toFixed(1)}K` : viewer.coinsContributed}
+                                      </span>
+                                    </div>
+                                  ))
+                                )}
                               </div>
 
                               {/* Far Right Stats & Close */}
                               <div className="flex items-center space-x-1.5">
                                 <div className="bg-black/45 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/5 flex items-center space-x-1 text-[9px] font-black text-white font-mono shadow-md">
                                   <Eye className="w-3 h-3 text-[#66fcf1]" />
-                                  <span>{(userLiveViewers / 1000).toFixed(1)}K</span>
+                                  <span>{userLiveViewers >= 1000 ? `${(userLiveViewers / 1000).toFixed(1)}K` : userLiveViewers}</span>
                                 </div>
                                 <div className="bg-black/45 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/5 flex items-center space-x-1 text-[9px] font-black text-pink-500 font-mono shadow-md">
                                   <Heart className="w-3 h-3 text-[#ff007f] fill-[#ff007f]" />

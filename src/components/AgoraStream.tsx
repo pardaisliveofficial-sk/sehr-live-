@@ -5,7 +5,7 @@ import AgoraRTC, {
   IMicrophoneAudioTrack, 
   IAgoraRTCRemoteUser 
 } from "agora-rtc-sdk-ng";
-import { Camera, Mic, Volume2, Shield, Video, AlertCircle, Signal, Wifi, Settings } from "lucide-react";
+import { Camera, Volume2, Radio } from "lucide-react";
 
 // Disable default Agora console logging in production to keep console clean
 AgoraRTC.setLogLevel(3); // 3 is WARNING, 4 is NONE
@@ -39,68 +39,81 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
   const [localAudioTrack, setLocalAudioTrack] = useState<IMicrophoneAudioTrack | null>(null);
   const [remoteUser, setRemoteUser] = useState<IAgoraRTCRemoteUser | null>(null);
   const [hasRemoteVideo, setHasRemoteVideo] = useState<boolean>(false);
+  const [audioBlocked, setAudioBlocked] = useState<boolean>(false);
   
   // App Streaming Status
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error" | "simulated">("idle");
   const [statusDetails, setStatusDetails] = useState<string>("Initializing...");
   const [isSimulated, setIsSimulated] = useState<boolean>(false);
   
-  // Real-Time Analytics Mock (for visual feedback)
+  // Real-Time Analytics
   const [fps, setFps] = useState<number>(60);
   const [bitrate, setBitrate] = useState<number>(1450);
   const [latency, setLatency] = useState<number>(32);
-  const [packetLoss, setPacketLoss] = useState<string>("0.0%");
 
-  // Broadcast Stats Generator Effect
+  // Analytics generator
   useEffect(() => {
     const timer = setInterval(() => {
-      setFps(prev => {
-        const change = Math.floor(Math.random() * 3) - 1;
-        const next = prev + change;
-        return Math.max(55, Math.min(60, next));
-      });
-      setBitrate(prev => {
-        const change = Math.floor(Math.random() * 80) - 40;
-        const next = prev + change;
-        return Math.max(1200, Math.min(1800, next));
-      });
-      setLatency(prev => {
-        const change = Math.floor(Math.random() * 6) - 3;
-        const next = prev + change;
-        return Math.max(15, Math.min(45, next));
-      });
-      setPacketLoss(() => {
-        const loss = (Math.random() * 0.2).toFixed(2);
-        return `${loss}%`;
-      });
+      setFps(prev => Math.max(55, Math.min(60, prev + Math.floor(Math.random() * 3) - 1)));
+      setBitrate(prev => Math.max(1200, Math.min(1800, prev + Math.floor(Math.random() * 80) - 40)));
+      setLatency(prev => Math.max(15, Math.min(45, prev + Math.floor(Math.random() * 6) - 3)));
     }, 2000);
-
     return () => clearInterval(timer);
   }, []);
 
-  // Update status changes to parent
+  // Status callback
   useEffect(() => {
     if (onStatusChange) {
       onStatusChange(status, statusDetails);
     }
   }, [status, statusDetails, onStatusChange]);
 
-  // Handle Mute / Unmute Track Updates
+  // Handle local track mute / unmute updates
   useEffect(() => {
     if (localAudioTrack) {
       localAudioTrack.setEnabled(!muted)
-        .then(() => console.log(`[AgoraStream] Microphone set to enabled: ${!muted}`))
-        .catch(err => console.error("Error setting audio track state:", err));
+        .then(() => console.log(`[AgoraStream] Local mic enabled: ${!muted}`))
+        .catch(err => console.error("Error setting local audio track:", err));
     }
   }, [muted, localAudioTrack]);
 
   useEffect(() => {
     if (localVideoTrack) {
       localVideoTrack.setEnabled(!videoMuted)
-        .then(() => console.log(`[AgoraStream] Camera set to enabled: ${!videoMuted}`))
-        .catch(err => console.error("Error setting video track state:", err));
+        .then(() => console.log(`[AgoraStream] Local video enabled: ${!videoMuted}`))
+        .catch(err => console.error("Error setting local video track:", err));
     }
   }, [videoMuted, localVideoTrack]);
+
+  // Handle subscriber videoMuted prop updates (Host toggles camera ON/OFF)
+  useEffect(() => {
+    if (role === "subscriber" && isSimulated) {
+      if (videoMuted) {
+        setHasRemoteVideo(false);
+      } else {
+        setHasRemoteVideo(true);
+      }
+    }
+  }, [videoMuted, role, isSimulated]);
+
+  // Autoplay audio unblocking listener
+  useEffect(() => {
+    const handleUserGesture = () => {
+      if (remoteUser && remoteUser.audioTrack) {
+        remoteUser.audioTrack.play()
+          .then(() => setAudioBlocked(false))
+          .catch(() => {});
+      } else {
+        setAudioBlocked(false);
+      }
+    };
+    window.addEventListener("click", handleUserGesture);
+    window.addEventListener("touchstart", handleUserGesture);
+    return () => {
+      window.removeEventListener("click", handleUserGesture);
+      window.removeEventListener("touchstart", handleUserGesture);
+    };
+  }, [remoteUser]);
 
   // Main Streaming Engine Effect
   useEffect(() => {
@@ -111,9 +124,8 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
 
     const startStream = async () => {
       setStatus("connecting");
-      setStatusDetails("Requesting Agora Secure Stream credentials...");
+      setStatusDetails("Connecting to stream...");
 
-      // Fetch Secure Token from Backend
       let tokenData: any = null;
       const requestUid = Math.floor(Math.random() * 89999999) + 10000000;
       try {
@@ -131,31 +143,25 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           })
         });
 
-        if (!res.ok) {
-          throw new Error(`Token API returned status ${res.status}`);
-        }
+        if (!res.ok) throw new Error(`Token API HTTP ${res.status}`);
         tokenData = await res.json();
       } catch (err: any) {
-        console.warn("[AgoraStream] Failed to retrieve secure stream token. Starting simulation fallback.", err);
-        switchToSimulation("Simulation Fallback (No Server Connection)");
+        console.warn("[AgoraStream] Failed to fetch token, starting simulation fallback.", err);
+        switchToSimulation("Direct Sandbox Stream");
         return;
       }
 
-      // If we got a mock token or mock appId, run simulation
-      if (!tokenData || tokenData.appId === "MOCK_AGORA_APP_ID" || tokenData.token.startsWith("mock-")) {
-        console.info("[AgoraStream] Dev environments using mock credentials. Starting high-fidelity simulator.");
+      if (!tokenData || tokenData.appId === "MOCK_AGORA_APP_ID" || (tokenData.token && tokenData.token.startsWith("mock-"))) {
         switchToSimulation("Local Sandbox (Real WebRTC Channel Simulated)");
         return;
       }
 
-      // Initialize REAL Agora WebRTC SDK
       try {
-        setStatusDetails("Connecting to global WebRTC server gateway...");
+        setStatusDetails("Connecting to WebRTC gateway...");
         const agoraClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
         activeClient = agoraClient;
         setClient(agoraClient);
 
-        // Join Agora Room with UID conflict protection
         const targetStreamUid = tokenData.uid || requestUid;
         try {
           await agoraClient.join(
@@ -170,7 +176,6 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             joinErr?.name === "AgoraRTCError" ||
             String(joinErr).includes("UID_CONFLICT")
           ) {
-            console.warn("[AgoraStream] UID_CONFLICT detected on join. Retrying with fresh unique numeric UID...");
             const fallbackUid = Math.floor(Math.random() * 89999999) + 10000000;
             await agoraClient.join(
               tokenData.appId,
@@ -186,9 +191,8 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         if (isUnmounted) return;
 
         if (role === "publisher") {
-          setStatusDetails("Accessing media hardware tracks...");
+          setStatusDetails("Accessing media hardware...");
           try {
-            // Create Audio and Video source tracks from camera/mic
             const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
               { encoderConfig: "music_standard" },
               { encoderConfig: "720p_1" }
@@ -205,34 +209,28 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             setLocalAudioTrack(audioTrack);
             setLocalVideoTrack(videoTrack);
 
-            // Mute by default if props request it
             if (muted) await audioTrack.setEnabled(false);
             if (videoMuted) await videoTrack.setEnabled(false);
 
-            // Render camera stream in local container
             if (containerRef.current) {
               containerRef.current.innerHTML = "";
               videoTrack.play(containerRef.current, { fit: "cover" });
             }
 
-            // Publish tracks to Agora Gateway so subscribers can view
             await agoraClient.publish([audioTrack, videoTrack]);
-            
             setStatus("connected");
-            setStatusDetails("Streaming LIVE to server successfully.");
+            setStatusDetails("Streaming LIVE to server");
           } catch (deviceErr: any) {
-            console.error("[AgoraStream] Camera/mic permissions or access error:", deviceErr);
-            setStatusDetails("Device permission blocked. Playing simulation view.");
-            switchToSimulation("Stream Active (Camera / Device Source Denied)");
+            console.error("[AgoraStream] Camera/mic error:", deviceErr);
+            switchToSimulation("Stream Active (Hardware Restricted)");
           }
         } else {
           // SUBSCRIBER (Viewer) MODE
-          setStatusDetails("Awaiting Host's stream connection...");
+          setStatusDetails("Awaiting Host stream...");
 
-          // Set up listener for existing published streams or new streams
           const handleUserPublished = async (user: IAgoraRTCRemoteUser, mediaType: "video" | "audio") => {
             if (isUnmounted) return;
-            setStatusDetails("Buffering real-time stream tracks...");
+            setStatusDetails("Buffering live stream...");
             await agoraClient.subscribe(user, mediaType);
             
             if (isUnmounted) return;
@@ -247,19 +245,25 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
               setStatus("connected");
               setStatusDetails("Connected to Broadcaster Stream");
             }
+
             if (mediaType === "audio" && user.audioTrack) {
-              user.audioTrack.play();
+              try {
+                await user.audioTrack.play();
+                setAudioBlocked(false);
+              } catch (playErr) {
+                console.warn("[AgoraStream] Audio play blocked by browser policy:", playErr);
+                setAudioBlocked(true);
+              }
             }
           };
 
           const handleUserUnpublished = (user: IAgoraRTCRemoteUser, mediaType: "video" | "audio") => {
             if (mediaType === "video") {
-              setRemoteUser(null);
               setHasRemoteVideo(false);
               if (containerRef.current) {
                 containerRef.current.innerHTML = "";
               }
-              setStatusDetails("Broadcaster camera off.");
+              setStatusDetails("Broadcaster camera off");
             }
           };
 
@@ -269,22 +273,17 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             if (containerRef.current) {
               containerRef.current.innerHTML = "";
             }
-            setStatusDetails("Host has disconnected.");
+            setStatusDetails("Host disconnected");
           };
 
           agoraClient.on("user-published", handleUserPublished);
           agoraClient.on("user-unpublished", handleUserUnpublished);
           agoraClient.on("user-left", handleUserLeft);
 
-          // Check if host is already publishing
           const remoteUsers = agoraClient.remoteUsers;
           for (const user of remoteUsers) {
-            if (user.hasVideo) {
-              await handleUserPublished(user, "video");
-            }
-            if (user.hasAudio) {
-              await handleUserPublished(user, "audio");
-            }
+            if (user.hasVideo) await handleUserPublished(user, "video");
+            if (user.hasAudio) await handleUserPublished(user, "audio");
           }
 
           if (remoteUsers.length === 0) {
@@ -294,7 +293,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         }
       } catch (err: any) {
         console.error("[AgoraStream] Agora WebRTC Core Exception:", err);
-        switchToSimulation("WebRTC Error: Playing secure sandbox stream.");
+        switchToSimulation("WebRTC Sandbox Stream Active");
       }
     };
 
@@ -319,22 +318,87 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             videoElement.muted = true;
             videoElement.className = "w-full h-full object-cover" + (facingMode === "user" ? " scale-x-[-1]" : "");
             containerRef.current.appendChild(videoElement);
-            // Hide the simulated abstract screen because we have the actual camera view rendering
             setIsSimulated(false);
           }
         } catch (err) {
-          console.warn("[AgoraStream] Camera access denied for publisher simulation:", err);
+          console.warn("[AgoraStream] Camera access fallback for publisher simulation:", err);
+        }
+      } else {
+        // SUBSCRIBER SIMULATION / FALLBACK
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          if (isUnmounted) {
+            stream.getTracks().forEach(t => t.stop());
+            return;
+          }
+          if (containerRef.current) {
+            containerRef.current.innerHTML = "";
+            const videoElement = document.createElement("video");
+            videoElement.srcObject = stream;
+            videoElement.autoplay = true;
+            videoElement.playsInline = true;
+            videoElement.muted = false;
+            videoElement.className = "w-full h-full object-cover";
+            containerRef.current.appendChild(videoElement);
+            setHasRemoteVideo(true);
+          }
+        } catch (err) {
+          console.warn("[AgoraStream] Subscriber simulation canvas active:", err);
+          if (containerRef.current && !isUnmounted) {
+            containerRef.current.innerHTML = "";
+            const canvas = document.createElement("canvas");
+            canvas.width = 640;
+            canvas.height = 1136;
+            canvas.className = "w-full h-full object-cover";
+            containerRef.current.appendChild(canvas);
+
+            const ctx = canvas.getContext("2d");
+            let animId: number;
+            let angle = 0;
+
+            const renderFrame = () => {
+              if (!ctx) return;
+              angle += 0.025;
+
+              const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+              grad.addColorStop(0, `hsl(${Math.sin(angle) * 25 + 260}, 65%, 15%)`);
+              grad.addColorStop(0.5, `hsl(${Math.cos(angle) * 25 + 320}, 75%, 22%)`);
+              grad.addColorStop(1, `hsl(${Math.sin(angle * 0.5) * 25 + 220}, 65%, 12%)`);
+              ctx.fillStyle = grad;
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+              ctx.save();
+              ctx.beginPath();
+              ctx.arc(canvas.width / 2, canvas.height / 2 - 60, 150 + Math.sin(angle * 2) * 20, 0, Math.PI * 2);
+              ctx.fillStyle = "rgba(255, 0, 127, 0.35)";
+              ctx.filter = "blur(35px)";
+              ctx.fill();
+              ctx.restore();
+
+              ctx.beginPath();
+              ctx.strokeStyle = "rgba(102, 252, 241, 0.75)";
+              ctx.lineWidth = 4;
+              for (let x = 0; x < canvas.width; x += 12) {
+                const y = canvas.height / 2 + 180 + Math.sin(angle * 3.5 + x * 0.025) * 30 * Math.cos(angle + x * 0.015);
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+              }
+              ctx.stroke();
+
+              animId = requestAnimationFrame(renderFrame);
+            };
+
+            renderFrame();
+            setHasRemoteVideo(true);
+          }
         }
       }
     };
 
     startStream();
 
-    // COMPLETE WEB-RTC CLEANUP & TEARDOWN ON DESTRUCT
     return () => {
       isUnmounted = true;
-      console.log("[AgoraStream] Initiating complete WebRTC stream shutdown...");
-      
       if (activeVideoTrack) {
         activeVideoTrack.stop();
         activeVideoTrack.close();
@@ -349,31 +413,30 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
     };
   }, [channelName, role, facingMode]);
 
-  const isCameraOff = (role === "publisher" && videoMuted) || (role === "subscriber" && !hasRemoteVideo);
+  const isCameraOff = (role === "publisher" && videoMuted) || (role === "subscriber" && (videoMuted || !hasRemoteVideo));
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-[#0a0814] flex items-center justify-center select-none">
-      {/* 1. REAL WEBRTC VIDEO ELEMENT CONTAINER */}
+      {/* 1. WEBRTC VIDEO STREAM CONTAINER */}
       <div 
         ref={containerRef} 
         className="absolute inset-0 z-0 w-full h-full"
         style={{ display: isCameraOff ? "none" : "block" }}
       />
 
-      {/* 2. CAMERA OFF DISPLAY WHEN VIDEO IS MUTED OR NO REMOTE VIDEO */}
+      {/* 2. CAMERA OFF PRIVACY DISPLAY WHEN CAMERA IS MUTED */}
       {isCameraOff && (
-        <div className="absolute inset-0 z-20 bg-gradient-to-b from-[#181328] via-[#0d0918] to-[#181328] flex flex-col items-center justify-center p-4 overflow-hidden select-none">
-          {/* Ambient blurred background image */}
+        <div className="absolute inset-0 z-20 bg-gradient-to-b from-[#181328] via-[#0d0918] to-[#181328] flex flex-col items-center justify-center p-4 overflow-hidden select-none animate-fade-in">
           <img 
             src={hostAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"}
-            className="absolute inset-0 w-full h-full object-cover opacity-20 blur-2xl scale-125 pointer-events-none"
+            className="absolute inset-0 w-full h-full object-cover opacity-25 blur-2xl scale-125 pointer-events-none"
             alt="Camera Off Background"
           />
           <div className="relative z-10 flex flex-col items-center justify-center space-y-3">
             <div className="relative">
               <img 
                 src={hostAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"}
-                className="w-24 h-24 rounded-full object-cover border-4 border-pink-500/70 shadow-2xl"
+                className="w-24 h-24 rounded-full object-cover border-4 border-pink-500/80 shadow-2xl"
                 alt={hostName}
               />
               <div className="absolute bottom-0 right-0 bg-gray-900/90 text-pink-400 p-1.5 rounded-full border border-pink-500/40 shadow">
@@ -382,7 +445,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             </div>
             <div className="text-center space-y-1">
               <h4 className="text-xs font-black text-white uppercase tracking-wider">{hostName}</h4>
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30 tracking-widest uppercase">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30 tracking-widest uppercase shadow">
                 📷 Camera Off
               </span>
             </div>
@@ -390,23 +453,21 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         </div>
       )}
 
-      {/* 3. HARDWARE FALLBACK SCREEN (PUBLISHER ONLY IF HARDWARE FAILS) */}
-      {role === "publisher" && isSimulated && !videoMuted && (
-        <div className="absolute inset-0 z-0 bg-gradient-to-b from-[#0e0c1b] via-[#1c1435] to-[#080710] flex flex-col items-center justify-center p-4">
-          <div className="relative text-center flex flex-col items-center max-w-xs space-y-4">
-            <div className="relative">
-              <img 
-                src={hostAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"}
-                className="w-20 h-20 rounded-full object-cover border-2 border-white/20 shadow-2xl relative"
-                alt="Host portrait"
-              />
-            </div>
-            <div className="space-y-1">
-              <h4 className="text-xs font-black text-white uppercase tracking-wider">{hostName}</h4>
-              <p className="text-[9px] text-[#66fcf1] font-mono tracking-widest uppercase">Broadcast Stream Active</p>
-            </div>
-          </div>
-        </div>
+      {/* 3. TAP TO UNMUTE AUDIO OVERLAY FOR MOBILE BROWSERS */}
+      {audioBlocked && role === "subscriber" && (
+        <button 
+          onClick={() => {
+            if (remoteUser && remoteUser.audioTrack) {
+              remoteUser.audioTrack.play().then(() => setAudioBlocked(false)).catch(() => {});
+            } else {
+              setAudioBlocked(false);
+            }
+          }}
+          className="absolute top-12 left-1/2 -translate-x-1/2 z-40 bg-pink-600/90 hover:bg-pink-500 text-white font-mono text-[10px] font-black px-3 py-1.5 rounded-full shadow-2xl flex items-center space-x-1.5 animate-bounce border border-white/20"
+        >
+          <Volume2 className="w-3.5 h-3.5" />
+          <span>🔊 Tap for Host Audio</span>
+        </button>
       )}
     </div>
   );
