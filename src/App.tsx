@@ -1943,6 +1943,12 @@ export default function App() {
         const blob = new Blob([payload], { type: "application/json" });
         navigator.sendBeacon(`/api/v1/parties/${activePartyId}/leave`, blob);
       }
+      if (clientView === "user-live" && user) {
+        const hostId = `h-${user.uniqueId || user.username || "sehr_1001"}`;
+        const payload = JSON.stringify({ username: user.username });
+        const blob = new Blob([payload], { type: "application/json" });
+        navigator.sendBeacon(`/api/v1/hosts/${hostId}/unload-end`, blob);
+      }
     };
 
     window.addEventListener("beforeunload", handleWindowUnload);
@@ -2761,7 +2767,7 @@ export default function App() {
   ]);
 
   // Dynamic Live Streams State
-  const [liveStreamsList, setLiveStreamsList] = useState<HostProfile[]>(MOCK_HOSTS);
+  const [liveStreamsList, setLiveStreamsList] = useState<HostProfile[]>([]);
 
   // Couple Rankings State & Boosts (Declared after liveStreamsList to avoid TDZ errors)
   const [coupleBoosts, setCoupleBoosts] = useState<Record<string, number>>(() => {
@@ -4436,12 +4442,12 @@ export default function App() {
           return res.json();
         })
         .then(data => {
-          if (Array.isArray(data) && data.length > 0) {
+          if (Array.isArray(data)) {
             setLiveStreamsList(data);
             // Set active host dynamically from backend list
             setActiveHost(prev => {
               const matched = data.find(h => h.id === prev?.id);
-              return matched || data[0];
+              return matched || data[0] || prev;
             });
           }
         })
@@ -7914,8 +7920,19 @@ export default function App() {
                         {/* Host Stream list */}
                         {(() => {
                           const filteredHosts = liveStreamsList.filter(host => {
+                            if (!host) return false;
                             // Only active live streams
                             if (host.isLive === false || host.status === "ended" || host.status === "offline") return false;
+
+                            // Do NOT show a user's own live card to themselves
+                            const myHostId = `h-${user.uniqueId || user.username}`;
+                            if (
+                              (user.username && (host.hostUsername === user.username || host.name === user.username)) ||
+                              (user.uniqueId && (host.hostUid === user.uniqueId || host.hostUid === user.username)) ||
+                              (host.id === myHostId)
+                            ) {
+                              return false;
+                            }
 
                             // Filter out audio category since it belongs in Party Hub
                             if (host.category === "audio") return false;

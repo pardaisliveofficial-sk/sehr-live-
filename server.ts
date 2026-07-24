@@ -152,9 +152,9 @@ async function loadDatabase() {
       console.log("[SEHR-LIVE FIREBASE] Pre-populated in-memory cache with local database backup.");
     }
     
-    // Seed default demo live streams if hosts array is empty
-    if (!Array.isArray(dbDataCache.hosts) || dbDataCache.hosts.length === 0) {
-      dbDataCache.hosts = JSON.parse(JSON.stringify(DEFAULT_DEMO_HOSTS));
+    // Ensure hosts array is initialized
+    if (!Array.isArray(dbDataCache.hosts)) {
+      dbDataCache.hosts = [];
     }
 
     // Ensure all registered user accounts have at least 1M (1000000) coins for local testing
@@ -1025,11 +1025,10 @@ const findHostIndex = (id: string) => {
 };
 
 app.get("/api/v1/hosts", (req, res) => {
-  if (!Array.isArray(dbData.hosts) || dbData.hosts.length === 0) {
-    dbData.hosts = JSON.parse(JSON.stringify(DEFAULT_DEMO_HOSTS));
-    saveDatabase();
+  if (!Array.isArray(dbData.hosts)) {
+    dbData.hosts = [];
   }
-  const activeHosts = (dbData.hosts || []).filter((h: any) => h.isLive !== false && h.status !== "ended");
+  const activeHosts = dbData.hosts.filter((h: any) => h && h.isLive === true && h.status !== "ended" && h.status !== "offline");
   res.json(activeHosts);
 });
 
@@ -1180,18 +1179,76 @@ app.post("/api/v1/hosts/:id/like", (req, res) => {
 
 app.delete("/api/v1/hosts/:id", (req, res) => {
   const { id } = req.params;
-  const index = findHostIndex(id);
-  const targetId = index !== -1 ? dbData.hosts[index].id : id;
+  const cleanId = id.replace(/^h-/, "");
   
-  if (index !== -1) {
-    dbData.hosts.splice(index, 1);
-  } else {
-    dbData.hosts = dbData.hosts.filter((h: any) => h.id !== id && h.hostUsername !== id && h.name !== id);
+  if (Array.isArray(dbData.hosts)) {
+    const toDelete = dbData.hosts.filter((h: any) => 
+      h.id === id || 
+      h.id === `h-${id}` || 
+      h.hostUsername === id || 
+      h.hostUsername === cleanId || 
+      h.name === id || 
+      h.name === cleanId ||
+      h.hostUid === id ||
+      h.hostUid === cleanId
+    );
+
+    toDelete.forEach((h: any) => {
+      deleteDocument("hosts", h.id);
+    });
+
+    dbData.hosts = dbData.hosts.filter((h: any) => 
+      !(h.id === id || 
+        h.id === `h-${id}` || 
+        h.hostUsername === id || 
+        h.hostUsername === cleanId || 
+        h.name === id || 
+        h.name === cleanId ||
+        h.hostUid === id ||
+        h.hostUid === cleanId)
+    );
+    saveDatabase();
   }
-  saveDatabase();
-  deleteDocument("hosts", targetId);
-  console.log(`[LIVE SERVER SUCCESS] Ended/Deleted host stream: ${id} (targetId: ${targetId})`);
-  res.json({ message: "Host deleted successfully", targetId });
+
+  console.log(`[LIVE SERVER SUCCESS] Ended/Deleted host stream: ${id}`);
+  res.json({ message: "Host deleted successfully", targetId: id });
+});
+
+app.post("/api/v1/hosts/:id/unload-end", (req, res) => {
+  const { id } = req.params;
+  const cleanId = id.replace(/^h-/, "");
+
+  if (Array.isArray(dbData.hosts)) {
+    const toDelete = dbData.hosts.filter((h: any) => 
+      h.id === id || 
+      h.id === `h-${id}` || 
+      h.hostUsername === id || 
+      h.hostUsername === cleanId || 
+      h.name === id || 
+      h.name === cleanId ||
+      h.hostUid === id ||
+      h.hostUid === cleanId
+    );
+
+    toDelete.forEach((h: any) => {
+      deleteDocument("hosts", h.id);
+    });
+
+    dbData.hosts = dbData.hosts.filter((h: any) => 
+      !(h.id === id || 
+        h.id === `h-${id}` || 
+        h.hostUsername === id || 
+        h.hostUsername === cleanId || 
+        h.name === id || 
+        h.name === cleanId ||
+        h.hostUid === id ||
+        h.hostUid === cleanId)
+    );
+    saveDatabase();
+  }
+
+  console.log(`[LIVE SERVER SUCCESS] Host disconnected via unload-end: ${id}`);
+  res.json({ success: true });
 });
 
 // Real-time viewer presence & comments endpoints
