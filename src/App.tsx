@@ -4244,6 +4244,7 @@ export default function App() {
           if (!data) return;
           const isCamOn = data.cameraEnabled !== undefined ? data.cameraEnabled : (data.isCamOff !== undefined ? !data.isCamOff : true);
           setCameraActive(isCamOn);
+          setActiveHost(prev => prev ? { ...prev, cameraEnabled: isCamOn, isCamOff: !isCamOn } : prev);
 
           if (data.realViewerCount !== undefined) {
             setViewersCount(data.realViewerCount);
@@ -8100,6 +8101,8 @@ export default function App() {
                                     onClick={() => {
                                       console.log("[LIVE CARD CLICK] Selected host live stream to join:", host);
                                       setActiveHost(host);
+                                      const hostCamOn = host.cameraEnabled !== undefined ? host.cameraEnabled : (host.isCamOff !== undefined ? !host.isCamOff : true);
+                                      setCameraActive(hostCamOn);
                                       setViewersCount(displayViewerCount);
                                       setLikesCount(host.likes || 0);
                                       setClientView("live-room");
@@ -10113,9 +10116,9 @@ export default function App() {
                                     `room_${activeHost.name}`))))
                                   }
                                   role="subscriber"
-                                  videoMuted={activeHost.cameraEnabled === false || activeHost.isCamOff === true}
-                                  hostAvatar={activeHost.avatar}
-                                  hostName={activeHost.name}
+                                  videoMuted={activeHost.cameraEnabled === false || activeHost.isCamOff === true || !cameraActive}
+                                  hostAvatar={activeHost.avatar || activeHost.hostAvatar || liveBroadcasterAvatar}
+                                  hostName={activeHost.name || activeHost.hostUsername || liveBroadcasterName}
                                 />
                               </div>
 
