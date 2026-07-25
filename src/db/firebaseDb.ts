@@ -327,11 +327,18 @@ export async function clearAllHostsInFirestore() {
   try {
     const querySnapshot = await getDocs(collection(db, "hosts"));
     const deletePromises: Promise<void>[] = [];
+    const now = Date.now();
     querySnapshot.forEach((docSnap) => {
-      deletePromises.push(deleteDoc(doc(db, "hosts", docSnap.id)));
+      const data = docSnap.data();
+      if (!data) return;
+      const isEnded = data.status === "ENDED" || data.status === "ended" || data.status === "offline" || data.isLive === false;
+      const isStale = data.lastSeen && typeof data.lastSeen === "number" && (now - data.lastSeen > 35000);
+      if (isEnded || isStale) {
+        deletePromises.push(deleteDoc(doc(db, "hosts", docSnap.id)));
+      }
     });
     await Promise.all(deletePromises);
-    console.log("[SEHR-LIVE FIREBASE] Cleared all stale hosts from Firestore.");
+    console.log("[SEHR-LIVE FIREBASE] Cleared stale/ended hosts from Firestore.");
   } catch (err) {
     console.error("[SEHR-LIVE FIREBASE] Failed to clear hosts in Firestore:", err);
   }

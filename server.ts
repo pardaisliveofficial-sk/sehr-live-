@@ -1099,40 +1099,120 @@ const findHostIndex = (id: string) => {
   );
 };
 
-app.get("/api/v1/hosts", (req, res) => {
+const getActiveLiveSessions = () => {
   if (!Array.isArray(dbData.hosts)) {
     dbData.hosts = [];
   }
-  let activeHosts = dbData.hosts.filter((h: any) => h && h.isLive === true && h.status !== "ended" && h.status !== "offline");
-  if (activeHosts.length === 0) {
-    DEFAULT_DEMO_HOSTS.forEach((dh: any) => {
-      if (!dbData.hosts.some((existing: any) => existing.id === dh.id)) {
-        dbData.hosts.push({ ...dh });
+  const now = Date.now();
+
+  // Mark stale sessions as ended
+  dbData.hosts.forEach((h: any) => {
+    if (h && (h.isLive === true || h.status === "LIVE" || h.status === "live")) {
+      if (h.lastSeen && typeof h.lastSeen === "number" && (now - h.lastSeen > 35000)) {
+        console.log(`[LIVE SERVER] Session ${h.id} (@${h.hostUsername}) heartbeat expired. Marking as ENDED.`);
+        h.isLive = false;
+        h.status = "ENDED";
+        h.endedAt = new Date().toISOString();
+        deleteDocument("hosts", h.id);
       }
-    });
-    activeHosts = dbData.hosts.filter((h: any) => h && h.isLive === true && h.status !== "ended" && h.status !== "offline");
+    }
+  });
+
+  return dbData.hosts.filter((h: any) => 
+    h && 
+    (h.isLive === true || h.status === "LIVE" || h.status === "live") && 
+    h.status !== "ENDED" && 
+    h.status !== "ended" && 
+    h.status !== "offline"
+  );
+};
+
+app.get("/api/v1/hosts", (req, res) => {
+  res.json(getActiveLiveSessions());
+});
+
+app.get("/api/v1/live/active", (req, res) => {
+  res.json(getActiveLiveSessions());
+});
+
+app.post("/api/v1/live/session", (req, res) => {
+  const sessionData = req.body || {};
+  const hostUsername = sessionData.hostUsername || sessionData.hostName || sessionData.name || "live_host";
+  const hostUserId = sessionData.hostUserId || sessionData.hostUid || sessionData.uniqueId || hostUsername;
+  const hostId = sessionData.id || `h-${hostUserId}`;
+
+  const newHost = {
+    id: hostId,
+    hostUserId,
+    hostName: sessionData.hostName || sessionData.name || hostUsername,
+    hostAvatar: sessionData.hostAvatar || sessionData.avatar || "",
+    hostUsername,
+    hostUid: hostUserId,
+    name: sessionData.hostName || sessionData.name || hostUsername,
+    avatar: sessionData.hostAvatar || sessionData.avatar || "",
+    sessionId: sessionData.sessionId || `session-${Date.now()}`,
+    channelName: sessionData.channelName || `room_${hostUserId}`,
+    status: "LIVE",
+    isLive: true,
+    startedAt: sessionData.startedAt || new Date().toISOString(),
+    streamType: sessionData.streamType || "SOLO",
+    category: sessionData.category || "video",
+    viewers: sessionData.viewers || 0,
+    realViewerCount: sessionData.realViewerCount || 0,
+    likes: sessionData.likes || 0,
+    lastSeen: Date.now(),
+    updatedAt: new Date().toISOString(),
+    ...sessionData
+  };
+
+  const existingIdx = findHostIndex(hostId);
+  if (existingIdx !== -1) {
+    dbData.hosts[existingIdx] = {
+      ...dbData.hosts[existingIdx],
+      ...newHost,
+      isLive: true,
+      status: "LIVE",
+      lastSeen: Date.now(),
+      updatedAt: new Date().toISOString()
+    };
+    saveDatabase();
+    syncDocument("hosts", hostId, dbData.hosts[existingIdx]);
+    return res.status(200).json(dbData.hosts[existingIdx]);
+  } else {
+    dbData.hosts.push(newHost);
+    saveDatabase();
+    syncDocument("hosts", hostId, newHost);
+    return res.status(201).json(newHost);
   }
-  res.json(activeHosts);
 });
 
 app.post("/api/v1/hosts", (req, res) => {
   const hostData = req.body || {};
   const hostUsername = hostData.hostUsername || hostData.name || "live_host";
-  const hostId = hostData.id || `h-${hostData.hostUid || hostUsername}`;
+  const hostUserId = hostData.hostUserId || hostData.hostUid || hostData.uniqueId || hostUsername;
+  const hostId = hostData.id || `h-${hostUserId}`;
   
   const newHost = {
     id: hostId,
+    hostUserId,
+    hostName: hostData.hostName || hostData.name || hostUsername,
+    hostAvatar: hostData.hostAvatar || hostData.avatar || "",
     isLive: true,
-    status: "live",
+    status: "LIVE",
     category: hostData.category || "video",
     viewers: hostData.viewers || 0,
     realViewerCount: hostData.realViewerCount || 0,
     likes: hostData.likes || 0,
     connectedViewers: hostData.connectedViewers || [],
     comments: hostData.comments || [],
+    sessionId: hostData.sessionId || `session-${Date.now()}`,
+    channelName: hostData.channelName || `room_${hostUserId}`,
+    streamType: hostData.streamType || "SOLO",
+    startedAt: hostData.startedAt || new Date().toISOString(),
+    lastSeen: Date.now(),
     ...hostData,
     hostUsername,
-    hostUid: hostData.hostUid || hostData.hostUsername || hostData.name,
+    hostUid: hostUserId,
     updatedAt: new Date().toISOString()
   };
 
@@ -1153,7 +1233,9 @@ app.post("/api/v1/hosts", (req, res) => {
       realViewerCount: realViewerCountToKeep,
       likes: likesToKeep,
       isLive: true,
-      status: "live"
+      status: "LIVE",
+      lastSeen: Date.now(),
+      updatedAt: new Date().toISOString()
     };
     saveDatabase();
     syncDocument("hosts", hostId, dbData.hosts[existingIdx]);
@@ -1236,6 +1318,114 @@ app.put("/api/v1/hosts/:id", (req, res) => {
     syncDocument("hosts", id, newHost);
     res.json(newHost);
   }
+});
+
+app.post("/api/v1/hosts/:id/heartbeat", (req, res) => {
+  const { id } = req.params;
+  const index = findHostIndex(id);
+  if (index !== -1) {
+    dbData.hosts[index].lastSeen = Date.now();
+    dbData.hosts[index].updatedAt = new Date().toISOString();
+    syncDocument("hosts", dbData.hosts[index].id, dbData.hosts[index]);
+    return res.json({ success: true, lastSeen: dbData.hosts[index].lastSeen });
+  }
+  return res.status(404).json({ error: "Host stream not found" });
+});
+
+app.post("/api/v1/live/heartbeat", (req, res) => {
+  const { hostId, id, hostUserId } = req.body || {};
+  const targetId = hostId || id || hostUserId;
+  if (!targetId) return res.status(400).json({ error: "hostId required" });
+  const index = findHostIndex(targetId);
+  if (index !== -1) {
+    dbData.hosts[index].lastSeen = Date.now();
+    dbData.hosts[index].updatedAt = new Date().toISOString();
+    syncDocument("hosts", dbData.hosts[index].id, dbData.hosts[index]);
+    return res.json({ success: true, lastSeen: dbData.hosts[index].lastSeen });
+  }
+  return res.status(404).json({ error: "Host stream not found" });
+});
+
+app.post("/api/v1/hosts/:id/end", (req, res) => {
+  const { id } = req.params;
+  const cleanId = id.replace(/^h-/, "");
+  
+  if (Array.isArray(dbData.hosts)) {
+    const toEnd = dbData.hosts.filter((h: any) => 
+      h.id === id || 
+      h.id === `h-${id}` || 
+      h.hostUsername === id || 
+      h.hostUsername === cleanId || 
+      h.name === id || 
+      h.name === cleanId ||
+      h.hostUid === id ||
+      h.hostUid === cleanId
+    );
+
+    toEnd.forEach((h: any) => {
+      h.isLive = false;
+      h.status = "ENDED";
+      h.endedAt = new Date().toISOString();
+      deleteDocument("hosts", h.id);
+    });
+
+    dbData.hosts = dbData.hosts.filter((h: any) => 
+      !(h.id === id || 
+        h.id === `h-${id}` || 
+        h.hostUsername === id || 
+        h.hostUsername === cleanId || 
+        h.name === id || 
+        h.name === cleanId ||
+        h.hostUid === id ||
+        h.hostUid === cleanId)
+    );
+    saveDatabase();
+  }
+
+  console.log(`[LIVE SERVER SUCCESS] Explicitly ended host stream: ${id}`);
+  res.json({ success: true, message: "Live session ended successfully" });
+});
+
+app.post("/api/v1/live/end", (req, res) => {
+  const { hostId, id, hostUserId } = req.body || {};
+  const targetId = hostId || id || hostUserId;
+  if (!targetId) return res.status(400).json({ error: "hostId required" });
+  const cleanId = String(targetId).replace(/^h-/, "");
+
+  if (Array.isArray(dbData.hosts)) {
+    const toEnd = dbData.hosts.filter((h: any) => 
+      h.id === targetId || 
+      h.id === `h-${targetId}` || 
+      h.hostUsername === targetId || 
+      h.hostUsername === cleanId || 
+      h.name === targetId || 
+      h.name === cleanId ||
+      h.hostUid === targetId ||
+      h.hostUid === cleanId
+    );
+
+    toEnd.forEach((h: any) => {
+      h.isLive = false;
+      h.status = "ENDED";
+      h.endedAt = new Date().toISOString();
+      deleteDocument("hosts", h.id);
+    });
+
+    dbData.hosts = dbData.hosts.filter((h: any) => 
+      !(h.id === targetId || 
+        h.id === `h-${targetId}` || 
+        h.hostUsername === targetId || 
+        h.hostUsername === cleanId || 
+        h.name === targetId || 
+        h.name === cleanId ||
+        h.hostUid === targetId ||
+        h.hostUid === cleanId)
+    );
+    saveDatabase();
+  }
+
+  console.log(`[LIVE SERVER SUCCESS] Explicitly ended live session: ${targetId}`);
+  res.json({ success: true, message: "Live session ended successfully" });
 });
 
 app.post("/api/v1/hosts/:id/like", (req, res) => {

@@ -22,6 +22,7 @@ interface AgoraStreamProps {
   publishCameraTrack?: boolean;
   publishMicrophoneTrack?: boolean;
   onStatusChange?: (status: "idle" | "connecting" | "connected" | "error" | "simulated", details?: string) => void;
+  onPublishSuccess?: (info: { channelName: string; uid: number }) => void;
 }
 
 const sanitizeChannel = (ch: string) => {
@@ -74,7 +75,8 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
   hostName = "Streamer",
   publishCameraTrack,
   publishMicrophoneTrack,
-  onStatusChange
+  onStatusChange,
+  onPublishSuccess
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -337,6 +339,9 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             await agoraClient.publish([aTrack, vTrack]);
             setStatus("connected");
             setStatusDetails("Broadcasting Live via Agora RTC");
+            if (onPublishSuccess) {
+              onPublishSuccess({ channelName: targetChannel, uid: targetUid });
+            }
           } catch (trackErr) {
             console.error("[AGORA HOST TRACK CREATION ERROR]", trackErr);
             setStatus("error");

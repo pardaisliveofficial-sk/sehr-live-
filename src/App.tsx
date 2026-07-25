@@ -1960,6 +1960,23 @@ export default function App() {
       window.removeEventListener("pagehide", handleWindowUnload);
     };
   }, [clientView, activePartyId, user?.username]);
+
+  // Solo Live Host Heartbeat effect
+  useEffect(() => {
+    if (clientView !== "user-live" || !user) return;
+    const hostId = `h-${user.uniqueId || user.username || "sehr_1001"}`;
+    const sendSoloLiveHeartbeat = () => {
+      fetch(`/api/v1/hosts/${hostId}/heartbeat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hostUserId: user.uniqueId || user.username, timestamp: Date.now() })
+      }).catch(() => {});
+    };
+
+    sendSoloLiveHeartbeat();
+    const interval = setInterval(sendSoloLiveHeartbeat, 10000);
+    return () => clearInterval(interval);
+  }, [clientView, user]);
   const [promotionBanners, setPromotionBanners] = useState<any[]>([]);
   const [currentBannerIndex, setCurrentBannerIndex] = useState<number>(0);
   const [invitedToSeat, setInvitedToSeat] = useState<{ partyId: string; seatId: number; hostName: string } | null>(null);
@@ -4607,7 +4624,17 @@ export default function App() {
           if (Array.isArray(data)) {
             setLiveStreamsList(data);
             setActiveHost(prev => {
-              const matched = data.find(h => h.id === prev?.id);
+              if (!prev) return prev;
+              const matched = data.find(h => 
+                h.id === prev.id || 
+                (h.hostUsername && prev.hostUsername && h.hostUsername === prev.hostUsername) ||
+                (h.hostUid && prev.hostUid && h.hostUid === prev.hostUid)
+              );
+              if (!matched && clientView === "live-room") {
+                console.log("[LIVE STREAM ENDED] Host is no longer active on backend. Returning viewer to explore feed.");
+                setClientView("explore");
+                return prev;
+              }
               return matched || prev;
             });
           }
@@ -5765,16 +5792,23 @@ export default function App() {
     setUserLiveShowSummary(false);
     setUserLiveFollowed(false);
     setUserLivePkActive(false);
+  };
 
-    // Dynamic Live Session: POST host to database
+  const handleHostPublishSuccess = (info: { channelName: string; uid: number }) => {
+    console.log("[LIVE HOST PUBLISHED SUCCESS]", info);
     const token = localStorage.getItem("sehr_auth_token");
     const hostId = `h-${user.uniqueId || user.username || "sehr_1001"}`;
-    const hostChannelName = `room_${user.uniqueId || user.username || "sehr_1001"}`;
+    const hostChannelName = info.channelName || userLivePkChannelName || `room_${user.uniqueId || user.username || "sehr_1001"}`;
     const isPkOr1v1 = prepLiveCategory === "PK" || prepLiveCategory === "1v1" || prepPkEnabled;
-    const liveCategory = isPkOr1v1 ? "pk" : "video"; // Video or PK stream (never audio for camera live)
+    const liveCategory = isPkOr1v1 ? "pk" : "video";
     const newHostData = {
       id: hostId,
-      name: user.username || "Sehr_User",
+      hostUserId: user.uniqueId || user.username || user.id,
+      hostName: user.username || user.fullName || "Sehr Broadcaster",
+      hostAvatar: user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+      hostUsername: user.username,
+      hostUid: user.uniqueId || user.username,
+      name: user.username || "Sehr Broadcaster",
       role: "Broadcaster",
       avatar: user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
       viewers: 0,
@@ -5785,23 +5819,23 @@ export default function App() {
       statusText: prepLiveTitle || "Live Stream Active",
       bio: user.bio || "Senior Live Stream Creator on Sehr Live! 🌟",
       agencyId: user.agencyId || "",
+      sessionId: `session-${Date.now()}`,
       liveSessionId: `session-${Date.now()}`,
       channelName: hostChannelName,
       cameraEnabled: true,
       isCamOff: false,
-      hostUid: user.uniqueId || user.username,
-      hostUsername: user.username,
-      hostAvatar: user.avatar,
       hostLevel: user.userLevel || 1,
       hostVIPStatus: user.vipLevel > 0 ? "VIP" : "Regular",
       startedAt: new Date().toISOString(),
-      status: "live",
+      status: "LIVE",
+      streamType: "SOLO",
       realViewerCount: 0,
       connectedViewers: [],
-      comments: []
+      comments: [],
+      lastSeen: Date.now()
     };
 
-    console.log("[LIVE GO-LIVE ATTEMPT] Registering host live stream on backend:", newHostData);
+    console.log("[LIVE GO-LIVE PUBLISHED] Registering host live stream on backend:", newHostData);
 
     fetch("/api/v1/hosts", {
       method: "POST",
@@ -5811,13 +5845,14 @@ export default function App() {
       },
       body: JSON.stringify(newHostData)
     })
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
+      .then(res => res.json())
       .then(data => {
         console.log("[LIVE GO-LIVE SUCCESS] Host stream successfully registered:", data);
-        // Force immediate refresh of live streams list
+        fetch("/api/v1/live/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newHostData)
+        }).catch(() => {});
         fetch("/api/v1/hosts")
           .then(r => r.json())
           .then(list => {
@@ -5826,6 +5861,14 @@ export default function App() {
           .catch(e => console.error("[LIVE GO-LIVE QUERY ERROR]:", e));
       })
       .catch(err => console.error("[LIVE GO-LIVE ERROR] Error registering host stream on backend:", err));
+  };
+
+  const handleStartUserLive = () => {
+    console.log("[LIVE START] Transitioning to live broadcast screen...");
+    actuallyGoLive();
+    setUserLiveLikes(0);
+    setUserLiveCam(true);
+    setUserLiveMic(true);
   };
 
   const triggerDoubleTapHeart = (x: number, y: number, containerWidth?: number) => {
@@ -6010,7 +6053,7 @@ export default function App() {
       setTransactions(prev => [newTx, ...prev]);
     }
 
-    // Call delete endpoint to end stream on backend
+    // Call delete & end endpoints to end stream on backend
     const token = localStorage.getItem("sehr_auth_token");
     const hostId = `h-${user.uniqueId || user.username || "sehr_1001"}`;
     
@@ -6024,8 +6067,15 @@ export default function App() {
       h.hostUid !== user.username
     ));
 
-    console.log("[LIVE END ATTEMPT] Deleting active host session on backend:", hostId);
+    console.log("[LIVE END ATTEMPT] Ending active host session on backend:", hostId);
     
+    fetch(`/api/v1/hosts/${hostId}/end`, { method: "POST" }).catch(() => {});
+    fetch(`/api/v1/live/end`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hostId, hostUserId: user.uniqueId || user.username })
+    }).catch(() => {});
+
     fetch(`/api/v1/hosts/${hostId}`, {
       method: "DELETE",
       headers: {
@@ -15336,6 +15386,7 @@ export default function App() {
                                   videoMuted={!userLiveCam}
                                   hostAvatar={user.avatar || DEFAULT_USER.avatar}
                                   hostName={user.username || DEFAULT_USER.username}
+                                  onPublishSuccess={handleHostPublishSuccess}
                                 />
                               </div>
                               <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/15 to-black/60 pointer-events-none"></div>
