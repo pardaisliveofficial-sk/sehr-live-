@@ -30,6 +30,38 @@ const getNumericUid = (str: string): number => {
   return ((Math.abs(hash) % 1000) * 100000) + sessionRand;
 };
 
+const resolveApiUrl = (path: string): string => {
+  if (!path) return "";
+  if (path.startsWith("http://") || path.startsWith("https://")) {
+    return path;
+  }
+
+  const envApiUrl = (import.meta as any).env?.VITE_API_URL;
+  if (envApiUrl && typeof envApiUrl === "string" && envApiUrl.trim().length > 0) {
+    const base = envApiUrl.trim().replace(/\/+$/, "");
+    return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+  }
+
+  const isAndroidAPK = typeof window !== "undefined" && (
+    (window as any).Capacitor || 
+    window.location.protocol === "file:" ||
+    window.location.protocol.includes("capacitor") ||
+    navigator.userAgent.toLowerCase().includes("android") ||
+    navigator.userAgent.toLowerCase().includes("capacitor") ||
+    (!window.location.hostname.includes("run.app") && (
+      window.location.hostname === "localhost" || 
+      window.location.hostname === "127.0.0.1" || 
+      !window.location.hostname
+    ))
+  );
+
+  if (isAndroidAPK) {
+    return `https://api.sehrlive.soulverseapps.com${path.startsWith("/") ? path : `/${path}`}`;
+  }
+
+  return path;
+};
+
 export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
   partyId,
   channelName,
@@ -156,7 +188,8 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
 
       try {
         const token = localStorage.getItem("sehr_auth_token");
-        const res = await fetch("/api/v1/agora/token", {
+        const tokenUrl = resolveApiUrl("/api/v1/agora/token");
+        const res = await fetch(tokenUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

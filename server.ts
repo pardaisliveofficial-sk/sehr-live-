@@ -338,8 +338,15 @@ const handleAgoraTokenRequest = (req: any, res: any) => {
       return res.status(400).json({ error: "channelName is required" });
     }
 
-    const appId = process.env.AGORA_APP_ID || "e0f2f357f00a40ca88172c3d82052d92";
-    const appCertificate = process.env.AGORA_APP_CERTIFICATE || "";
+    const appId = process.env.AGORA_APP_ID;
+    const appCertificate = process.env.AGORA_APP_CERTIFICATE;
+
+    if (!appId || !appCertificate) {
+      console.warn("[SEHR-LIVE AGORA] Missing AGORA_APP_ID or AGORA_APP_CERTIFICATE in environment.");
+      return res.status(500).json({
+        error: "Agora RTC service is unavailable. Missing AGORA_APP_ID or AGORA_APP_CERTIFICATE environment variables on server."
+      });
+    }
 
     const agoraUid = uid ? Number(uid) : Math.floor(Math.random() * 89999999) + 10000000;
     const resolvedRole = (role === "publisher" || role === "host" || role === 1)
@@ -350,37 +357,28 @@ const handleAgoraTokenRequest = (req: any, res: any) => {
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
-    let token: string | null = null;
-    if (appCertificate && appId !== "MOCK_AGORA_APP_ID") {
-      try {
-        token = RtcTokenBuilder.buildTokenWithUid(
-          appId,
-          appCertificate,
-          channelName,
-          agoraUid,
-          resolvedRole,
-          privilegeExpiredTs,
-          privilegeExpiredTs
-        );
-        console.log(`[SEHR-LIVE AGORA] Generated REAL token for channel ${channelName}, uid ${agoraUid}`);
-      } catch (err: any) {
-        console.error("[SEHR-LIVE AGORA] RtcTokenBuilder failed:", err);
-      }
-    } else {
-      token = null;
-      console.log(`[SEHR-LIVE AGORA] Operating in App ID mode for channel ${channelName} (token=null).`);
-    }
+    const token = RtcTokenBuilder.buildTokenWithUid(
+      appId,
+      appCertificate,
+      channelName,
+      agoraUid,
+      resolvedRole,
+      privilegeExpiredTs,
+      privilegeExpiredTs
+    );
+
+    console.log(`[SEHR-LIVE AGORA] Generated REAL RTC token for channel ${channelName}, uid ${agoraUid}`);
 
     return res.json({
-      token,
       appId,
-      channelName,
+      token,
       uid: agoraUid,
+      channelName,
       expiresAt: privilegeExpiredTs
     });
   } catch (error: any) {
     console.error("[SEHR-LIVE AGORA] Token generation error:", error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message || "Failed to generate Agora token" });
   }
 };
 

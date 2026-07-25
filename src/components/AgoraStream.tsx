@@ -31,6 +31,38 @@ const sanitizeChannel = (ch: string) => {
   return `room_${str.replace(/[^a-zA-Z0-9_-]/g, "")}`;
 };
 
+const resolveApiUrl = (path: string): string => {
+  if (!path) return "";
+  if (path.startsWith("http://") || path.startsWith("https://")) {
+    return path;
+  }
+
+  const envApiUrl = (import.meta as any).env?.VITE_API_URL;
+  if (envApiUrl && typeof envApiUrl === "string" && envApiUrl.trim().length > 0) {
+    const base = envApiUrl.trim().replace(/\/+$/, "");
+    return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+  }
+
+  const isAndroidAPK = typeof window !== "undefined" && (
+    (window as any).Capacitor || 
+    window.location.protocol === "file:" ||
+    window.location.protocol.includes("capacitor") ||
+    navigator.userAgent.toLowerCase().includes("android") ||
+    navigator.userAgent.toLowerCase().includes("capacitor") ||
+    (!window.location.hostname.includes("run.app") && (
+      window.location.hostname === "localhost" || 
+      window.location.hostname === "127.0.0.1" || 
+      !window.location.hostname
+    ))
+  );
+
+  if (isAndroidAPK) {
+    return `https://api.sehrlive.soulverseapps.com${path.startsWith("/") ? path : `/${path}`}`;
+  }
+
+  return path;
+};
+
 export const AgoraStream: React.FC<AgoraStreamProps> = ({
   channelName,
   role,
@@ -117,12 +149,23 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
       setStatusDetails(isPublisher ? "Initializing broadcaster stream..." : "Connecting to live stream...");
 
       const requestUid = Math.floor(Math.random() * 89999999) + 10000000;
+      const tokenUrl = resolveApiUrl("/api/v1/agora/token");
+      const requestRole = role === "publisher" ? "host" : "audience";
+
+      // Diagnostic request log
+      console.log(`[AGORA TOKEN REQUEST]\nURL: ${tokenUrl}\nchannelName: ${cleanChannel}\nuid: ${requestUid}\nrole: ${requestRole}`);
+      console.log("[AGORA TOKEN REQUEST]", {
+        URL: tokenUrl,
+        channelName: cleanChannel,
+        uid: requestUid,
+        role: requestRole
+      });
 
       // 1. Request Token from Backend
       let tokenData: any = null;
       try {
         const authToken = localStorage.getItem("sehr_auth_token");
-        const res = await fetch("/api/v1/agora/token", {
+        const res = await fetch(tokenUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -130,20 +173,52 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           },
           body: JSON.stringify({ channelName: cleanChannel, role, uid: requestUid })
         });
+
         if (res.ok) {
           tokenData = await res.json();
+          console.log(`[AGORA TOKEN SUCCESS]\nstatus: ${res.status}\nappIdPresent: ${!!tokenData?.appId}\ntokenPresent: ${!!tokenData?.token}\nuid: ${tokenData?.uid}\nchannelName: ${tokenData?.channelName || cleanChannel}`);
+          console.log("[AGORA TOKEN SUCCESS]", {
+            status: res.status,
+            appIdPresent: !!tokenData?.appId,
+            tokenPresent: !!tokenData?.token,
+            uid: tokenData?.uid,
+            channelName: tokenData?.channelName || cleanChannel
+          });
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = errData.error || res.statusText || "Token API error";
+          console.error("[AGORA TOKEN FAILED]", res.status, tokenUrl, errMsg);
+          if (!isUnmounted) {
+            setStatus("error");
+            setStatusDetails(`FAILED STEP: TOKEN_API\nHTTP STATUS: ${res.status}\nREQUEST URL: ${tokenUrl}\nMESSAGE: ${errMsg}`);
+          }
+          return;
         }
-      } catch (e) {
+      } catch (e: any) {
+        const errMsg = e.message || "Network request failed";
         console.error("[AGORA TOKEN ERROR]", e);
+        if (!isUnmounted) {
+          setStatus("error");
+          setStatusDetails(`FAILED STEP: TOKEN_API\nHTTP STATUS: 0\nREQUEST URL: ${tokenUrl}\nMESSAGE: ${errMsg}`);
+        }
+        return;
       }
 
       if (isUnmounted) return;
 
-      const targetAppId = tokenData?.appId && tokenData.appId !== "MOCK_AGORA_APP_ID"
-        ? tokenData.appId
-        : "e0f2f357f00a40ca88172c3d82052d92";
-      const targetToken = (tokenData?.token && !tokenData.token.startsWith("mock-")) ? tokenData.token : null;
-      const targetUid = tokenData?.uid || requestUid;
+      if (!tokenData || !tokenData.appId || !tokenData.token || !tokenData.uid) {
+        console.error("[AGORA ERROR] Invalid or missing Agora credentials in response:", tokenData);
+        if (!isUnmounted) {
+          setStatus("error");
+          setStatusDetails(`FAILED STEP: TOKEN_API\nHTTP STATUS: 200\nREQUEST URL: ${tokenUrl}\nMESSAGE: Server response missing required appId, token, or uid`);
+        }
+        return;
+      }
+
+      const targetAppId = tokenData.appId;
+      const targetToken = tokenData.token;
+      const targetUid = tokenData.uid;
+      const targetChannel = tokenData.channelName || cleanChannel;
 
       try {
         const agoraClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
@@ -221,7 +296,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         agoraClient.on("user-unpublished", handleUserUnpublished);
 
         // Join Agora Channel
-        await agoraClient.join(targetAppId, cleanChannel, targetToken, targetUid);
+        await agoraClient.join(targetAppId, targetChannel, targetToken, targetUid);
         if (isUnmounted) {
           try {
             agoraClient.removeAllListeners();
@@ -399,7 +474,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
       {status === "error" && (
         <div className="absolute inset-0 z-30 bg-[#0d0918]/95 flex flex-col items-center justify-center p-4 text-center space-y-3">
           <AlertCircle className="w-10 h-10 text-red-500 animate-pulse" />
-          <p className="text-sm font-bold text-white">{statusDetails}</p>
+          <p className="text-sm font-bold text-white whitespace-pre-line">{statusDetails}</p>
           <button 
             onClick={() => setStatus("idle")}
             className="px-4 py-1.5 bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs rounded-full transition-all cursor-pointer shadow-md"
