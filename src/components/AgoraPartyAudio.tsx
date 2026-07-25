@@ -197,6 +197,13 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
         const initialAgoraRole = userRole === "listener" ? "audience" : "host";
         await agoraClient.setClientRole(initialAgoraRole);
 
+        // Suppress expected internal SDK exception events (e.g. ERR_REJOIN_NOT_JOINED during fast teardown)
+        agoraClient.on("exception", (event) => {
+          if (event && (event.code === 2025 || String(event.msg || event.code || "").includes("REJOIN"))) {
+            return;
+          }
+        });
+
         console.log("[RTC VOICE JOIN TRACE]", {
           userId: username,
           role: userRole === "listener" ? "VIEWER" : userRole.toUpperCase(),
@@ -238,7 +245,15 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
           }
         }
 
-        if (isUnmounted) return;
+        if (isUnmounted) {
+          try {
+            agoraClient.removeAllListeners();
+            if (agoraClient.connectionState === "CONNECTED" || agoraClient.connectionState === "CONNECTING") {
+              await agoraClient.leave().catch(() => {});
+            }
+          } catch (e) {}
+          return;
+        }
 
         setStatus("connected");
         setStatusDetails("REAL VOICE LIVE / CONNECTED");
@@ -303,7 +318,10 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
       if (activeClient) {
         try {
           activeClient.removeAllListeners();
-          activeClient.leave().catch(e => console.log("Error leaving client:", e));
+          const connState = activeClient.connectionState as string;
+          if (connState === "CONNECTED") {
+            activeClient.leave().catch(e => console.log("Error leaving client:", e));
+          }
         } catch (e) {}
       }
     };

@@ -156,6 +156,13 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         const agoraRole = isPublisher ? "host" : "audience";
         await agoraClient.setClientRole(agoraRole);
 
+        // Suppress expected internal SDK exception events (e.g. ERR_REJOIN_NOT_JOINED during fast teardown)
+        agoraClient.on("exception", (event) => {
+          if (event && (event.code === 2025 || String(event.msg || event.code || "").includes("REJOIN"))) {
+            return;
+          }
+        });
+
         // Trace Log
         if (isPublisher) {
           console.log("[AGORA HOST JOIN]", {
@@ -217,7 +224,15 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
 
         // Join Agora Channel
         await agoraClient.join(tokenData.appId, cleanChannel, tokenData.token, tokenData.uid);
-        if (isUnmounted) return;
+        if (isUnmounted) {
+          try {
+            agoraClient.removeAllListeners();
+            if (agoraClient.connectionState === "CONNECTED" || agoraClient.connectionState === "CONNECTING") {
+              await agoraClient.leave().catch(() => {});
+            }
+          } catch (e) {}
+          return;
+        }
 
         if (isPublisher) {
           // HOST MODE: Create Local Mic & Camera Tracks
@@ -295,7 +310,10 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
       if (activeClient) {
         try {
           activeClient.removeAllListeners();
-          activeClient.leave().catch(() => {});
+          const connState = activeClient.connectionState as string;
+          if (connState === "CONNECTED") {
+            activeClient.leave().catch(() => {});
+          }
         } catch (e) {}
       }
       setRemoteUser(null);
