@@ -26,6 +26,7 @@ var import_express = __toESM(require("express"), 1);
 var import_path2 = __toESM(require("path"), 1);
 var import_dotenv = __toESM(require("dotenv"), 1);
 var import_fs2 = __toESM(require("fs"), 1);
+var import_nodemailer = __toESM(require("nodemailer"), 1);
 var import_client_s3 = require("@aws-sdk/client-s3");
 var import_multer = __toESM(require("multer"), 1);
 var import_vite = require("vite");
@@ -162,6 +163,24 @@ var dbDataCache = {
   adminActions: [],
   coinSellers: []
 };
+function sanitizeForFirestore(obj) {
+  if (obj === null || obj === void 0) return null;
+  if (typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) {
+    return obj.map((item) => sanitizeForFirestore(item));
+  }
+  const cleanObj = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === void 0) {
+      cleanObj[key] = null;
+    } else if (typeof value === "object" && value !== null) {
+      cleanObj[key] = sanitizeForFirestore(value);
+    } else {
+      cleanObj[key] = value;
+    }
+  }
+  return cleanObj;
+}
 async function checkAndSeedDatabase() {
   if (isFirestoreQuotaExhausted) return;
   try {
@@ -182,7 +201,7 @@ async function checkAndSeedDatabase() {
     const safeSetDoc = async (docRef, data) => {
       if (isFirestoreQuotaExhausted) return;
       try {
-        await (0, import_firestore.setDoc)(docRef, data, { merge: true });
+        await (0, import_firestore.setDoc)(docRef, sanitizeForFirestore(data), { merge: true });
       } catch (err) {
         handleQuotaError(err, "database seeding write");
       }
@@ -260,7 +279,11 @@ function startFirestoreSynchronization() {
       snapshot.forEach((docSnap) => {
         items.push(docSnap.data());
       });
-      dbDataCache[colName] = items;
+      if (colName === "hosts") {
+        dbDataCache.hosts = items.filter((h) => h && (h.isLive === true || h.status === "live") && h.status !== "ended" && h.status !== "offline");
+      } else {
+        dbDataCache[colName] = items;
+      }
     }, (err) => handleQuotaError(err, `Sync list ${colName}`));
   });
   (0, import_firestore.onSnapshot)((0, import_firestore.collection)(db, "sessions"), (snapshot) => {
@@ -296,7 +319,7 @@ async function syncDocument(collectionName, docId, data) {
   if (isFirestoreQuotaExhausted) return;
   try {
     if (!docId) return;
-    await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, collectionName, String(docId)), data, { merge: true });
+    await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, collectionName, String(docId)), sanitizeForFirestore(data), { merge: true });
     console.log(`[SEHR-LIVE FIREBASE] Synced document to Firestore: ${collectionName}/${docId}`);
   } catch (err) {
     handleQuotaError(err, `syncDocument ${collectionName}/${docId}`);
@@ -315,7 +338,7 @@ async function deleteDocument(collectionName, docId) {
 async function writeMetadata(docName, data) {
   if (isFirestoreQuotaExhausted) return;
   try {
-    await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "metadata", docName), data, { merge: true });
+    await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "metadata", docName), sanitizeForFirestore(data), { merge: true });
     console.log(`[SEHR-LIVE FIREBASE] Synced metadata to Firestore: ${docName}`);
   } catch (err) {
     handleQuotaError(err, `writeMetadata ${docName}`);
@@ -346,6 +369,156 @@ app2.use((req, res, next) => {
 });
 app2.use(import_express.default.json());
 var DB_PATH = import_path2.default.join(process.cwd(), "sehr_live_db.json");
+var DEFAULT_DEMO_HOSTS = [
+  {
+    id: "h-sahar_official",
+    name: "Sahar_Live \u{1F451}",
+    hostUsername: "sahar_official",
+    role: "Official Host",
+    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 1420,
+    likes: 85200,
+    category: "video",
+    isLive: true,
+    status: "live",
+    statusText: "Lahore Live Concert & Chat \u{1F3B5}",
+    bio: "Welcome to Sahar Live! Official VIP Host. Spread love and positive energy!",
+    agencyId: "agency-1"
+  },
+  {
+    id: "h-ayesha_vip",
+    name: "Ayesha_Queen \u{1F525}",
+    hostUsername: "ayesha_vip",
+    role: "VIP Streamer",
+    avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 980,
+    likes: 42100,
+    category: "pk",
+    isLive: true,
+    status: "live",
+    statusText: "1v1 PK Battle Active! Need Dragons \u{1F409}",
+    bio: "PK Fighter & Top Ranking Streamer on Sehr Live!",
+    agencyId: "agency-1"
+  },
+  {
+    id: "h-zain_singing",
+    name: "Zain_Singer \u{1F399}\uFE0F",
+    hostUsername: "zain_singing",
+    role: "Music Host",
+    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 750,
+    likes: 31e3,
+    category: "video",
+    isLive: true,
+    status: "live",
+    statusText: "Live Urdu Ghazal & Acoustic Guitar \u{1F3B8}",
+    bio: "Live music sessions every evening!",
+    agencyId: "agency-2"
+  },
+  {
+    id: "h-zara_star",
+    name: "Zara_Star \u2728",
+    hostUsername: "zara_star",
+    role: "Superstar Host",
+    avatar: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 1150,
+    likes: 64500,
+    category: "video",
+    isLive: true,
+    status: "live",
+    statusText: "Chai Chat & Fun Games \u2615",
+    bio: "Daily live chat and fan interactions!",
+    agencyId: "agency-1"
+  },
+  {
+    id: "h-ali_pro",
+    name: "Ali_Pro \u26A1",
+    hostUsername: "ali_pro",
+    role: "PK Host",
+    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 620,
+    likes: 28900,
+    category: "pk",
+    isLive: true,
+    status: "live",
+    statusText: "Non-stop 1v1 PK Challenge \u{1F3C6}",
+    bio: "Challenging top hosts live!",
+    agencyId: "agency-2"
+  }
+];
+var DEFAULT_DEMO_PARTIES = [
+  {
+    id: "party-lounge-1",
+    title: "\u{1F399}\uFE0F Lahore Music & Friendship Lounge",
+    hostUsername: "sahar_official",
+    hostAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&h=300&q=80",
+    category: "Music",
+    participantCount: 3,
+    maxCapacity: 12,
+    isPublic: true,
+    password: "",
+    language: "Urdu",
+    description: "Welcome to 12-seat audio party lounge! Sing songs and make new friends \u{1F3B5}",
+    status: "active",
+    connectedViewers: [
+      { userId: "sahar_official", username: "sahar_official", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&h=300&q=80", level: 10, vipLevel: 3 },
+      { userId: "zain_singing", username: "zain_singing", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&h=300&q=80", level: 8, vipLevel: 2 },
+      { userId: "ayesha_vip", username: "ayesha_vip", avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&h=300&q=80", level: 12, vipLevel: 4 }
+    ],
+    seats: [
+      { id: 1, name: "sahar_official", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&h=300&q=80", isMuted: false, isLocked: false },
+      { id: 2, name: "zain_singing", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&h=300&q=80", isMuted: false, isLocked: false },
+      { id: 3, name: "ayesha_vip", avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&h=300&q=80", isMuted: false, isLocked: false },
+      { id: 4, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 5, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 6, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 7, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 8, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 9, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 10, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 11, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 12, name: null, avatar: null, isMuted: false, isLocked: false }
+    ],
+    comments: [
+      { id: "c1", username: "System", message: "\u{1F389} Welcome to Sehr Live 12-Seat Party Room!", isSystem: true, timestamp: "12:00 PM" }
+    ]
+  },
+  {
+    id: "party-lounge-2",
+    title: "\u{1F4AC} Late Night Chai & Chill Talk Show",
+    hostUsername: "ali_pro",
+    hostAvatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&h=300&q=80",
+    category: "Chill",
+    participantCount: 2,
+    maxCapacity: 12,
+    isPublic: true,
+    password: "",
+    language: "Urdu/English",
+    description: "Relaxed midnight conversations & fun banter \u2615",
+    status: "active",
+    connectedViewers: [
+      { userId: "ali_pro", username: "ali_pro", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&h=300&q=80", level: 7, vipLevel: 1 },
+      { userId: "zara_star", username: "zara_star", avatar: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&h=300&q=80", level: 9, vipLevel: 3 }
+    ],
+    seats: [
+      { id: 1, name: "ali_pro", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&h=300&q=80", isMuted: false, isLocked: false },
+      { id: 2, name: "zara_star", avatar: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&h=300&q=80", isMuted: false, isLocked: false },
+      { id: 3, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 4, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 5, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 6, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 7, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 8, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 9, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 10, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 11, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 12, name: null, avatar: null, isMuted: false, isLocked: false }
+    ],
+    comments: [
+      { id: "c2", username: "System", message: "\u2615 Grab a chai and take a seat!", isSystem: true, timestamp: "12:05 PM" }
+    ]
+  }
+];
 var dbData = dbDataCache;
 async function loadDatabase() {
   try {
@@ -358,7 +531,13 @@ async function loadDatabase() {
       Object.assign(dbDataCache, local);
       console.log("[SEHR-LIVE FIREBASE] Pre-populated in-memory cache with local database backup.");
     }
-    dbDataCache.hosts = [];
+    if (!Array.isArray(dbDataCache.hosts) || dbDataCache.hosts.length === 0) {
+      dbDataCache.hosts = DEFAULT_DEMO_HOSTS.map((h) => ({ ...h }));
+    }
+    if (!Array.isArray(dbDataCache.parties) || dbDataCache.parties.length === 0) {
+      dbDataCache.parties = DEFAULT_DEMO_PARTIES.map((p) => ({ ...p }));
+    }
+    saveDatabase();
     if (Array.isArray(dbDataCache.users)) {
       dbDataCache.users.forEach((u) => {
         if (!u.coins || u.coins < 1e6) {
@@ -413,13 +592,14 @@ loadDatabase();
 function authenticateUser(req, res, next) {
   const authHeader = req.headers["authorization"];
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    req.user = dbData.user;
-    return next();
+    return res.status(401).json({ error: "Unauthorized. Authorization Bearer token is required." });
   }
   const token = authHeader.substring(7);
   const session = dbData.sessions?.[token];
   if (session) {
-    const user = dbData.users?.find((u) => u.username === session.username);
+    const user = dbData.users?.find(
+      (u) => session.uid && u.uid === session.uid || session.username && u.username === session.username || session.email && u.email === session.email
+    );
     if (user) {
       req.user = user;
       req.token = token;
@@ -434,15 +614,15 @@ var handleAgoraTokenRequest = (req, res) => {
     if (!channelName) {
       return res.status(400).json({ error: "channelName is required" });
     }
-    const appId = process.env.AGORA_APP_ID || "";
+    const appId = process.env.AGORA_APP_ID || "MOCK_AGORA_APP_ID";
     const appCertificate = process.env.AGORA_APP_CERTIFICATE || "";
     const agoraUid = uid ? Number(uid) : 0;
     const resolvedRole = role === "publisher" || role === "host" || role === 1 ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
     const expirationTimeInSeconds = 3600;
     const currentTimestamp = Math.floor(Date.now() / 1e3);
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
-    let token = "";
-    if (appId && appCertificate) {
+    let token = null;
+    if (appId !== "MOCK_AGORA_APP_ID" && appCertificate) {
       try {
         token = RtcTokenBuilder.buildTokenWithUid(
           appId,
@@ -456,15 +636,14 @@ var handleAgoraTokenRequest = (req, res) => {
         console.log(`[SEHR-LIVE AGORA] Generated REAL token for channel ${channelName}, uid ${agoraUid}`);
       } catch (err) {
         console.error("[SEHR-LIVE AGORA] RtcTokenBuilder failed:", err);
-        return res.status(500).json({ error: "Failed to generate token: " + err.message });
       }
     } else {
-      console.warn("[SEHR-LIVE AGORA] AGORA_APP_ID or AGORA_APP_CERTIFICATE not configured. Using mock token for dev.");
       token = `mock-token-${channelName}-${agoraUid}-${resolvedRole}`;
+      console.log(`[SEHR-LIVE AGORA] AGORA_APP_ID not configured in env. Returning mock token and sandbox appId.`);
     }
     return res.json({
       token,
-      appId: appId || "MOCK_AGORA_APP_ID",
+      appId,
       channelName,
       uid: agoraUid,
       expiresAt: privilegeExpiredTs
@@ -476,28 +655,76 @@ var handleAgoraTokenRequest = (req, res) => {
 };
 app2.post("/api/agora/token", authenticateUser, handleAgoraTokenRequest);
 app2.post("/api/v1/agora/token", authenticateUser, handleAgoraTokenRequest);
+var signalCounter = 0;
+var webrtcSignalStore = {};
+app2.post("/api/v1/webrtc/signal", (req, res) => {
+  try {
+    const { channelName, target, from, type, data } = req.body || {};
+    if (!channelName || !type) {
+      return res.status(400).json({ error: "channelName and type are required" });
+    }
+    const cleanChannel = String(channelName).replace(/[^a-zA-Z0-9_-]/g, "").toLowerCase();
+    const key = `${cleanChannel}_${target || "all"}`;
+    if (!webrtcSignalStore[key]) {
+      webrtcSignalStore[key] = [];
+    }
+    signalCounter++;
+    const newSignal = {
+      seq: signalCounter,
+      from: from || "anon",
+      type,
+      data,
+      timestamp: Date.now()
+    };
+    webrtcSignalStore[key].push(newSignal);
+    if (webrtcSignalStore[key].length > 500) {
+      webrtcSignalStore[key] = webrtcSignalStore[key].slice(-500);
+    }
+    return res.json({ success: true, seq: signalCounter });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+app2.get("/api/v1/webrtc/signals/:channelName/:target", (req, res) => {
+  try {
+    const { channelName, target } = req.params;
+    const cleanChannel = String(channelName).replace(/[^a-zA-Z0-9_-]/g, "").toLowerCase();
+    const key = `${cleanChannel}_${target}`;
+    const sinceSeq = Number(req.query.sinceSeq || req.query.since || 0);
+    const list = webrtcSignalStore[key] || [];
+    const newSignals = list.filter((s) => s.seq > sinceSeq || sinceSeq > 1e9 && s.timestamp > sinceSeq);
+    const maxSeq = list.length > 0 ? Math.max(...list.map((s) => s.seq)) : sinceSeq;
+    return res.json({ signals: newSignals, maxSeq, timestamp: Date.now() });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 app2.post("/api/v1/auth/google-login", (req, res) => {
   const { email, displayName, photoURL, uid } = req.body;
-  if (!email || typeof email !== "string") {
-    return res.status(400).json({ error: "Email is required for Google Sign-In" });
+  if (!uid || !email || typeof email !== "string") {
+    return res.status(400).json({ error: "UID and Email are required for Google Sign-In" });
   }
-  const username = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_") || `google_user_${uid?.substring(0, 5)}`;
-  let user = dbData.users.find((u) => u.email === email || u.username === username);
+  const cleanEmail = email.toLowerCase().trim();
+  let user = dbData.users.find((u) => u.uid === uid || u.email && u.email.toLowerCase() === cleanEmail);
+  let isNewUser = false;
   if (!user) {
+    isNewUser = true;
+    const username = cleanEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_") || `user_${uid.substring(0, 6)}`;
     const suffix = Math.floor(1e3 + Math.random() * 9e3);
     const uniqueId = `sehr_${suffix}`;
     user = {
+      uid,
+      email: cleanEmail,
       username,
       uniqueId,
-      email,
-      avatar: photoURL || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+      fullName: displayName || username,
+      avatar: photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(displayName || cleanEmail)}`,
       coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-      bio: "New Sehr Live member! Verified via Google. \u{1F1F5}\u{1F1F0}",
+      bio: "Verified Google Member \u{1F1F5}\u{1F1F0}",
       gender: "Male",
       country: "Pakistan",
       language: "Urdu / Hinglish",
       coins: 1e6,
-      // starting gift coins (1M) for Google verified sign-ups
       diamonds: 0,
       vipLevel: 0,
       userLevel: 1,
@@ -507,14 +734,11 @@ app2.post("/api/v1/auth/google-login", (req, res) => {
       familyId: "",
       agencyId: "",
       isVerified: true,
-      // Google accounts are pre-verified
       isBanned: false,
       twoFactorEnabled: false,
-      fullName: displayName || `User_${username}`,
       dob: "",
       phoneNumber: "",
       kycStatus: "approved",
-      // pre-approved KYC
       followersCount: 0,
       followingCount: 0,
       totalLikesCount: 0,
@@ -522,140 +746,124 @@ app2.post("/api/v1/auth/google-login", (req, res) => {
       vipSuspended: false
     };
     dbData.users.push(user);
-    const adminUser = {
-      username: user.username,
-      fullName: user.fullName,
-      isVerified: user.isVerified,
-      kycStatus: user.kycStatus,
-      isBanned: user.isBanned,
-      coins: user.coins,
-      userLevel: user.userLevel,
-      vipLevel: user.vipLevel
-    };
-    dbData.adminUsersList.push(adminUser);
     syncDocument("users", user.username, user);
-    syncDocument("adminUsersList", user.username, adminUser);
   } else {
-    if (photoURL && user.avatar === "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80") {
-      user.avatar = photoURL;
-      syncDocument("users", user.username, user);
+    user.uid = uid;
+    user.email = cleanEmail;
+    if (displayName && (!user.fullName || user.fullName === "New User")) {
+      user.fullName = displayName;
     }
+    if (photoURL && (!user.avatar || user.avatar.includes("unsplash"))) {
+      user.avatar = photoURL;
+    }
+    syncDocument("users", user.username, user);
   }
-  const token = `sehr_session_${user.username}_${Math.random().toString(36).substring(2, 10)}`;
+  const token = `sehr_session_${user.uid}_${Math.random().toString(36).substring(2, 10)}`;
   const sessionData = {
+    uid: user.uid,
     username: user.username,
+    email: user.email,
     loginTime: (/* @__PURE__ */ new Date()).toISOString()
   };
   dbData.sessions[token] = sessionData;
-  dbData.user = user;
   saveDatabase();
   syncDocument("sessions", token, sessionData);
-  writeMetadata("user_profile", user);
   res.json({
     success: true,
     message: "Authenticated via Google successfully.",
+    isNewUser,
     token,
     user
   });
 });
-app2.post("/api/v1/auth/guest-login", (req, res) => {
-  const suffix = Math.floor(1e4 + Math.random() * 9e4);
-  const username = `guest_${suffix}`;
-  const uniqueId = `sehr_guest_${suffix}`;
-  const user = {
-    username,
-    uniqueId,
-    email: "",
-    avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
-    coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-    bio: "Guest Explorer in Sehr Live! \u{1F1F5}\u{1F1F0}",
-    gender: "Male",
-    country: "Pakistan",
-    language: "Urdu / Hinglish",
-    coins: 1e6,
-    // starting gift coins (1M) for guest verified sign-ups
-    diamonds: 0,
-    vipLevel: 0,
-    userLevel: 1,
-    hostLevel: 1,
-    wealthLevel: 1,
-    xp: 0,
-    familyId: "",
-    agencyId: "",
-    isVerified: false,
-    isBanned: false,
-    twoFactorEnabled: false,
-    fullName: `Guest_${suffix}`,
-    dob: "",
-    phoneNumber: "",
-    kycStatus: "none",
-    followersCount: 0,
-    followingCount: 0,
-    totalLikesCount: 0,
-    selectedFrameId: "",
-    vipSuspended: false
-  };
-  dbData.users.push(user);
-  syncDocument("users", user.username, user);
-  const token = `sehr_session_guest_${suffix}`;
-  const sessionData = {
-    username: user.username,
-    loginTime: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  dbData.sessions[token] = sessionData;
-  dbData.user = user;
-  saveDatabase();
-  syncDocument("sessions", token, sessionData);
-  writeMetadata("user_profile", user);
-  res.json({
-    success: true,
-    message: "Authenticated as Guest successfully.",
-    token,
-    user
-  });
-});
-app2.post("/api/v1/auth/send-otp", (req, res) => {
-  const { phoneNumber } = req.body;
-  if (!phoneNumber || typeof phoneNumber !== "string" || phoneNumber.length < 7) {
-    return res.status(400).json({ error: "Invalid mobile phone number format." });
+app2.post("/api/v1/auth/send-email-otp", async (req, res) => {
+  const { email } = req.body;
+  if (!email || typeof email !== "string" || !email.includes("@")) {
+    return res.status(400).json({ error: "A valid email address is required." });
   }
-  const otp = Math.floor(1e3 + Math.random() * 9e3).toString();
-  dbData.otps[phoneNumber] = otp;
+  const cleanEmail = email.toLowerCase().trim();
+  const otp = Math.floor(1e5 + Math.random() * 9e5).toString();
+  if (!dbData.emailOtps) dbData.emailOtps = {};
+  dbData.emailOtps[cleanEmail] = {
+    otp,
+    expiresAt: Date.now() + 10 * 60 * 1e3
+    // 10 minutes expiry
+  };
   saveDatabase();
-  syncDocument("otps", phoneNumber, { otp, timestamp: (/* @__PURE__ */ new Date()).toISOString() });
-  console.log(`[SEHR-LIVE PRODUCTION SMS GATEWAY] Generated OTP [${otp}] for phone: ${phoneNumber}`);
+  console.log(`[SEHR LIVE EMAIL OTP GATEWAY] Dispatched OTP [${otp}] to ${cleanEmail}`);
+  try {
+    if (process.env.SMTP_USER) {
+      const transporter = import_nodemailer.default.createTransport({
+        host: process.env.SMTP_HOST || "smtp.gmail.com",
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: process.env.SMTP_SECURE === "true",
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS
+        }
+      });
+      await transporter.sendMail({
+        from: `"Sehr Live" <${process.env.SMTP_USER}>`,
+        to: cleanEmail,
+        subject: "Your Sehr Live Email Verification OTP Code",
+        html: `<div style="font-family: Arial, sans-serif; padding: 20px; background: #0f0f18; color: #ffffff; border-radius: 12px;">
+          <h2 style="color: #ff007f;">Sehr Live Email Verification</h2>
+          <p>Your 6-digit verification code is:</p>
+          <div style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #00f5ff; margin: 20px 0;">${otp}</div>
+          <p style="color: #8888aa; font-size: 12px;">This code will expire in 10 minutes. If you did not request this, please ignore.</p>
+        </div>`
+      });
+    }
+  } catch (emailErr) {
+    console.warn("[SEHR LIVE EMAIL] SMTP transport warning:", emailErr);
+  }
   res.json({
     success: true,
-    message: "OTP code dispatched via simulated secure SMS carrier gateway.",
+    message: `Verification OTP code dispatched to ${cleanEmail}. Check your email inbox.`,
     otp
-    // Return for offline emulation ease and robust testing
+    // Included for easy dev/testing verification
   });
 });
-app2.post("/api/v1/auth/verify-otp", (req, res) => {
-  const { phoneNumber, otp } = req.body;
-  if (!phoneNumber || !otp) {
-    return res.status(400).json({ error: "Phone number and verification OTP code are required." });
+app2.post("/api/v1/auth/verify-email-otp", (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) {
+    return res.status(400).json({ error: "Email and verification OTP code are required." });
   }
-  const storedOtp = dbData.otps[phoneNumber];
-  if (otp !== "4589" && otp !== storedOtp) {
-    return res.status(401).json({ error: "Invalid verification code. Please check and try again." });
+  const cleanEmail = email.toLowerCase().trim();
+  const stored = dbData.emailOtps?.[cleanEmail];
+  if (!stored) {
+    return res.status(401).json({ error: "No OTP code requested for this email or OTP expired." });
   }
-  let user = dbData.users.find((u) => u.phoneNumber === phoneNumber);
+  if (stored.expiresAt && Date.now() > stored.expiresAt) {
+    delete dbData.emailOtps[cleanEmail];
+    saveDatabase();
+    return res.status(401).json({ error: "OTP code has expired. Please request a new OTP code." });
+  }
+  if (String(stored.otp).trim() !== String(otp).trim()) {
+    return res.status(401).json({ error: "Invalid OTP code. Please check and try again." });
+  }
+  delete dbData.emailOtps[cleanEmail];
+  const uid = "email_" + cleanEmail.replace(/[^a-zA-Z0-9]/g, "_");
+  let user = dbData.users.find((u) => u.email && u.email.toLowerCase() === cleanEmail || u.uid === uid);
+  let isNewUser = false;
   if (!user) {
+    isNewUser = true;
+    const username = cleanEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_") || `user_${Math.floor(1e3 + Math.random() * 9e3)}`;
     const suffix = Math.floor(1e3 + Math.random() * 9e3);
-    const username = `user_${suffix}`;
     const uniqueId = `sehr_${suffix}`;
     user = {
+      uid,
+      email: cleanEmail,
       username,
       uniqueId,
-      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+      fullName: "",
+      avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(cleanEmail)}`,
       coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-      bio: "New Sehr Live member! Hello Pakistan! \u{1F1F5}\u{1F1F0}",
+      bio: "Sehr Live Member \u{1F1F5}\u{1F1F0}",
       gender: "Male",
       country: "Pakistan",
       language: "Urdu / Hinglish",
       coins: 1e6,
-      // starting coins (1M)
       diamonds: 0,
       vipLevel: 0,
       userLevel: 1,
@@ -664,12 +872,11 @@ app2.post("/api/v1/auth/verify-otp", (req, res) => {
       xp: 0,
       familyId: "",
       agencyId: "",
-      isVerified: false,
+      isVerified: true,
       isBanned: false,
       twoFactorEnabled: false,
-      fullName: `User ${suffix}`,
       dob: "",
-      phoneNumber,
+      phoneNumber: "",
       kycStatus: "none",
       followersCount: 0,
       followingCount: 0,
@@ -678,37 +885,52 @@ app2.post("/api/v1/auth/verify-otp", (req, res) => {
       vipSuspended: false
     };
     dbData.users.push(user);
-    const adminUser = {
-      username: user.username,
-      fullName: user.fullName,
-      isVerified: user.isVerified,
-      kycStatus: user.kycStatus,
-      isBanned: user.isBanned,
-      coins: user.coins,
-      userLevel: user.userLevel,
-      vipLevel: user.vipLevel
-    };
-    dbData.adminUsersList.push(adminUser);
     syncDocument("users", user.username, user);
-    syncDocument("adminUsersList", user.username, adminUser);
   }
-  const token = `sehr_session_${user.username}_${Math.random().toString(36).substring(2, 10)}`;
+  const token = `sehr_session_${user.uid}_${Math.random().toString(36).substring(2, 10)}`;
   const sessionData = {
+    uid: user.uid,
     username: user.username,
+    email: user.email,
     loginTime: (/* @__PURE__ */ new Date()).toISOString()
   };
   dbData.sessions[token] = sessionData;
-  dbData.user = user;
-  delete dbData.otps[phoneNumber];
   saveDatabase();
   syncDocument("sessions", token, sessionData);
-  deleteDocument("otps", phoneNumber);
-  writeMetadata("user_profile", user);
   res.json({
     success: true,
-    message: "Authenticated successfully.",
+    message: isNewUser ? "Email verified. Please complete your profile setup." : "Authenticated successfully.",
+    isNewUser: isNewUser || !user.fullName,
     token,
     user
+  });
+});
+app2.post("/api/v1/auth/setup-profile", authenticateUser, (req, res) => {
+  const { fullName, username, avatar, gender } = req.body;
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (fullName && typeof fullName === "string" && fullName.trim().length > 0) {
+    req.user.fullName = fullName.trim();
+  }
+  if (username && typeof username === "string") {
+    const cleanUser = username.trim().replace(/[^a-zA-Z0-9_]/g, "_");
+    if (cleanUser.length > 2) {
+      req.user.username = cleanUser;
+    }
+  }
+  if (avatar && typeof avatar === "string" && avatar.startsWith("http")) {
+    req.user.avatar = avatar;
+  }
+  if (gender && typeof gender === "string") {
+    req.user.gender = gender;
+  }
+  saveDatabase();
+  syncDocument("users", req.user.username, req.user);
+  res.json({
+    success: true,
+    message: "Profile updated successfully.",
+    user: req.user
   });
 });
 app2.get("/api/v1/auth/me", authenticateUser, (req, res) => {
@@ -716,6 +938,14 @@ app2.get("/api/v1/auth/me", authenticateUser, (req, res) => {
     success: true,
     user: req.user
   });
+});
+app2.post("/api/v1/auth/logout", authenticateUser, (req, res) => {
+  if (req.token && dbData.sessions[req.token]) {
+    delete dbData.sessions[req.token];
+    deleteDocument("sessions", req.token);
+    saveDatabase();
+  }
+  res.json({ success: true, message: "Logged out successfully" });
 });
 var aiClient = null;
 function getAIClient() {
@@ -793,7 +1023,7 @@ app2.post("/api/v1/user", authenticateUser, (req, res) => {
       fullName: updatedUser.fullName,
       coins: updatedUser.coins,
       isVerified: updatedUser.isVerified,
-      kycStatus: updatedUser.kycStatus
+      kycStatus: updatedUser.kycStatus || "none"
     };
   }
   saveDatabase();
@@ -868,6 +1098,7 @@ app2.post("/api/v1/gifts/send", authenticateUser, (req, res) => {
     hostEarnings,
     companyShare,
     sender: user.username,
+    senderAvatar: user.avatar || "",
     recipient,
     giftName: gift.name,
     giftIcon: gift.icon,
@@ -895,8 +1126,64 @@ app2.post("/api/v1/gifts/send", authenticateUser, (req, res) => {
   if (requestId) {
     dbData.processedGiftRequests[requestId] = responseData;
   }
+  const hostId = req.body.hostId;
+  const activeHostMatch = (dbData.hosts || []).find(
+    (h) => hostId && (h.id === hostId || h.hostUsername === hostId || h.name === hostId) || recipient && h.hostUsername && recipient.toLowerCase().includes(h.hostUsername.toLowerCase()) || h.isLive
+  );
+  if (activeHostMatch) {
+    const isOpponent = targetHostSide === "hostB";
+    if (isOpponent) {
+      activeHostMatch.pkScoreOpponent = (activeHostMatch.pkScoreOpponent || 0) + totalCost;
+    } else {
+      activeHostMatch.pkScoreHost = (activeHostMatch.pkScoreHost || 0) + totalCost;
+    }
+    activeHostMatch.lastGiftEvent = {
+      giftId: gift.id,
+      giftName: gift.name,
+      giftIcon: gift.icon,
+      count: giftCount,
+      senderUsername: user.username,
+      senderAvatar: user.avatar || "",
+      recipient: recipient || "Host",
+      totalCost,
+      targetHostSide: targetHostSide || "hostA",
+      timestamp: Date.now()
+    };
+    activeHostMatch.likes = (activeHostMatch.likes || 0) + Math.max(1, Math.floor(totalCost * 0.1));
+    syncDocument("hosts", activeHostMatch.id, activeHostMatch);
+    console.log(`[REALTIME GIFT SYNC] Updated host ${activeHostMatch.id} with gift ${gift.name} from @${user.username}`);
+  }
   saveDatabase();
   return res.json(responseData);
+});
+app2.get("/api/v1/gifts/supporters", (req, res) => {
+  const giftTxs = (dbData.transactions || []).filter((tx) => tx.type === "gift_sent");
+  const supporterMap = {};
+  const hostAMap = {};
+  const hostBMap = {};
+  giftTxs.forEach((tx) => {
+    const key = tx.sender || "Anonymous";
+    const avatar = tx.senderAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&h=100&q=80";
+    const coins = Number(tx.amount) || 0;
+    if (!supporterMap[key]) {
+      supporterMap[key] = { id: `sup-${key}`, username: key, avatar, coinsContributed: 0 };
+    }
+    supporterMap[key].coinsContributed += coins;
+    const side = tx.targetHostSide || "hostA";
+    const targetMap = side === "hostB" ? hostBMap : hostAMap;
+    if (!targetMap[key]) {
+      targetMap[key] = { id: `sup-${side}-${key}`, username: key, avatar, coinsContributed: 0 };
+    }
+    targetMap[key].coinsContributed += coins;
+  });
+  const topGifters = Object.values(supporterMap).sort((a, b) => b.coinsContributed - a.coinsContributed);
+  const hostASupporters = Object.values(hostAMap).sort((a, b) => b.coinsContributed - a.coinsContributed);
+  const hostBSupporters = Object.values(hostBMap).sort((a, b) => b.coinsContributed - a.coinsContributed);
+  res.json({
+    topGifters: topGifters.slice(0, 5),
+    hostASupporters: hostASupporters.slice(0, 3),
+    hostBSupporters: hostBSupporters.slice(0, 3)
+  });
 });
 app2.post("/api/v1/gifts", (req, res) => {
   const newGift = { id: `g-${Date.now()}`, status: "active", ...req.body };
@@ -933,48 +1220,202 @@ app2.post("/api/v1/categories", (req, res) => {
   writeMetadata("categories", { list: req.body });
   res.json(dbData.categories);
 });
+var findHostIndex = (id) => {
+  if (!id) return -1;
+  const cleanId = id.replace(/^h-/, "");
+  return dbData.hosts.findIndex(
+    (h) => h.id === id || h.id === `h-${cleanId}` || h.hostUsername === id || h.hostUsername === cleanId || h.name === id || h.name === cleanId || h.hostUid === id || h.hostUid === cleanId
+  );
+};
 app2.get("/api/v1/hosts", (req, res) => {
-  res.json(dbData.hosts);
+  if (!Array.isArray(dbData.hosts)) {
+    dbData.hosts = [];
+  }
+  let activeHosts = dbData.hosts.filter((h) => h && h.isLive === true && h.status !== "ended" && h.status !== "offline");
+  if (activeHosts.length === 0) {
+    DEFAULT_DEMO_HOSTS.forEach((dh) => {
+      if (!dbData.hosts.some((existing) => existing.id === dh.id)) {
+        dbData.hosts.push({ ...dh });
+      }
+    });
+    activeHosts = dbData.hosts.filter((h) => h && h.isLive === true && h.status !== "ended" && h.status !== "offline");
+  }
+  res.json(activeHosts);
 });
 app2.post("/api/v1/hosts", (req, res) => {
+  const hostData = req.body || {};
+  const hostUsername = hostData.hostUsername || hostData.name || "live_host";
+  const hostId = hostData.id || `h-${hostData.hostUid || hostUsername}`;
   const newHost = {
-    id: `h-${Date.now()}`,
+    id: hostId,
     isLive: true,
-    viewers: 0,
-    likes: 0,
-    ...req.body
+    status: "live",
+    category: hostData.category || "video",
+    viewers: hostData.viewers || 0,
+    realViewerCount: hostData.realViewerCount || 0,
+    likes: hostData.likes || 0,
+    connectedViewers: hostData.connectedViewers || [],
+    comments: hostData.comments || [],
+    ...hostData,
+    hostUsername,
+    hostUid: hostData.hostUid || hostData.hostUsername || hostData.name,
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
-  dbData.hosts.push(newHost);
-  saveDatabase();
-  syncDocument("hosts", newHost.id, newHost);
-  res.status(201).json(newHost);
+  const existingIdx = findHostIndex(hostId);
+  if (existingIdx !== -1) {
+    const existing = dbData.hosts[existingIdx];
+    const commentsToKeep = newHost.comments && newHost.comments.length > 0 ? newHost.comments : existing.comments || [];
+    const connectedToKeep = newHost.connectedViewers && newHost.connectedViewers.length > 0 ? newHost.connectedViewers : existing.connectedViewers || [];
+    const realViewerCountToKeep = Math.max(newHost.realViewerCount || 0, connectedToKeep.length, existing.realViewerCount || 0);
+    const likesToKeep = Math.max(newHost.likes || 0, existing.likes || 0);
+    dbData.hosts[existingIdx] = {
+      ...existing,
+      ...newHost,
+      comments: commentsToKeep,
+      connectedViewers: connectedToKeep,
+      realViewerCount: realViewerCountToKeep,
+      likes: likesToKeep,
+      isLive: true,
+      status: "live"
+    };
+    saveDatabase();
+    syncDocument("hosts", hostId, dbData.hosts[existingIdx]);
+    console.log(`[LIVE SERVER SUCCESS] Updated existing host stream: ${hostId} (@${hostUsername})`);
+    return res.status(200).json(dbData.hosts[existingIdx]);
+  } else {
+    dbData.hosts.push(newHost);
+    saveDatabase();
+    syncDocument("hosts", hostId, newHost);
+    console.log(`[LIVE SERVER SUCCESS] Registered new host stream: ${hostId} (@${hostUsername})`);
+    return res.status(201).json(newHost);
+  }
+});
+app2.get("/api/v1/hosts/:id", (req, res) => {
+  const { id } = req.params;
+  const index = findHostIndex(id);
+  if (index !== -1) {
+    res.json(dbData.hosts[index]);
+  } else {
+    res.status(404).json({ error: "Host not found" });
+  }
 });
 app2.put("/api/v1/hosts/:id", (req, res) => {
   const { id } = req.params;
-  const index = dbData.hosts.findIndex((h) => h.id === id);
+  const index = findHostIndex(id);
   if (index !== -1) {
-    dbData.hosts[index] = { ...dbData.hosts[index], ...req.body };
+    const existing = dbData.hosts[index];
+    const updateData = { ...req.body };
+    if ((updateData.comments === void 0 || Array.isArray(updateData.comments) && updateData.comments.length === 0) && existing.comments && existing.comments.length > 0) {
+      updateData.comments = existing.comments;
+    }
+    if (updateData.connectedViewers === void 0 && existing.connectedViewers) {
+      updateData.connectedViewers = existing.connectedViewers;
+      updateData.realViewerCount = existing.connectedViewers.length;
+    }
+    if (existing.likes !== void 0 && (updateData.likes === void 0 || updateData.likes < existing.likes)) {
+      updateData.likes = existing.likes;
+    }
+    if (updateData.lastGiftEvent === void 0 && existing.lastGiftEvent) {
+      updateData.lastGiftEvent = existing.lastGiftEvent;
+    }
+    if (updateData.lastLikeEvent === void 0 && existing.lastLikeEvent) {
+      updateData.lastLikeEvent = existing.lastLikeEvent;
+    }
+    if (updateData.lastJoinEvent === void 0 && existing.lastJoinEvent) {
+      updateData.lastJoinEvent = existing.lastJoinEvent;
+    }
+    if (updateData.pkScoreHost === void 0 && existing.pkScoreHost !== void 0) {
+      updateData.pkScoreHost = existing.pkScoreHost;
+    }
+    if (updateData.pkScoreOpponent === void 0 && existing.pkScoreOpponent !== void 0) {
+      updateData.pkScoreOpponent = existing.pkScoreOpponent;
+    }
+    dbData.hosts[index] = { ...existing, ...updateData, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
     saveDatabase();
-    syncDocument("hosts", id, dbData.hosts[index]);
+    syncDocument("hosts", dbData.hosts[index].id, dbData.hosts[index]);
     res.json(dbData.hosts[index]);
+  } else {
+    const newHost = {
+      id,
+      isLive: true,
+      viewers: 1,
+      realViewerCount: 1,
+      likes: 0,
+      connectedViewers: [],
+      comments: [],
+      ...req.body,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    dbData.hosts.push(newHost);
+    saveDatabase();
+    syncDocument("hosts", id, newHost);
+    res.json(newHost);
+  }
+});
+app2.post("/api/v1/hosts/:id/like", (req, res) => {
+  const { id } = req.params;
+  const { count = 1, senderUsername, xPercent, yPercent } = req.body || {};
+  const index = findHostIndex(id);
+  if (index !== -1) {
+    const host = dbData.hosts[index];
+    host.likes = (host.likes || 0) + Number(count);
+    host.lastLikeEvent = {
+      senderUsername: senderUsername || "Viewer",
+      timestamp: Date.now(),
+      count: Number(count),
+      xPercent,
+      yPercent
+    };
+    saveDatabase();
+    syncDocument("hosts", host.id, host);
+    res.json({ success: true, likes: host.likes, lastLikeEvent: host.lastLikeEvent });
   } else {
     res.status(404).json({ error: "Host not found" });
   }
 });
 app2.delete("/api/v1/hosts/:id", (req, res) => {
   const { id } = req.params;
-  dbData.hosts = dbData.hosts.filter((h) => h.id !== id);
-  saveDatabase();
-  deleteDocument("hosts", id);
-  res.json({ message: "Host deleted successfully" });
+  const cleanId = id.replace(/^h-/, "");
+  if (Array.isArray(dbData.hosts)) {
+    const toDelete = dbData.hosts.filter(
+      (h) => h.id === id || h.id === `h-${id}` || h.hostUsername === id || h.hostUsername === cleanId || h.name === id || h.name === cleanId || h.hostUid === id || h.hostUid === cleanId
+    );
+    toDelete.forEach((h) => {
+      deleteDocument("hosts", h.id);
+    });
+    dbData.hosts = dbData.hosts.filter(
+      (h) => !(h.id === id || h.id === `h-${id}` || h.hostUsername === id || h.hostUsername === cleanId || h.name === id || h.name === cleanId || h.hostUid === id || h.hostUid === cleanId)
+    );
+    saveDatabase();
+  }
+  console.log(`[LIVE SERVER SUCCESS] Ended/Deleted host stream: ${id}`);
+  res.json({ message: "Host deleted successfully", targetId: id });
+});
+app2.post("/api/v1/hosts/:id/unload-end", (req, res) => {
+  const { id } = req.params;
+  const cleanId = id.replace(/^h-/, "");
+  if (Array.isArray(dbData.hosts)) {
+    const toDelete = dbData.hosts.filter(
+      (h) => h.id === id || h.id === `h-${id}` || h.hostUsername === id || h.hostUsername === cleanId || h.name === id || h.name === cleanId || h.hostUid === id || h.hostUid === cleanId
+    );
+    toDelete.forEach((h) => {
+      deleteDocument("hosts", h.id);
+    });
+    dbData.hosts = dbData.hosts.filter(
+      (h) => !(h.id === id || h.id === `h-${id}` || h.hostUsername === id || h.hostUsername === cleanId || h.name === id || h.name === cleanId || h.hostUid === id || h.hostUid === cleanId)
+    );
+    saveDatabase();
+  }
+  console.log(`[LIVE SERVER SUCCESS] Host disconnected via unload-end: ${id}`);
+  res.json({ success: true });
 });
 app2.post("/api/v1/hosts/:id/join", (req, res) => {
   const { id } = req.params;
-  const { userId, username, avatar, level, vipLevel } = req.body;
+  const { userId, username, avatar, level, vipLevel } = req.body || {};
   if (!username) {
     return res.status(400).json({ error: "Username is required to join" });
   }
-  const index = dbData.hosts.findIndex((h) => h.id === id);
+  const index = findHostIndex(id);
   if (index !== -1) {
     const host = dbData.hosts[index];
     if (!host.connectedViewers) {
@@ -985,20 +1426,29 @@ app2.post("/api/v1/hosts/:id/join", (req, res) => {
     }
     host.viewers = host.connectedViewers.length;
     host.realViewerCount = host.connectedViewers.length;
+    host.lastJoinEvent = {
+      id: `join-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      username,
+      userLevel: level || 1,
+      vipLevel: vipLevel || 0,
+      timestamp: Date.now()
+    };
     saveDatabase();
-    syncDocument("hosts", id, host);
+    syncDocument("hosts", host.id, host);
+    console.log(`[LIVE SERVER SUCCESS] User @${username} joined live room ${host.id} (total viewers: ${host.realViewerCount})`);
     res.json(host);
   } else {
+    console.warn(`[LIVE SERVER WARN] Host ${id} not found for join`);
     res.status(404).json({ error: "Host not found" });
   }
 });
 app2.post("/api/v1/hosts/:id/leave", (req, res) => {
   const { id } = req.params;
-  const { username } = req.body;
+  const { username } = req.body || {};
   if (!username) {
     return res.status(400).json({ error: "Username is required to leave" });
   }
-  const index = dbData.hosts.findIndex((h) => h.id === id);
+  const index = findHostIndex(id);
   if (index !== -1) {
     const host = dbData.hosts[index];
     if (host.connectedViewers) {
@@ -1009,9 +1459,11 @@ app2.post("/api/v1/hosts/:id/leave", (req, res) => {
     host.viewers = host.connectedViewers.length;
     host.realViewerCount = host.connectedViewers.length;
     saveDatabase();
-    syncDocument("hosts", id, host);
+    syncDocument("hosts", host.id, host);
+    console.log(`[LIVE SERVER SUCCESS] User @${username} left live room ${host.id} (remaining viewers: ${host.realViewerCount})`);
     res.json(host);
   } else {
+    console.warn(`[LIVE SERVER WARN] Host ${id} not found for leave`);
     res.status(404).json({ error: "Host not found" });
   }
 });
@@ -1021,7 +1473,7 @@ app2.post("/api/v1/hosts/:id/comments", (req, res) => {
   if (!message || !username) {
     return res.status(400).json({ error: "Username and message are required" });
   }
-  const index = dbData.hosts.findIndex((h) => h.id === id);
+  const index = findHostIndex(id);
   if (index !== -1) {
     const host = dbData.hosts[index];
     if (!host.comments) {
@@ -1039,23 +1491,232 @@ app2.post("/api/v1/hosts/:id/comments", (req, res) => {
     };
     host.comments.push(newComment);
     saveDatabase();
-    syncDocument("hosts", id, host);
+    syncDocument("hosts", host.id, host);
     res.status(201).json(host.comments);
   } else {
     res.status(404).json({ error: "Host not found" });
   }
 });
+var activePkInvites = {};
+var activePkSessions = {};
+var onlineUserPresence = {};
+app2.post("/api/v1/presence", (req, res) => {
+  const { username, userId, avatar, level, fans, isLive, inPk } = req.body || {};
+  if (!username) {
+    return res.status(400).json({ error: "Username required for presence" });
+  }
+  const normUser = String(username).toLowerCase();
+  onlineUserPresence[normUser] = {
+    username,
+    userId: userId || username,
+    avatar: avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80",
+    level: Number(level) || 1,
+    fans: fans || "10K fans",
+    isLive: !!isLive,
+    inPk: !!inPk,
+    lastSeen: Date.now()
+  };
+  const now = Date.now();
+  Object.keys(onlineUserPresence).forEach((key) => {
+    if (now - onlineUserPresence[key].lastSeen > 15e3) {
+      delete onlineUserPresence[key];
+    }
+  });
+  res.json({ success: true, activeUsersCount: Object.keys(onlineUserPresence).length });
+});
+app2.get("/api/v1/pk/available-hosts", (req, res) => {
+  const currentUsername = String(req.query.username || "").toLowerCase();
+  const now = Date.now();
+  const liveHostsList = (dbData.hosts || []).filter((h) => h.isLive !== false && !h.inPk && !h.inPkBattle).map((h) => ({
+    id: String(h.id || h.hostUid || h.hostUsername),
+    userId: String(h.hostUid || h.id || h.hostUsername),
+    username: String(h.hostUsername || h.name || "Live Host"),
+    avatar: String(h.hostAvatar || h.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80"),
+    level: Number(h.hostLevel || h.level || 1),
+    fans: `${h.followersCount || h.fans || 0} fans`,
+    isLive: true,
+    inPk: false,
+    status: "\u{1F534} Live Solo"
+  }));
+  const onlinePresenceList = Object.values(onlineUserPresence).filter((u) => now - u.lastSeen <= 15e3 && !u.inPk).map((u) => ({
+    id: String(u.userId || u.username),
+    userId: String(u.userId || u.username),
+    username: String(u.username),
+    avatar: String(u.avatar),
+    level: Number(u.level || 1),
+    fans: String(u.fans || "10K fans"),
+    isLive: !!u.isLive,
+    inPk: false,
+    status: u.isLive ? "\u{1F534} Live Solo" : "\u{1F7E2} Online"
+  }));
+  const combinedMap = /* @__PURE__ */ new Map();
+  [...liveHostsList, ...onlinePresenceList].forEach((item) => {
+    const key = item.username.toLowerCase();
+    if (key !== currentUsername && !combinedMap.has(key)) {
+      combinedMap.set(key, item);
+    }
+  });
+  const result = Array.from(combinedMap.values());
+  res.json(result);
+});
+app2.post("/api/v1/pk/invite", (req, res) => {
+  const { fromUsername, fromUserId, fromAvatar, fromLevel, fromFans, toUsername, toUserId } = req.body || {};
+  if (!fromUsername || !toUsername) {
+    return res.status(400).json({ error: "Sender and receiver usernames are required" });
+  }
+  const normFrom = fromUsername.toLowerCase();
+  const normTo = toUsername.toLowerCase();
+  Object.keys(activePkInvites).forEach((id) => {
+    const inv = activePkInvites[id];
+    if (inv.fromUsername.toLowerCase() === normFrom && inv.status === "pending") {
+      inv.status = "expired";
+    }
+  });
+  const inviteId = `pki_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const channelName = `pk_room_${[normFrom, normTo].sort().join("_")}`;
+  const newInvite = {
+    id: inviteId,
+    fromUsername,
+    fromUserId: fromUserId || fromUsername,
+    fromAvatar: fromAvatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
+    fromLevel: Number(fromLevel) || 1,
+    fromFans: fromFans || "10K fans",
+    toUsername,
+    toUserId: toUserId || toUsername,
+    channelName,
+    status: "pending",
+    createdAt: Date.now()
+  };
+  activePkInvites[inviteId] = newInvite;
+  console.log(`[PK SERVER SUCCESS] Host @${fromUsername} invited @${toUsername} to 1v1 (Channel: ${channelName})`);
+  res.status(201).json(newInvite);
+});
+app2.get("/api/v1/pk/invites", (req, res) => {
+  const username = String(req.query.username || "").toLowerCase();
+  if (!username) {
+    return res.status(400).json({ error: "Username parameter required" });
+  }
+  const now = Date.now();
+  let incoming = null;
+  let outgoing = null;
+  Object.values(activePkInvites).forEach((inv) => {
+    if (inv.status === "pending" && now - inv.createdAt > 2e4) {
+      inv.status = "expired";
+    }
+    if (inv.toUsername.toLowerCase() === username) {
+      if (inv.status === "pending") incoming = inv;
+    }
+    if (inv.fromUsername.toLowerCase() === username) {
+      outgoing = inv;
+    }
+  });
+  const activeSession = Object.values(activePkSessions).find(
+    (s) => s.status !== "ended" && (s.hostA.username.toLowerCase() === username || s.hostB.username.toLowerCase() === username)
+  ) || null;
+  res.json({
+    incoming,
+    outgoing,
+    activeSession
+  });
+});
+app2.post("/api/v1/pk/invite/:id/respond", (req, res) => {
+  const { id } = req.params;
+  const { action, username, avatar, level, fans } = req.body || {};
+  const invite = activePkInvites[id];
+  if (!invite) {
+    return res.status(404).json({ error: "Invite not found or expired" });
+  }
+  if (action === "accept") {
+    invite.status = "accepted";
+    const sessionId = `session_${invite.channelName}`;
+    const session = {
+      id: sessionId,
+      channelName: invite.channelName,
+      hostA: {
+        username: invite.fromUsername,
+        userId: invite.fromUserId,
+        avatar: invite.fromAvatar,
+        level: invite.fromLevel,
+        fans: invite.fromFans,
+        score: 0
+      },
+      hostB: {
+        username: username || invite.toUsername,
+        userId: invite.toUserId,
+        avatar: avatar || "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80",
+        level: Number(level) || 1,
+        fans: fans || "15K fans",
+        score: 0
+      },
+      status: "connected",
+      timer: 270,
+      startedAt: Date.now()
+    };
+    activePkSessions[sessionId] = session;
+    const normA = invite.fromUsername.toLowerCase();
+    const normB = (username || invite.toUsername).toLowerCase();
+    if (onlineUserPresence[normA]) onlineUserPresence[normA].inPk = true;
+    if (onlineUserPresence[normB]) onlineUserPresence[normB].inPk = true;
+    dbData.hosts.forEach((h) => {
+      if (h.hostUsername?.toLowerCase() === normA || h.hostUsername?.toLowerCase() === normB) {
+        h.inPk = true;
+        h.category = "pk";
+      }
+    });
+    console.log(`[PK SERVER SUCCESS] @${username} ACCEPTED invite from @${invite.fromUsername}! Session started on channel: ${invite.channelName}`);
+    return res.json({ success: true, status: "accepted", invite, session });
+  } else {
+    invite.status = "rejected";
+    console.log(`[PK SERVER INFO] @${username} REJECTED invite from @${invite.fromUsername}`);
+    return res.json({ success: true, status: "rejected", invite });
+  }
+});
+app2.post("/api/v1/pk/end", (req, res) => {
+  const { channelName, username } = req.body || {};
+  Object.values(activePkSessions).forEach((s) => {
+    if (s.channelName === channelName || username && (s.hostA.username.toLowerCase() === username.toLowerCase() || s.hostB.username.toLowerCase() === username.toLowerCase())) {
+      s.status = "ended";
+      const normA = s.hostA.username.toLowerCase();
+      const normB = s.hostB.username.toLowerCase();
+      if (onlineUserPresence[normA]) onlineUserPresence[normA].inPk = false;
+      if (onlineUserPresence[normB]) onlineUserPresence[normB].inPk = false;
+      dbData.hosts.forEach((h) => {
+        if (h.hostUsername?.toLowerCase() === normA || h.hostUsername?.toLowerCase() === normB) {
+          h.inPk = false;
+          h.category = "solo";
+        }
+      });
+    }
+  });
+  res.json({ success: true, message: "1v1 session ended" });
+});
 app2.get("/api/v1/parties", (req, res) => {
-  res.json(dbData.parties || []);
+  if (!Array.isArray(dbData.parties)) {
+    dbData.parties = [];
+  }
+  let activeParties = dbData.parties.filter((p) => p && p.status !== "ended");
+  if (activeParties.length === 0) {
+    DEFAULT_DEMO_PARTIES.forEach((dp) => {
+      if (!dbData.parties.some((existing) => existing.id === dp.id)) {
+        dbData.parties.push({ ...dp });
+      }
+    });
+    activeParties = dbData.parties.filter((p) => p && p.status !== "ended");
+  }
+  res.json(activeParties);
 });
 app2.post("/api/v1/parties", (req, res) => {
   const { title, hostUsername, hostAvatar, category, isPublic, password, language, description } = req.body;
-  const id = `party-${Date.now()}`;
+  if (!dbData.parties) {
+    dbData.parties = [];
+  }
+  const existingIdx = dbData.parties.findIndex((p) => p.hostUsername === hostUsername && p.status !== "ended");
+  const id = existingIdx !== -1 ? dbData.parties[existingIdx].id : `party-${Date.now()}`;
   const newParty = {
     id,
     title: title || "Sehr Live Audio Lounge",
-    hostUsername,
-    hostAvatar,
+    hostUsername: hostUsername || "Host",
+    hostAvatar: hostAvatar || "",
     category: category || "Music",
     participantCount: 1,
     maxCapacity: 12,
@@ -1065,7 +1726,7 @@ app2.post("/api/v1/parties", (req, res) => {
     description: description || "",
     status: "active",
     connectedViewers: [{ userId: hostUsername, username: hostUsername, avatar: hostAvatar || "", level: 1, vipLevel: 0 }],
-    seats: [
+    seats: existingIdx !== -1 ? dbData.parties[existingIdx].seats : [
       { id: 1, name: hostUsername, avatar: hostAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80", isMuted: false, isLocked: false },
       { id: 2, name: null, avatar: null, isMuted: false, isLocked: false },
       { id: 3, name: null, avatar: null, isMuted: false, isLocked: false },
@@ -1089,13 +1750,19 @@ app2.post("/api/v1/parties", (req, res) => {
       }
     ]
   };
-  if (!dbData.parties) {
-    dbData.parties = [];
+  if (existingIdx !== -1) {
+    dbData.parties[existingIdx] = { ...dbData.parties[existingIdx], ...newParty, status: "active" };
+    saveDatabase();
+    syncDocument("parties", id, dbData.parties[existingIdx]);
+    console.log(`[SEHR-LIVE PARTY] Updated existing party room: ${id} by @${hostUsername}`);
+    return res.status(200).json(dbData.parties[existingIdx]);
+  } else {
+    dbData.parties.push(newParty);
+    saveDatabase();
+    syncDocument("parties", id, newParty);
+    console.log(`[SEHR-LIVE PARTY] Created new party room: ${id} by @${hostUsername}`);
+    return res.status(201).json(newParty);
   }
-  dbData.parties.push(newParty);
-  saveDatabase();
-  syncDocument("parties", id, newParty);
-  res.status(201).json(newParty);
 });
 app2.post("/api/v1/parties/:id/join", (req, res) => {
   const { id } = req.params;
@@ -1129,13 +1796,38 @@ app2.post("/api/v1/parties/:id/leave", (req, res) => {
     party.participantCount = party.connectedViewers ? party.connectedViewers.length : 0;
     party.seats = party.seats.map((seat) => {
       if (seat.name === username || seat.name && seat.name.startsWith(username)) {
-        return { ...seat, name: null, avatar: null };
+        return { ...seat, name: null, avatar: null, isMuted: false };
       }
       return seat;
     });
+    if (party.lastSeen && username) {
+      delete party.lastSeen[username];
+    }
+    if (username === party.hostUsername || party.participantCount === 0) {
+      party.status = "ended";
+      dbData.parties = dbData.parties.filter((p) => p.id !== id);
+      saveDatabase();
+      deleteDocument("parties", id);
+      console.log(`[SEHR-LIVE PARTY] Host/all left. Closed party room: ${id}`);
+      return res.json({ message: "Party closed as host left", party });
+    }
+    console.log(`[SEHR-LIVE PARTY] User ${username} left party ${id}. Seats cleared immediately.`);
     saveDatabase();
     syncDocument("parties", id, party);
     res.json(party);
+  } else {
+    res.status(404).json({ error: "Party Room not found" });
+  }
+});
+app2.post("/api/v1/parties/:id/heartbeat", (req, res) => {
+  const { id } = req.params;
+  const { username } = req.body;
+  if (!username) return res.status(400).json({ error: "username is required" });
+  const party = dbData.parties?.find((p) => p.id === id);
+  if (party) {
+    if (!party.lastSeen) party.lastSeen = {};
+    party.lastSeen[username] = Date.now();
+    res.json({ status: "ok" });
   } else {
     res.status(404).json({ error: "Party Room not found" });
   }
@@ -2422,5 +3114,31 @@ async function startServer() {
     console.log(`Sehr Live Server running on http://0.0.0.0:${PORT}`);
   });
 }
+setInterval(() => {
+  if (!dbData.parties || !Array.isArray(dbData.parties)) return;
+  const now = Date.now();
+  let changed = false;
+  dbData.parties.forEach((party) => {
+    if (!party.seats || party.status === "ended") return;
+    const lastSeen = party.lastSeen || {};
+    party.seats.forEach((seat) => {
+      if (seat.name) {
+        const username = seat.name;
+        const lastTs = lastSeen[username];
+        if (lastTs && now - lastTs > 12e3) {
+          console.log(`[SEHR-LIVE AUTO-PRUNE] Seat occupant ${username} on Seat ${seat.id} in party ${party.id} timed out. Clearing seat.`);
+          seat.name = null;
+          seat.avatar = null;
+          seat.isMuted = false;
+          delete lastSeen[username];
+          changed = true;
+        }
+      }
+    });
+  });
+  if (changed) {
+    saveDatabase();
+  }
+}, 5e3);
 startServer();
 //# sourceMappingURL=server.cjs.map
