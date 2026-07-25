@@ -197,6 +197,19 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
         const initialAgoraRole = userRole === "listener" ? "audience" : "host";
         await agoraClient.setClientRole(initialAgoraRole);
 
+        console.log("[RTC VOICE JOIN TRACE]", {
+          userId: username,
+          role: userRole === "listener" ? "VIEWER" : userRole.toUpperCase(),
+          channelId: channelName,
+          localCameraEnabled: false,
+          localMicEnabled: userRole === "host" || userRole === "speaker",
+          publishCameraTrack: false,
+          publishMicrophoneTrack: userRole === "host" || userRole === "speaker",
+          cameraPublished: false,
+          micPublished: userRole === "host" || userRole === "speaker",
+          subscribedRemoteUid: null
+        });
+
         // Join voice room with UID conflict safety
         const targetJoinUid = tokenData.uid || numericUid;
         try {
@@ -282,9 +295,16 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
     // Teardown everything on unmount
     return () => {
       isUnmounted = true;
-      console.log("[AgoraPartyAudio] Disconnecting WebRTC voice channels...");
+      console.log("[AgoraPartyAudio] Disconnecting WebRTC voice channels & resetting state...");
+      if (localMicStreamRef.current) {
+        localMicStreamRef.current.getTracks().forEach(t => t.stop());
+        localMicStreamRef.current = null;
+      }
       if (activeClient) {
-        activeClient.leave().catch(e => console.log("Error leaving client:", e));
+        try {
+          activeClient.removeAllListeners();
+          activeClient.leave().catch(e => console.log("Error leaving client:", e));
+        } catch (e) {}
       }
     };
   }, [channelName, username]);

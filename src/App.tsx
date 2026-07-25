@@ -4241,7 +4241,9 @@ export default function App() {
   useEffect(() => {
     if (clientView !== "live-room" || !activeHost) return;
 
-    // Safety: As a viewer in live-room, ensure local cameraStream is completely killed so viewer never sees/publishes local camera
+    // Strict role check: In live-room, current user is a viewer/subscriber.
+    // Local camera and microphone streams are strictly ONLY allowed for host role (user-live/camera-prep).
+    // Ensure any existing cameraStream is stopped & cleared so viewers never publish local camera/mic.
     if (cameraStream) {
       try {
         cameraStream.getTracks().forEach(track => track.stop());
@@ -4250,7 +4252,11 @@ export default function App() {
     }
 
     const hostId = activeHost.id;
-    console.log(`[LIVE VIEWER JOIN ATTEMPT] Joining backend room: ${hostId} (@${activeHost.hostUsername || activeHost.name})`);
+    console.log(`[LIVE VIEWER JOIN ATTEMPT] Joining backend room as viewer: ${hostId} (@${activeHost.hostUsername || activeHost.name})`, {
+      role: "viewer",
+      publishCameraTrack: false,
+      publishMicrophoneTrack: false
+    });
 
     fetch(`/api/v1/hosts/${hostId}/join`, {
       method: "POST",
@@ -4260,7 +4266,10 @@ export default function App() {
         username: user.username,
         avatar: user.avatar,
         level: user.userLevel || 1,
-        vipLevel: user.vipLevel || 0
+        vipLevel: user.vipLevel || 0,
+        role: "viewer",
+        publishCameraTrack: false,
+        publishMicrophoneTrack: false
       })
     })
       .then(res => {
@@ -7639,6 +7648,32 @@ export default function App() {
                           </button>
                         </div>
 
+                        {/* Party Rooms Header & Refresh button */}
+                        <div className="flex items-center justify-between pt-1 bg-transparent">
+                          <div className="flex items-center space-x-1.5 bg-transparent">
+                            <span className="w-2 h-2 rounded-full bg-[#ff007f] animate-ping"></span>
+                            <h3 className="text-[11px] font-black uppercase text-white tracking-wider bg-transparent">
+                              Active Audio Rooms ({partiesList.filter(p => p && p.status !== "ended").length})
+                            </h3>
+                          </div>
+                          <button
+                            onClick={() => {
+                              fetch("/api/v1/parties")
+                                .then(r => r.json())
+                                .then(data => {
+                                  if (Array.isArray(data)) setPartiesList(data);
+                                  alert("🔄 Audio Party Rooms Refreshed!");
+                                })
+                                .catch(err => console.error("Party refresh error:", err));
+                            }}
+                            className="flex items-center space-x-1 bg-[#1c1c27] hover:bg-[#ff007f]/20 text-[#ff007f] border border-[#ff007f]/30 px-2 py-1 rounded-lg text-[9px] font-bold transition-all active:scale-95 cursor-pointer"
+                            title="Refresh Party Cards"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Refresh</span>
+                          </button>
+                        </div>
+
                         {/* Category Chips filter */}
                         <div className="flex space-x-1.5 overflow-x-auto pb-1 scrollbar-none">
                           {[
@@ -7899,35 +7934,53 @@ export default function App() {
                             </button>
                           </div>
 
-                          {/* Search Input */}
-                          <div className="relative">
-                            <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400 bg-transparent">
-                              <Search className="w-3.5 h-3.5 text-gray-500 bg-transparent" />
-                            </span>
-                            <input
-                              type="text"
-                              value={feedSearchQuery}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setFeedSearchQuery(val);
+                          {/* Search Input & Refresh Button */}
+                          <div className="flex items-center space-x-2 bg-transparent">
+                            <div className="relative flex-1 bg-transparent">
+                              <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400 bg-transparent">
+                                <Search className="w-3.5 h-3.5 text-gray-500 bg-transparent" />
+                              </span>
+                              <input
+                                type="text"
+                                value={feedSearchQuery}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setFeedSearchQuery(val);
+                                  fetch("/api/v1/hosts")
+                                    .then(r => r.json())
+                                    .then(data => {
+                                      if (Array.isArray(data)) setLiveStreamsList(data);
+                                    })
+                                    .catch(err => console.error("[LIVE SEARCH QUERY ERROR]:", err));
+                                }}
+                                placeholder="Search by host name, username, ID, or topic..."
+                                className="w-full bg-[#1c1c27] text-white text-[10px] font-medium pl-9 pr-8 py-2 rounded-lg border border-[#303040] focus:border-[#ff007f]/50 focus:outline-none transition-all placeholder:text-gray-500 font-sans"
+                              />
+                              {feedSearchQuery && (
+                                <button
+                                  onClick={() => setFeedSearchQuery("")}
+                                  className="absolute inset-y-0 right-2.5 flex items-center text-gray-400 hover:text-white text-[10px] bg-transparent cursor-pointer"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => {
                                 fetch("/api/v1/hosts")
                                   .then(r => r.json())
                                   .then(data => {
                                     if (Array.isArray(data)) setLiveStreamsList(data);
+                                    alert("🔄 Live Streams Feed Refreshed!");
                                   })
-                                  .catch(err => console.error("[LIVE SEARCH QUERY ERROR]:", err));
+                                  .catch(err => console.error("Streams refresh error:", err));
                               }}
-                              placeholder="Search by host name, username, ID, or topic..."
-                              className="w-full bg-[#1c1c27] text-white text-[10px] font-medium pl-9 pr-8 py-2 rounded-lg border border-[#303040] focus:border-[#ff007f]/50 focus:outline-none transition-all placeholder:text-gray-500 font-sans"
-                            />
-                            {feedSearchQuery && (
-                              <button
-                                onClick={() => setFeedSearchQuery("")}
-                                className="absolute inset-y-0 right-2.5 flex items-center text-gray-400 hover:text-white text-[10px] bg-transparent cursor-pointer"
-                              >
-                                ✕
-                              </button>
-                            )}
+                              className="flex items-center space-x-1 bg-[#1c1c27] hover:bg-[#ff007f]/20 text-[#ff007f] border border-[#ff007f]/30 px-2.5 py-2 rounded-lg text-[9.5px] font-bold transition-all active:scale-95 cursor-pointer shrink-0"
+                              title="Refresh Stream Cards"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                              <span>Refresh</span>
+                            </button>
                           </div>
                         </div>
 
@@ -7959,7 +8012,7 @@ export default function App() {
                             // Only active live streams
                             if (host.isLive === false || host.status === "ended" || host.status === "offline") return false;
 
-                            // Always filter out user's own card from the stream feed so user never sees their own card in the live list
+                            // Only hide host's card if host is actively broadcasting inside their own user-live broadcast screen
                             const myUsername = (user.username || "").toLowerCase();
                             const myUniqueId = String(user.uniqueId || "").toLowerCase();
                             const hostUser = (host.hostUsername || host.username || "").toLowerCase();
@@ -7970,7 +8023,8 @@ export default function App() {
                             const isMyCard = 
                               (myUsername && (hostUser === myUsername || hostName === myUsername || hostId === myUsername)) ||
                               (myUniqueId && (hostUid === myUniqueId || hostId === myUniqueId || hostUser === myUniqueId));
-                            if (isMyCard) return false;
+                            
+                            if (isMyCard && clientView === "user-live") return false;
 
                             // Filter out audio category since it belongs in Party Hub
                             if (host.category === "audio") return false;
@@ -10081,7 +10135,7 @@ export default function App() {
                         >
                           
                           {/* 1. SOLO VIDEO & PK LIVE BROADCAST SIMULATION */}
-                          {(activeHost.category === "video" || activeHost.category === "pk") && (
+                          {activeHost.category !== "audio" && (
                             <div className="absolute inset-0 flex flex-col justify-between p-3 select-none">
                               {/* Background Real-Time WebRTC Agora Stream */}
                               <div className="absolute inset-0 z-0 overflow-hidden">
@@ -10095,6 +10149,9 @@ export default function App() {
                                     `room_${activeHost.name}`))))
                                   }
                                   role="subscriber"
+                                  userId={user.username || user.uniqueId || "viewer_101"}
+                                  publishCameraTrack={false}
+                                  publishMicrophoneTrack={false}
                                   videoMuted={activeHost.cameraEnabled === false || activeHost.isCamOff === true || activeHost.cameraMuted === true}
                                   hostAvatar={activeHost.avatar || activeHost.hostAvatar || liveBroadcasterAvatar}
                                   hostName={activeHost.name || activeHost.hostUsername || liveBroadcasterName}
@@ -15272,6 +15329,9 @@ export default function App() {
                                 <AgoraStream
                                   channelName={userLivePkChannelName || `room_${user.uniqueId || user.username || "sehr_1001"}`}
                                   role="publisher"
+                                  userId={user.username || user.uniqueId || "host_101"}
+                                  publishCameraTrack={userLiveCam}
+                                  publishMicrophoneTrack={userLiveMic}
                                   muted={!userLiveMic}
                                   videoMuted={!userLiveCam}
                                   hostAvatar={user.avatar || DEFAULT_USER.avatar}

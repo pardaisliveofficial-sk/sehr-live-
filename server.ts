@@ -130,6 +130,80 @@ const DEFAULT_DEMO_HOSTS = [
   }
 ];
 
+const DEFAULT_DEMO_PARTIES = [
+  {
+    id: "party-lounge-1",
+    title: "🎙️ Lahore Music & Friendship Lounge",
+    hostUsername: "sahar_official",
+    hostAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&h=300&q=80",
+    category: "Music",
+    participantCount: 3,
+    maxCapacity: 12,
+    isPublic: true,
+    password: "",
+    language: "Urdu",
+    description: "Welcome to 12-seat audio party lounge! Sing songs and make new friends 🎵",
+    status: "active",
+    connectedViewers: [
+      { userId: "sahar_official", username: "sahar_official", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&h=300&q=80", level: 10, vipLevel: 3 },
+      { userId: "zain_singing", username: "zain_singing", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&h=300&q=80", level: 8, vipLevel: 2 },
+      { userId: "ayesha_vip", username: "ayesha_vip", avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&h=300&q=80", level: 12, vipLevel: 4 }
+    ],
+    seats: [
+      { id: 1, name: "sahar_official", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&h=300&q=80", isMuted: false, isLocked: false },
+      { id: 2, name: "zain_singing", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&h=300&q=80", isMuted: false, isLocked: false },
+      { id: 3, name: "ayesha_vip", avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&h=300&q=80", isMuted: false, isLocked: false },
+      { id: 4, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 5, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 6, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 7, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 8, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 9, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 10, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 11, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 12, name: null, avatar: null, isMuted: false, isLocked: false }
+    ],
+    comments: [
+      { id: "c1", username: "System", message: "🎉 Welcome to Sehr Live 12-Seat Party Room!", isSystem: true, timestamp: "12:00 PM" }
+    ]
+  },
+  {
+    id: "party-lounge-2",
+    title: "💬 Late Night Chai & Chill Talk Show",
+    hostUsername: "ali_pro",
+    hostAvatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&h=300&q=80",
+    category: "Chill",
+    participantCount: 2,
+    maxCapacity: 12,
+    isPublic: true,
+    password: "",
+    language: "Urdu/English",
+    description: "Relaxed midnight conversations & fun banter ☕",
+    status: "active",
+    connectedViewers: [
+      { userId: "ali_pro", username: "ali_pro", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&h=300&q=80", level: 7, vipLevel: 1 },
+      { userId: "zara_star", username: "zara_star", avatar: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&h=300&q=80", level: 9, vipLevel: 3 }
+    ],
+    seats: [
+      { id: 1, name: "ali_pro", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&h=300&q=80", isMuted: false, isLocked: false },
+      { id: 2, name: "zara_star", avatar: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&h=300&q=80", isMuted: false, isLocked: false },
+      { id: 3, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 4, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 5, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 6, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 7, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 8, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 9, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 10, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 11, name: null, avatar: null, isMuted: false, isLocked: false },
+      { id: 12, name: null, avatar: null, isMuted: false, isLocked: false }
+    ],
+    comments: [
+      { id: "c2", username: "System", message: "☕ Grab a chai and take a seat!", isSystem: true, timestamp: "12:05 PM" }
+    ]
+  }
+];
+
 // Define dbData as a reference pointing directly to the real-time replicated Firestore cache
 let dbData: any = dbDataCache;
 
@@ -152,8 +226,13 @@ async function loadDatabase() {
       console.log("[SEHR-LIVE FIREBASE] Pre-populated in-memory cache with local database backup.");
     }
     
-    // 5. Ensure hosts array is initialized and strictly empty on server boot so lingering offline hosts do not persist
-    dbDataCache.hosts = [];
+    // 5. Ensure active hosts and active parties are initialized with active demo streams so feed is never empty
+    if (!Array.isArray(dbDataCache.hosts) || dbDataCache.hosts.length === 0) {
+      dbDataCache.hosts = DEFAULT_DEMO_HOSTS.map(h => ({ ...h }));
+    }
+    if (!Array.isArray(dbDataCache.parties) || dbDataCache.parties.length === 0) {
+      dbDataCache.parties = DEFAULT_DEMO_PARTIES.map(p => ({ ...p }));
+    }
     saveDatabase();
 
     // Ensure all registered user accounts have at least 1M (1000000) coins for local testing
@@ -320,7 +399,7 @@ app.post("/api/v1/webrtc/signal", (req, res) => {
     if (!channelName || !type) {
       return res.status(400).json({ error: "channelName and type are required" });
     }
-    const cleanChannel = String(channelName).replace(/[^a-zA-Z0-9_-]/g, "");
+    const cleanChannel = String(channelName).replace(/[^a-zA-Z0-9_-]/g, "").toLowerCase();
     const key = `${cleanChannel}_${target || "all"}`;
     if (!webrtcSignalStore[key]) {
       webrtcSignalStore[key] = [];
@@ -335,9 +414,9 @@ app.post("/api/v1/webrtc/signal", (req, res) => {
     };
     webrtcSignalStore[key].push(newSignal);
     
-    // Keep last 200 signals per key
-    if (webrtcSignalStore[key].length > 200) {
-      webrtcSignalStore[key] = webrtcSignalStore[key].slice(-200);
+    // Keep last 500 signals per key
+    if (webrtcSignalStore[key].length > 500) {
+      webrtcSignalStore[key] = webrtcSignalStore[key].slice(-500);
     }
     return res.json({ success: true, seq: signalCounter });
   } catch (err: any) {
@@ -348,12 +427,11 @@ app.post("/api/v1/webrtc/signal", (req, res) => {
 app.get("/api/v1/webrtc/signals/:channelName/:target", (req, res) => {
   try {
     const { channelName, target } = req.params;
-    const cleanChannel = String(channelName).replace(/[^a-zA-Z0-9_-]/g, "");
+    const cleanChannel = String(channelName).replace(/[^a-zA-Z0-9_-]/g, "").toLowerCase();
     const key = `${cleanChannel}_${target}`;
     const sinceSeq = Number(req.query.sinceSeq || req.query.since || 0);
 
     const list = webrtcSignalStore[key] || [];
-    // Support both seq filter and fallback timestamp filter
     const newSignals = list.filter((s) => s.seq > sinceSeq || (sinceSeq > 1000000000 && s.timestamp > sinceSeq));
     const maxSeq = list.length > 0 ? Math.max(...list.map(s => s.seq)) : sinceSeq;
 
@@ -1027,7 +1105,15 @@ app.get("/api/v1/hosts", (req, res) => {
   if (!Array.isArray(dbData.hosts)) {
     dbData.hosts = [];
   }
-  const activeHosts = dbData.hosts.filter((h: any) => h && h.isLive === true && h.status !== "ended" && h.status !== "offline");
+  let activeHosts = dbData.hosts.filter((h: any) => h && h.isLive === true && h.status !== "ended" && h.status !== "offline");
+  if (activeHosts.length === 0) {
+    DEFAULT_DEMO_HOSTS.forEach((dh: any) => {
+      if (!dbData.hosts.some((existing: any) => existing.id === dh.id)) {
+        dbData.hosts.push({ ...dh });
+      }
+    });
+    activeHosts = dbData.hosts.filter((h: any) => h && h.isLive === true && h.status !== "ended" && h.status !== "offline");
+  }
   res.json(activeHosts);
 });
 
@@ -1600,7 +1686,18 @@ app.post("/api/v1/pk/end", (req, res) => {
 
 // Party Hub & 12-Seat Audio Party endpoints
 app.get("/api/v1/parties", (req, res) => {
-  const activeParties = (dbData.parties || []).filter((p: any) => p.status !== "ended");
+  if (!Array.isArray(dbData.parties)) {
+    dbData.parties = [];
+  }
+  let activeParties = dbData.parties.filter((p: any) => p && p.status !== "ended");
+  if (activeParties.length === 0) {
+    DEFAULT_DEMO_PARTIES.forEach((dp: any) => {
+      if (!dbData.parties.some((existing: any) => existing.id === dp.id)) {
+        dbData.parties.push({ ...dp });
+      }
+    });
+    activeParties = dbData.parties.filter((p: any) => p && p.status !== "ended");
+  }
   res.json(activeParties);
 });
 
