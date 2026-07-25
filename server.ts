@@ -338,10 +338,10 @@ const handleAgoraTokenRequest = (req: any, res: any) => {
       return res.status(400).json({ error: "channelName is required" });
     }
 
-    const appId = process.env.AGORA_APP_ID || "MOCK_AGORA_APP_ID";
+    const appId = process.env.AGORA_APP_ID || "e0f2f357f00a40ca88172c3d82052d92";
     const appCertificate = process.env.AGORA_APP_CERTIFICATE || "";
 
-    const agoraUid = uid ? Number(uid) : 0;
+    const agoraUid = uid ? Number(uid) : Math.floor(Math.random() * 89999999) + 10000000;
     const resolvedRole = (role === "publisher" || role === "host" || role === 1)
       ? RtcRole.PUBLISHER
       : RtcRole.SUBSCRIBER;
@@ -351,7 +351,7 @@ const handleAgoraTokenRequest = (req: any, res: any) => {
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
     let token: string | null = null;
-    if (appId !== "MOCK_AGORA_APP_ID" && appCertificate) {
+    if (appCertificate && appId !== "MOCK_AGORA_APP_ID") {
       try {
         token = RtcTokenBuilder.buildTokenWithUid(
           appId,
@@ -367,8 +367,8 @@ const handleAgoraTokenRequest = (req: any, res: any) => {
         console.error("[SEHR-LIVE AGORA] RtcTokenBuilder failed:", err);
       }
     } else {
-      token = `mock-token-${channelName}-${agoraUid}-${resolvedRole}`;
-      console.log(`[SEHR-LIVE AGORA] AGORA_APP_ID not configured in env. Returning mock token and sandbox appId.`);
+      token = null;
+      console.log(`[SEHR-LIVE AGORA] Operating in App ID mode for channel ${channelName} (token=null).`);
     }
 
     return res.json({
