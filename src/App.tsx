@@ -3566,6 +3566,38 @@ export default function App() {
     return () => clearInterval(interval);
   }, [user.username, user.uid, userLiveInvitedHostId, userLivePkConnected, userLiveCoHost]);
 
+  // Real-time Live Discovery Feed Polling (fetches active hosts from backend every 2s)
+  useEffect(() => {
+    const fetchLiveHosts = async () => {
+      try {
+        const res = await fetch("/api/v1/hosts");
+        if (res.ok) {
+          const list = await res.json();
+          if (Array.isArray(list)) {
+            // Filter out stale or ended hosts, and filter out self card if host is not currently broadcasting
+            const filtered = list.filter((h: any) => {
+              if (!h.isLive || h.status === "ENDED") return false;
+              const isSelf = (user?.username && h.hostUsername?.toLowerCase() === user.username.toLowerCase()) ||
+                             (user?.username && h.name?.toLowerCase() === user.username.toLowerCase()) ||
+                             (user?.uniqueId && h.hostUid === user.uniqueId);
+              if (isSelf && clientView !== "user-live") {
+                return false; // Never display host's own card in feed if host is not currently in live stream
+              }
+              return true;
+            });
+            setLiveStreamsList(filtered);
+          }
+        }
+      } catch (err) {
+        // ignore transient network errors
+      }
+    };
+
+    fetchLiveHosts();
+    const interval = setInterval(fetchLiveHosts, 2000);
+    return () => clearInterval(interval);
+  }, [clientView, user?.username, user?.uniqueId]);
+
   // HTML references for auto-scrolling
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const lastSavedUserRef = useRef<string>("");
@@ -5793,6 +5825,17 @@ export default function App() {
     setUserLiveShowSummary(false);
     setUserLiveFollowed(false);
     setUserLivePkActive(false);
+    setUserLivePkConnected(false);
+    setUserLiveCoHost(null);
+    setUserLivePkChannelName("");
+    setUserLivePkScoreMy(0);
+    setUserLivePkScoreOther(0);
+    setUserLivePkTimer(240);
+    setIncoming1v1Invite(null);
+    setCurrentOutgoingInviteId(null);
+    setUserLiveInvitedHostId(null);
+    setUserLiveInviteCountdown(null);
+    setUserLiveShowExitOptions(false);
   };
 
   const handleHostPublishSuccess = (info: { channelName: string; uid: number }) => {
@@ -6054,6 +6097,22 @@ export default function App() {
       setTransactions(prev => [newTx, ...prev]);
     }
 
+    // Completely reset local camera, mic, PK, cohost, and invite states
+    setUserLiveCam(false);
+    setUserLiveMic(false);
+    setUserLivePkActive(false);
+    setUserLivePkConnected(false);
+    setUserLiveCoHost(null);
+    setUserLivePkChannelName("");
+    setUserLivePkScoreMy(0);
+    setUserLivePkScoreOther(0);
+    setUserLivePkTimer(240);
+    setIncoming1v1Invite(null);
+    setCurrentOutgoingInviteId(null);
+    setUserLiveInvitedHostId(null);
+    setUserLiveInviteCountdown(null);
+    setUserLiveShowExitOptions(false);
+
     // Call delete & end endpoints to end stream on backend
     const token = localStorage.getItem("sehr_auth_token");
     const hostId = `h-${user.uniqueId || user.username || "sehr_1001"}`;
@@ -6062,8 +6121,8 @@ export default function App() {
     setLiveStreamsList(prev => prev.filter(h => 
       h.id !== hostId && 
       h.id !== `h-${user.username}` &&
-      h.hostUsername !== user.username && 
-      h.name !== user.username &&
+      h.hostUsername?.toLowerCase() !== user.username.toLowerCase() && 
+      h.name?.toLowerCase() !== user.username.toLowerCase() &&
       h.hostUid !== user.uniqueId &&
       h.hostUid !== user.username
     ));
@@ -6075,6 +6134,11 @@ export default function App() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ hostId, hostUserId: user.uniqueId || user.username })
+    }).catch(() => {});
+    fetch(`/api/v1/pk/end`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: user.username, channelName: userLivePkChannelName })
     }).catch(() => {});
 
     fetch(`/api/v1/hosts/${hostId}`, {
@@ -6090,8 +6154,8 @@ export default function App() {
         setLiveStreamsList(prev => prev.filter(h => 
           h.id !== hostId && 
           h.id !== `h-${user.username}` &&
-          h.hostUsername !== user.username && 
-          h.name !== user.username &&
+          h.hostUsername?.toLowerCase() !== user.username.toLowerCase() && 
+          h.name?.toLowerCase() !== user.username.toLowerCase() &&
           h.hostUid !== user.uniqueId &&
           h.hostUid !== user.username
         ));
