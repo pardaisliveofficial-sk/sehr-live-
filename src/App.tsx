@@ -2029,13 +2029,13 @@ export default function App() {
     isCamMuted: boolean;
     isBigFrame: boolean;
   }>>([
-    { id: 1, name: "Hamza King", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80", diamonds: "98.2K", isMuted: false, isCamMuted: false, isBigFrame: false },
-    { id: 2, name: "Zara", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80", diamonds: "76.4K", isMuted: false, isCamMuted: false, isBigFrame: false },
-    { id: 3, name: "Saad", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80", diamonds: "56.3K", isMuted: false, isCamMuted: false, isBigFrame: false },
-    { id: 4, name: "Noor", avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=150&q=80", diamonds: "45.6K", isMuted: true, isCamMuted: false, isBigFrame: false },
-    { id: 5, name: "Usman", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80", diamonds: "33.2K", isMuted: false, isCamMuted: true, isBigFrame: false },
-    { id: 6, name: "Hoorain", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80", diamonds: "27.8K", isMuted: false, isCamMuted: false, isBigFrame: false },
-    { id: 7, name: "Ali Raza", avatar: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=150&q=80", diamonds: "21.6K", isMuted: false, isCamMuted: false, isBigFrame: false },
+    { id: 1, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false },
+    { id: 2, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false },
+    { id: 3, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false },
+    { id: 4, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false },
+    { id: 5, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false },
+    { id: 6, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false },
+    { id: 7, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false },
     { id: 8, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false }
   ]);
 
@@ -2291,13 +2291,13 @@ export default function App() {
     isBigFrame: boolean;
     isModerator?: boolean;
   }>>([
-    { id: 1, name: "Hamza King", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80", diamonds: "98.2K", isMuted: false, isCamMuted: false, isBigFrame: false, isModerator: false },
-    { id: 2, name: "Zara", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80", diamonds: "76.4K", isMuted: false, isCamMuted: false, isBigFrame: false, isModerator: false },
-    { id: 3, name: "Saad", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80", diamonds: "56.3K", isMuted: false, isCamMuted: false, isBigFrame: false, isModerator: false },
-    { id: 4, name: "Noor", avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=150&q=80", diamonds: "45.6K", isMuted: true, isCamMuted: false, isBigFrame: false, isModerator: true },
-    { id: 5, name: "Usman", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80", diamonds: "33.2K", isMuted: false, isCamMuted: true, isBigFrame: false, isModerator: false },
-    { id: 6, name: "Hoorain", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80", diamonds: "27.8K", isMuted: false, isCamMuted: false, isBigFrame: false, isModerator: false },
-    { id: 7, name: "Ali Raza", avatar: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=150&q=80", diamonds: "21.6K", isMuted: false, isCamMuted: false, isBigFrame: false, isModerator: false },
+    { id: 1, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false, isModerator: false },
+    { id: 2, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false, isModerator: false },
+    { id: 3, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false, isModerator: false },
+    { id: 4, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false, isModerator: false },
+    { id: 5, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false, isModerator: false },
+    { id: 6, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false, isModerator: false },
+    { id: 7, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false, isModerator: false },
     { id: 8, name: null, avatar: null, diamonds: null, isMuted: false, isCamMuted: false, isBigFrame: false, isModerator: false }
   ]);
 
@@ -3301,9 +3301,10 @@ export default function App() {
   const [userLivePkChannelName, setUserLivePkChannelName] = useState<string>("");
   const [incoming1v1Invite, setIncoming1v1Invite] = useState<any>(null);
   const [userLivePkTimer, setUserLivePkTimer] = useState<number>(272); // 4 minutes 32 seconds like reference
-  const [userLivePkScoreMy, setUserLivePkScoreMy] = useState<number>(12560); // 12560 from reference image
-  const [userLivePkScoreOther, setUserLivePkScoreOther] = useState<number>(9820); // 9820 from reference image
+  const [userLivePkScoreMy, setUserLivePkScoreMy] = useState<number>(0);
+  const [userLivePkScoreOther, setUserLivePkScoreOther] = useState<number>(0);
   const [userLiveInvitedHostId, setUserLiveInvitedHostId] = useState<string | null>(null);
+  const [currentOutgoingInviteId, setCurrentOutgoingInviteId] = useState<string | null>(null);
   const [userLiveInviteCountdown, setUserLiveInviteCountdown] = useState<number | null>(null);
   const [userLiveInviteSearchQuery, setUserLiveInviteSearchQuery] = useState<string>("");
   const [userLiveShowIncomingPkRequest, setUserLiveShowIncomingPkRequest] = useState<boolean>(false);
@@ -3448,13 +3449,14 @@ export default function App() {
     return () => clearInterval(interval);
   }, [userLivePkInvitePanelOpen, user.username]);
 
-  // Real-time Invites & Active Session Sync (runs continuously)
+  // Real-time Invites & Active Session Sync (runs continuously every 1.2s)
   useEffect(() => {
     if (!user?.username) return;
 
     const checkInvitesAndSession = async () => {
       try {
-        const res = await fetch(`/api/v1/pk/invites?username=${encodeURIComponent(user.username)}`);
+        const queryParam = `username=${encodeURIComponent(user.username)}&userId=${encodeURIComponent(user.uid || user.username)}`;
+        const res = await fetch(`/api/v1/pk/invites?${queryParam}`);
         if (res.ok) {
           const data = await res.json();
 
@@ -3462,23 +3464,28 @@ export default function App() {
           if (data.incoming && data.incoming.status === "pending") {
             setIncoming1v1Invite(data.incoming);
             setUserLiveShowIncomingPkRequest(true);
-          } else if (!data.incoming && incoming1v1Invite) {
+          } else {
             setIncoming1v1Invite(null);
             setUserLiveShowIncomingPkRequest(false);
           }
 
-          // 2. Check Outgoing Invite status
+          // 2. Check Outgoing Invite status (Host A)
           if (data.outgoing) {
-            if (data.outgoing.status === "accepted" && userLiveInvitedHostId) {
-              // Outgoing invite accepted!
+            if (data.outgoing.status === "pending") {
+              const targetName = data.outgoing.toUsername || data.outgoing.toUserId;
+              setUserLiveInvitedHostId(targetName);
+              setCurrentOutgoingInviteId(data.outgoing.id);
+              const remaining = Math.max(0, Math.ceil(((data.outgoing.expiresAt || (data.outgoing.createdAt + 20000)) - Date.now()) / 1000));
+              setUserLiveInviteCountdown(remaining);
+            } else if (data.outgoing.status === "accepted") {
               setUserLiveInvitedHostId(null);
               setUserLiveInviteCountdown(null);
+              setCurrentOutgoingInviteId(null);
               setUserLivePkInvitePanelOpen(false);
               setUserLiveShowOutgoingPkRequest(false);
 
-              // Connect to session
-              const sess = data.activeSession;
-              if (sess) {
+              if (data.activeSession) {
+                const sess = data.activeSession;
                 const otherHost = sess.hostA.username.toLowerCase() === user.username.toLowerCase() ? sess.hostB : sess.hostA;
                 setUserLiveCoHost({
                   username: otherHost.username,
@@ -3489,27 +3496,57 @@ export default function App() {
                 setUserLivePkConnected(true);
                 setUserLivePkChannelName(sess.channelName);
               }
-            } else if (data.outgoing.status === "rejected" && userLiveInvitedHostId) {
-              alert(`❌ @${userLiveInvitedHostId} rejected your invitation.`);
+            } else if (data.outgoing.status === "rejected") {
+              if (userLiveInvitedHostId) {
+                alert(`❌ Your request was rejected by @${data.outgoing.toUsername || userLiveInvitedHostId}.`);
+              }
               setUserLiveInvitedHostId(null);
               setUserLiveInviteCountdown(null);
+              setCurrentOutgoingInviteId(null);
+              setUserLiveShowOutgoingPkRequest(false);
+            } else if (data.outgoing.status === "expired" || data.outgoing.status === "cancelled") {
+              setUserLiveInvitedHostId(null);
+              setUserLiveInviteCountdown(null);
+              setCurrentOutgoingInviteId(null);
               setUserLiveShowOutgoingPkRequest(false);
             }
+          } else if (userLiveInvitedHostId && !data.outgoing) {
+            setUserLiveInvitedHostId(null);
+            setUserLiveInviteCountdown(null);
+            setCurrentOutgoingInviteId(null);
           }
 
           // 3. Active Session Sync
-          if (data.activeSession && data.activeSession.status === "connected") {
+          if (data.activeSession && (data.activeSession.status === "connected" || data.activeSession.status === "pk_active")) {
             const sess = data.activeSession;
-            const otherHost = sess.hostA.username.toLowerCase() === user.username.toLowerCase() ? sess.hostB : sess.hostA;
+            const isHostA = (sess.hostA.username && sess.hostA.username.toLowerCase() === user.username.toLowerCase()) ||
+                            (sess.hostA.userId && String(sess.hostA.userId).toLowerCase() === String(user.uid || user.username).toLowerCase());
+            const myHost = isHostA ? sess.hostA : sess.hostB;
+            const otherHost = isHostA ? sess.hostB : sess.hostA;
+
             if (!userLivePkConnected || userLiveCoHost?.username !== otherHost.username) {
               setUserLiveCoHost({
                 username: otherHost.username,
-                avatar: otherHost.avatar,
+                userId: otherHost.userId,
+                avatar: otherHost.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
                 level: otherHost.level || 1,
                 fans: otherHost.fans || "10K fans"
               });
               setUserLivePkConnected(true);
               setUserLivePkChannelName(sess.channelName);
+            }
+
+            const isPkActive = !!(sess.pkActive || sess.isPkBattle || sess.status === "pk_active");
+            if (isPkActive !== userLivePkActive) {
+              setUserLivePkActive(isPkActive);
+            }
+
+            if (isPkActive) {
+              setUserLivePkScoreMy(myHost.score || 0);
+              setUserLivePkScoreOther(otherHost.score || 0);
+              if (sess.timer !== undefined && sess.timer !== null) {
+                setUserLivePkTimer(sess.timer);
+              }
             }
           } else if (!data.activeSession && userLivePkConnected) {
             // Session ended on backend
@@ -3525,9 +3562,9 @@ export default function App() {
     };
 
     checkInvitesAndSession();
-    const interval = setInterval(checkInvitesAndSession, 1800);
+    const interval = setInterval(checkInvitesAndSession, 1200);
     return () => clearInterval(interval);
-  }, [user.username, userLiveInvitedHostId, userLivePkConnected, userLiveCoHost, incoming1v1Invite]);
+  }, [user.username, user.uid, userLiveInvitedHostId, userLivePkConnected, userLiveCoHost]);
 
   // HTML references for auto-scrolling
   const chatEndRef = useRef<HTMLDivElement | null>(null);
@@ -4831,14 +4868,10 @@ export default function App() {
           if (prev <= 1) {
             setUserLivePkActive(false);
             setUserLivePkConnected(true); // Return to co-host state
-            return 272; // Reset
+            return 240; // Reset
           }
           return prev - 1;
         });
-
-        // Fluctuate scores with small random increases to make it live
-        setUserLivePkScoreMy(prev => prev + Math.floor(Math.random() * 45) + 5);
-        setUserLivePkScoreOther(prev => prev + Math.floor(Math.random() * 42) + 5);
       }, 1000);
     }
     return () => {
@@ -14937,7 +14970,7 @@ export default function App() {
                                             {/* Left label overlay inside camera */}
                                             <div className="absolute bottom-4 left-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 flex items-center space-x-1 z-10 select-none">
                                               <span className="w-1.5 h-1.5 bg-pink-500 rounded-full animate-ping shrink-0"></span>
-                                              <span className="text-[7.5px] font-black text-white">Hoorain</span>
+                                              <span className="text-[7.5px] font-black text-white">{user.username || user.displayName || "Host"}</span>
                                               <span className="text-[6.5px] text-yellow-400 font-bold font-mono">💎 {userLivePkScoreMy}</span>
                                             </div>
 
@@ -15035,7 +15068,7 @@ export default function App() {
                                             {/* Right label overlay inside camera */}
                                             <div className="absolute bottom-4 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 flex items-center space-x-1 z-10 select-none">
                                               <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shrink-0"></span>
-                                              <span className="text-[7.5px] font-black text-white">{userLiveCoHost?.username || "Hamza"}</span>
+                                              <span className="text-[7.5px] font-black text-white">{userLiveCoHost?.username || userLiveCoHost?.name || "Co-Host"}</span>
                                               <span className="text-[6.5px] text-cyan-400 font-bold font-mono">💎 {userLivePkScoreOther}</span>
                                               <button className="w-3.5 h-3.5 rounded-full bg-blue-500 text-white text-[8px] flex items-center justify-center shadow hover:scale-115 active:scale-90 ml-0.5 cursor-pointer">+</button>
                                             </div>
@@ -16034,46 +16067,9 @@ export default function App() {
                                     </p>
                                   </div>
 
-                                  {/* Simulator options */}
-                                  <div className="p-2.5 bg-white/5 border border-white/10 rounded-xl space-y-2 text-center">
-                                    <span className="text-[8px] font-bold text-gray-400 block font-mono">TEST CHALLENGE RESPONSE</span>
-                                    <div className="flex space-x-2 bg-transparent">
-                                      <button
-                                        onClick={() => {
-                                          setUserLiveShowOutgoingPkRequest(false);
-                                          setUserLivePkActive(true);
-                                          setUserLivePkScoreMy(12560);
-                                          setUserLivePkScoreOther(9820);
-                                          setUserLivePkTimer(272);
-                                          setUserLiveMessages(prev => [
-                                            ...prev,
-                                            {
-                                              id: "ul-pk-start-" + Date.now(),
-                                              username: "System ⚔️",
-                                              message: `PK Battle match with ${userLiveCoHost?.username || "co-host"} has started! Show your support! 🎁⚔️`,
-                                              vipLevel: 0,
-                                              userLevel: 0,
-                                              isSystem: true,
-                                              isFlagged: false,
-                                              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                            }
-                                          ]);
-                                          alert("⚔️ Challenge Accepted! PK Battle has started!");
-                                        }}
-                                        className="flex-1 bg-green-600 hover:bg-green-500 text-white font-black py-1.5 rounded-lg text-[8px] uppercase tracking-wider transition-all cursor-pointer"
-                                      >
-                                        Accept PK
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          setUserLiveShowOutgoingPkRequest(false);
-                                          alert("❌ Challenge Rejected by opponent.");
-                                        }}
-                                        className="flex-1 bg-red-600 hover:bg-red-500 text-white font-black py-1.5 rounded-lg text-[8px] uppercase tracking-wider transition-all cursor-pointer"
-                                      >
-                                        Reject PK
-                                      </button>
-                                    </div>
+                                  <div className="p-2 bg-purple-950/30 border border-purple-500/20 rounded-xl flex items-center justify-center space-x-2">
+                                    <span className="w-2 h-2 rounded-full bg-pink-500 animate-ping" />
+                                    <span className="text-[8.5px] font-mono text-purple-300">Waiting for co-host response...</span>
                                   </div>
 
                                   <button
@@ -16086,20 +16082,30 @@ export default function App() {
                               </div>
                             )}
 
-                            {/* Incoming PK Battle Challenge Request Modal */}
-                            {userLiveShowIncomingPkRequest && (
+                            {/* Incoming Co-Host Invitation Request Modal */}
+                            {userLiveShowIncomingPkRequest && incoming1v1Invite && (
                               <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-                                <div className="bg-[#0f0e15] border border-purple-500/30 rounded-2xl p-5 w-full max-w-[280px] text-center space-y-4 shadow-2xl animate-scale-in text-left">
+                                <div className="bg-[#0f0e15] border border-purple-500/40 rounded-2xl p-5 w-full max-w-[290px] text-center space-y-4 shadow-2xl animate-scale-in text-left">
                                   <div className="flex flex-col items-center space-y-2 text-center bg-transparent">
-                                    <div className="w-12 h-12 rounded-full bg-purple-950/45 border border-purple-500/30 flex items-center justify-center animate-pulse">
-                                      <span className="text-xl">⚔️</span>
+                                    <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-purple-500/60 flex items-center justify-center shadow-lg relative bg-purple-950">
+                                      <img 
+                                        src={incoming1v1Invite.inviterAvatar || incoming1v1Invite.fromAvatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80"} 
+                                        className="w-full h-full object-cover"
+                                        alt={incoming1v1Invite.inviterName || incoming1v1Invite.fromUsername || "Host"}
+                                      />
                                     </div>
-                                    <h4 className="text-[13px] font-black text-white uppercase tracking-wider font-mono animate-pulse">
-                                      PK Battle Challenge!
+                                    <h4 className="text-[13px] font-black text-white uppercase tracking-wider font-mono">
+                                      {incoming1v1Invite.isPkBattle || incoming1v1Invite.inviteType === "pk_battle" ? "⚔️ PK Battle Challenge!" : "👥 Co-Host Invitation!"}
                                     </h4>
-                                    <p className="text-[9px] text-gray-400 font-sans leading-normal">
-                                      <strong className="text-purple-400">{userLiveCoHost?.username || "co-host"}</strong> has challenged you to a 1v1 PK Battle! Do you accept the challenge?
+                                    <p className="text-[9.5px] text-gray-300 font-sans leading-relaxed">
+                                      <strong className="text-purple-400">@{incoming1v1Invite.inviterName || incoming1v1Invite.fromUsername || "Live Host"}</strong> {incoming1v1Invite.isPkBattle || incoming1v1Invite.inviteType === "pk_battle" ? "challenged you to a 1v1 PK Battle!" : "invited you to join their Solo Live as Co-Host."}
                                     </p>
+                                    <div className="flex items-center space-x-1.5 bg-purple-950/50 border border-purple-500/20 px-2.5 py-1 rounded-full text-[8px] font-mono text-purple-300">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-ping" />
+                                      <span>
+                                        Expires in {Math.max(0, Math.ceil(((incoming1v1Invite.expiresAt || (incoming1v1Invite.createdAt + 20000)) - Date.now()) / 1000))}s
+                                      </span>
+                                    </div>
                                   </div>
 
                                   <div className="flex space-x-2 bg-transparent">
@@ -16108,32 +16114,46 @@ export default function App() {
                                         setUserLiveShowIncomingPkRequest(false);
                                         if (incoming1v1Invite?.id) {
                                           try {
-                                            await fetch(`/api/v1/pk/invite/${incoming1v1Invite.id}/respond`, {
+                                            const res = await fetch(`/api/v1/pk/invite/${incoming1v1Invite.id}/respond`, {
                                               method: "POST",
                                               headers: { "Content-Type": "application/json" },
                                               body: JSON.stringify({
                                                 action: "accept",
-                                                username: user.username
+                                                username: user.username,
+                                                userId: user.uid || user.username,
+                                                avatar: user.avatar,
+                                                level: user.userLevel || 1,
+                                                fans: user.fans || "10K fans"
                                               })
                                             });
+                                            const data = await res.json();
+                                            if (data.session) {
+                                              setUserLivePkConnected(true);
+                                              setUserLivePkChannelName(data.session.channelName);
+                                              if (incoming1v1Invite.isPkBattle || incoming1v1Invite.inviteType === "pk_battle" || data.session.pkActive) {
+                                                setUserLivePkActive(true);
+                                                setUserLivePkScoreMy(0);
+                                                setUserLivePkScoreOther(0);
+                                                setUserLivePkTimer(240);
+                                              }
+                                              setUserLiveCoHost({
+                                                username: incoming1v1Invite.inviterName || incoming1v1Invite.fromUsername,
+                                                userId: incoming1v1Invite.inviterUserId || incoming1v1Invite.fromUserId,
+                                                avatar: incoming1v1Invite.inviterAvatar || incoming1v1Invite.fromAvatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
+                                                level: incoming1v1Invite.fromLevel || 1,
+                                                fans: incoming1v1Invite.fromFans || "10K fans"
+                                              });
+                                            }
                                           } catch (err) {
                                             console.error("Error accepting invite:", err);
                                           }
                                         }
-                                        setUserLivePkConnected(true);
-                                        if (incoming1v1Invite?.fromUsername) {
-                                          setUserLiveCoHost({
-                                            username: incoming1v1Invite.fromUsername,
-                                            avatar: incoming1v1Invite.fromAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80",
-                                            level: incoming1v1Invite.fromLevel || 1,
-                                            fans: incoming1v1Invite.fromFans || "10K fans"
-                                          });
-                                        }
+                                        setIncoming1v1Invite(null);
                                       }}
-                                      className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:scale-105 active:scale-95 text-white font-black py-2 rounded-xl text-[9px] uppercase tracking-wide transition-all shadow-md flex items-center justify-center space-x-1 cursor-pointer"
+                                      className="flex-1 bg-gradient-to-r from-emerald-600 to-green-600 hover:scale-105 active:scale-95 text-white font-black py-2 rounded-xl text-[9px] uppercase tracking-wide transition-all shadow-md flex items-center justify-center space-x-1 cursor-pointer"
                                     >
-                                      <span>⚔️</span>
-                                      <span>Accept</span>
+                                      <span>✅</span>
+                                      <span>ACCEPT</span>
                                     </button>
                                     <button
                                       onClick={async () => {
@@ -16145,17 +16165,20 @@ export default function App() {
                                               headers: { "Content-Type": "application/json" },
                                               body: JSON.stringify({
                                                 action: "reject",
-                                                username: user.username
+                                                username: user.username,
+                                                userId: user.uid || user.username
                                               })
                                             });
                                           } catch (err) {
-                                            console.error("Error rejecting invite:", err);
+                                            console.error("Error rejecting co-host invite:", err);
                                           }
                                         }
+                                        setIncoming1v1Invite(null);
                                       }}
-                                      className="flex-1 bg-gradient-to-r from-red-600 to-pink-600 hover:scale-105 active:scale-95 text-white font-black py-2 rounded-xl text-[9px] uppercase tracking-wide transition-all shadow-md cursor-pointer"
+                                      className="flex-1 bg-gradient-to-r from-red-600 to-pink-600 hover:scale-105 active:scale-95 text-white font-black py-2 rounded-xl text-[9px] uppercase tracking-wide transition-all shadow-md flex items-center justify-center space-x-1 cursor-pointer"
                                     >
-                                      Decline
+                                      <span>❌</span>
+                                      <span>REJECT</span>
                                     </button>
                                   </div>
                                 </div>
@@ -17551,62 +17574,43 @@ export default function App() {
                                   )}
                                 </div>
 
-                                {/* Simulation controls if invited */}
+                                {/* Real Outgoing Pending Invite Status Banner for Host A */}
                                 {userLiveInvitedHostId && (
-                                  <div className="my-1 bg-purple-950/40 border border-purple-500/20 p-2 rounded-xl flex items-center justify-between animate-fade-in">
-                                    <div className="flex flex-col text-left bg-transparent">
-                                      <span className="text-[8.5px] font-black text-purple-300">⏳ Simulating Invited Host Response</span>
-                                      <span className="text-[7px] text-gray-400">Host has {userLiveInviteCountdown}s to Accept or Reject</span>
+                                  <div className="my-1 bg-purple-950/40 border border-purple-500/20 p-2.5 rounded-xl flex items-center justify-between animate-fade-in">
+                                    <div className="flex items-center space-x-2 text-left bg-transparent">
+                                      <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping shrink-0" />
+                                      <div className="flex flex-col text-left bg-transparent">
+                                        <span className="text-[9px] font-black text-purple-200">
+                                          Invitation sent to @{userLiveInvitedHostId}
+                                        </span>
+                                        <span className="text-[7.5px] text-gray-400 font-mono">
+                                          Waiting for response... {userLiveInviteCountdown !== null ? `${userLiveInviteCountdown}s` : ""}
+                                        </span>
+                                      </div>
                                     </div>
-                                    <div className="flex items-center space-x-1.5 bg-transparent">
-                                      <button
-                                        onClick={() => {
-                                          const host = [
-                                            { id: "h-ali", username: "Ali_Shah_PK", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80", fans: "125K fans", level: 45 },
-                                            { id: "h-awais", username: "Awais_Khan", avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80", fans: "155.6K fans", level: 50 }
-                                          ].find(h => h.id === userLiveInvitedHostId) || { id: "h-ali", username: "Ali_Shah_PK", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80", fans: "125K fans", level: 45 };
-                                          
-                                          setUserLiveCoHost({
-                                            username: host.username,
-                                            avatar: host.avatar,
-                                            fans: host.fans,
-                                            level: host.level
-                                          });
-                                          setUserLivePkConnected(true);
-                                          setUserLivePkInvitePanelOpen(false);
-                                          setUserLiveInvitedHostId(null);
-                                          setUserLiveInviteCountdown(null);
-                                          setUserLiveInviteSearchQuery("");
-                                          setUserLiveMessages(prev => [
-                                            ...prev,
-                                            {
-                                              id: "ul-cohost-joined-" + Date.now(),
-                                              username: "System 👥",
-                                              message: `${host.username} accepted co-host join request! Connected successfully in 1v1 mode.`,
-                                              vipLevel: 0,
-                                              userLevel: 0,
-                                              isSystem: true,
-                                              isFlagged: false,
-                                              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                            }
-                                          ]);
-                                          alert(`🎉 ${host.username} accepted co-host request! Connected in 1v1 mode.`);
-                                        }}
-                                        className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[8px] font-bold cursor-pointer"
-                                      >
-                                        Accept
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          alert("❌ Host rejected the invite.");
-                                          setUserLiveInvitedHostId(null);
-                                          setUserLiveInviteCountdown(null);
-                                        }}
-                                        className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded text-[8px] font-bold cursor-pointer"
-                                      >
-                                        Reject
-                                      </button>
-                                    </div>
+                                    <button
+                                      onClick={async () => {
+                                        if (currentOutgoingInviteId) {
+                                          try {
+                                            await fetch(`/api/v1/pk/invite/${currentOutgoingInviteId}/respond`, {
+                                              method: "POST",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({
+                                                action: "cancel",
+                                                username: user.username,
+                                                userId: user.uid || user.username
+                                              })
+                                            });
+                                          } catch (e) {}
+                                        }
+                                        setUserLiveInvitedHostId(null);
+                                        setUserLiveInviteCountdown(null);
+                                        setCurrentOutgoingInviteId(null);
+                                      }}
+                                      className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-[8px] font-bold transition-all cursor-pointer"
+                                    >
+                                      Cancel
+                                    </button>
                                   </div>
                                 )}
 
@@ -17623,13 +17627,13 @@ export default function App() {
                                     inPkBattle: false,
                                     status: u.status || "🟢 Online"
                                   }))
-                                  .filter(host => !host.inPkBattle && (
+                                  .filter(host => !host.inPkBattle && host.username.toLowerCase() !== user?.username?.toLowerCase() && (
                                     !userLiveInviteSearchQuery ||
                                     host.username.toLowerCase().includes(userLiveInviteSearchQuery.toLowerCase()) ||
                                     host.id.toLowerCase().includes(userLiveInviteSearchQuery.toLowerCase())
                                   ))
                                   .map((host) => {
-                                    const isInvited = userLiveInvitedHostId === host.id;
+                                    const isInvited = userLiveInvitedHostId === host.username || userLiveInvitedHostId === host.id;
                                     return (
                                       <div 
                                         key={host.id}
@@ -17652,21 +17656,33 @@ export default function App() {
                                         <button
                                           disabled={userLiveInvitedHostId !== null}
                                           onClick={() => {
-                                            setUserLiveInvitedHostId(host.id);
-                                            setUserLiveInviteCountdown(15);
+                                            const channel = userLivePkChannelName || `room_${user.uniqueId || user.username || "sehr_1001"}`;
+                                            setUserLivePkChannelName(channel);
+                                            setUserLiveInvitedHostId(host.username);
+                                            setUserLiveInviteCountdown(20);
+
                                             fetch("/api/v1/pk/invite", {
                                               method: "POST",
                                               headers: { "Content-Type": "application/json" },
                                               body: JSON.stringify({
-                                                fromUsername: user.username || "HostA",
-                                                fromUserId: user.uid || user.username || "uA",
+                                                fromUsername: user.username,
+                                                fromUserId: user.uid || user.username,
                                                 fromAvatar: user.avatar,
                                                 fromLevel: user.userLevel || 1,
                                                 fromFans: user.fans || "12K fans",
                                                 toUsername: host.username,
-                                                toUserId: host.id
+                                                toUserId: host.id,
+                                                channelName: channel,
+                                                liveSessionId: `session_${channel}`
                                               })
-                                            }).catch(err => console.error("Failed to send PK invite:", err));
+                                            })
+                                            .then(res => res.json())
+                                            .then(data => {
+                                              if (data?.id) {
+                                                setCurrentOutgoingInviteId(data.id);
+                                              }
+                                            })
+                                            .catch(err => console.error("Failed to send PK invite:", err));
                                           }}
                                           className={`px-3 py-1.5 rounded-full text-[8.5px] font-black uppercase tracking-wider font-mono transition-all cursor-pointer ${
                                             isInvited

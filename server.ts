@@ -1083,6 +1083,22 @@ app.post("/api/v1/gifts/send", authenticateUser, (req, res) => {
     h.isLive
   );
 
+  // Sync score with activePkSessions
+  Object.values(activePkSessions).forEach((sess: any) => {
+    if (sess && sess.status !== "ended") {
+      const recNorm = (recipient || "").toLowerCase();
+      const isHostA = (sess.hostA?.username && sess.hostA.username.toLowerCase() === recNorm) ||
+                      (sess.hostA?.userId && String(sess.hostA.userId).toLowerCase() === recNorm);
+      const isHostB = (sess.hostB?.username && sess.hostB.username.toLowerCase() === recNorm) ||
+                      (sess.hostB?.userId && String(sess.hostB.userId).toLowerCase() === recNorm);
+      if (isHostA || targetHostSide === "hostA") {
+        sess.hostA.score = (sess.hostA.score || 0) + totalCost;
+      } else if (isHostB || targetHostSide === "hostB") {
+        sess.hostB.score = (sess.hostB.score || 0) + totalCost;
+      }
+    }
+  });
+
   if (activeHostMatch) {
     const isOpponent = targetHostSide === "hostB";
     if (isOpponent) {
@@ -1813,9 +1829,9 @@ app.get("/api/v1/pk/available-hosts", (req, res) => {
   res.json(result);
 });
 
-// Send PK / 1v1 Invite
+// Send PK / 1v1 Co-Host Invite
 app.post("/api/v1/pk/invite", (req, res) => {
-  const { fromUsername, fromUserId, fromAvatar, fromLevel, fromFans, toUsername, toUserId } = req.body || {};
+  const { fromUsername, fromUserId, fromAvatar, fromLevel, fromFans, toUsername, toUserId, liveSessionId, channelName: customChannelName, inviteType, isPkBattle } = req.body || {};
   if (!fromUsername || !toUsername) {
     return res.status(400).json({ error: "Sender and receiver usernames are required" });
   }
@@ -1823,69 +1839,100 @@ app.post("/api/v1/pk/invite", (req, res) => {
   const normFrom = fromUsername.toLowerCase();
   const normTo = toUsername.toLowerCase();
 
-  // Cancel any previous pending invite from same sender
+  // Expire or cancel any previous pending invite from same sender
   Object.keys(activePkInvites).forEach(id => {
     const inv = activePkInvites[id];
     if (inv.fromUsername.toLowerCase() === normFrom && inv.status === "pending") {
-      inv.status = "expired";
+      inv.status = "cancelled";
     }
   });
 
   const inviteId = `pki_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const channelName = `pk_room_${[normFrom, normTo].sort().join("_")}`;
+  const channelName = customChannelName || `pk_room_${[normFrom, normTo].sort().join("_")}`;
+  const now = Date.now();
+  const expiresAt = now + 20000; // 20-second timeout
+  const isPk = !!(isPkBattle || inviteType === "pk_battle");
 
   const newInvite = {
     id: inviteId,
+    inviteId,
+    liveSessionId: liveSessionId || `session_${channelName}`,
+    channelName,
+    inviterUserId: fromUserId || fromUsername,
+    inviterName: fromUsername,
+    inviterAvatar: fromAvatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
     fromUsername,
     fromUserId: fromUserId || fromUsername,
     fromAvatar: fromAvatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
     fromLevel: Number(fromLevel) || 1,
     fromFans: fromFans || "10K fans",
+    inviteeUserId: toUserId || toUsername,
     toUsername,
     toUserId: toUserId || toUsername,
-    channelName,
+    inviteType: inviteType || (isPk ? "pk_battle" : "cohost"),
+    isPkBattle: isPk,
     status: "pending",
-    createdAt: Date.now()
+    createdAt: now,
+    expiresAt
   };
 
   activePkInvites[inviteId] = newInvite;
-  console.log(`[PK SERVER SUCCESS] Host @${fromUsername} invited @${toUsername} to 1v1 (Channel: ${channelName})`);
+  console.log(`[PK SERVER SUCCESS] Host @${fromUsername} invited @${toUsername} (${isPk ? "PK Battle" : "Co-Host"}) (Channel: ${channelName}, InviteId: ${inviteId})`);
 
   res.status(201).json(newInvite);
+});
+
+// Get Active PK / 1v1 Sessions List
+app.get("/api/v1/pk/active-sessions", (req, res) => {
+  const active = Object.values(activePkSessions).filter((s: any) => s && s.status !== "ended");
+  res.json(active);
 });
 
 // Query Invites & Session Status
 app.get("/api/v1/pk/invites", (req, res) => {
   const username = String(req.query.username || "").toLowerCase();
-  if (!username) {
-    return res.status(400).json({ error: "Username parameter required" });
+  const userId = String(req.query.userId || req.query.username || "").toLowerCase();
+  if (!username && !userId) {
+    return res.status(400).json({ error: "Username or userId parameter required" });
   }
 
   const now = Date.now();
 
-  // Find pending incoming invite sent TO this user
   let incoming = null;
-  // Find outgoing invite sent FROM this user
   let outgoing = null;
 
   Object.values(activePkInvites).forEach((inv: any) => {
     // Expire invites older than 20s
-    if (inv.status === "pending" && (now - inv.createdAt > 20000)) {
+    if (inv.status === "pending" && (now > (inv.expiresAt || (inv.createdAt + 20000)))) {
       inv.status = "expired";
     }
 
-    if (inv.toUsername.toLowerCase() === username) {
+    const matchesTarget = (inv.toUsername && inv.toUsername.toLowerCase() === username) ||
+                          (inv.inviteeUserId && String(inv.inviteeUserId).toLowerCase() === userId) ||
+                          (inv.toUserId && String(inv.toUserId).toLowerCase() === userId);
+    if (matchesTarget) {
       if (inv.status === "pending") incoming = inv;
     }
-    if (inv.fromUsername.toLowerCase() === username) {
-      outgoing = inv;
+
+    const matchesSender = (inv.fromUsername && inv.fromUsername.toLowerCase() === username) ||
+                          (inv.inviterUserId && String(inv.inviterUserId).toLowerCase() === userId) ||
+                          (inv.fromUserId && String(inv.fromUserId).toLowerCase() === userId);
+    if (matchesSender) {
+      if (!outgoing || inv.createdAt > outgoing.createdAt) {
+        outgoing = inv;
+      }
     }
   });
 
   // Find active session
   const activeSession = Object.values(activePkSessions).find((s: any) => 
     s.status !== "ended" && 
-    (s.hostA.username.toLowerCase() === username || s.hostB.username.toLowerCase() === username)
+    (
+      s.hostA.username.toLowerCase() === username || 
+      s.hostB.username.toLowerCase() === username ||
+      (s.hostA.userId && String(s.hostA.userId).toLowerCase() === userId) ||
+      (s.hostB.userId && String(s.hostB.userId).toLowerCase() === userId)
+    )
   ) || null;
 
   res.json({
@@ -1895,46 +1942,88 @@ app.get("/api/v1/pk/invites", (req, res) => {
   });
 });
 
-// Respond to Invite (Accept or Reject)
+// Respond to Invite (Accept, Reject, or Cancel)
 app.post("/api/v1/pk/invite/:id/respond", (req, res) => {
   const { id } = req.params;
-  const { action, username, avatar, level, fans } = req.body || {};
+  const { action, username, userId, avatar, level, fans } = req.body || {};
 
   const invite = activePkInvites[id];
   if (!invite) {
     return res.status(404).json({ error: "Invite not found or expired" });
   }
 
+  const currentNow = Date.now();
+  if (invite.status === "pending" && (currentNow > (invite.expiresAt || (invite.createdAt + 20000)))) {
+    invite.status = "expired";
+    return res.status(400).json({ error: "Invite has expired", invite });
+  }
+
+  // Security checks
+  const reqUser = String(username || "").toLowerCase();
+  const reqUserId = String(userId || username || "").toLowerCase();
+
+  if (action === "accept" || action === "reject") {
+    const targetUsername = String(invite.toUsername || "").toLowerCase();
+    const targetUserId = String(invite.inviteeUserId || invite.toUserId || "").toLowerCase();
+    if (reqUser && targetUsername && reqUser !== targetUsername && reqUserId !== targetUserId) {
+      return res.status(403).json({ error: "Unauthorized: Only the intended invitee can respond to this invitation" });
+    }
+  }
+
+  if (action === "cancel") {
+    const senderUsername = String(invite.fromUsername || "").toLowerCase();
+    const senderUserId = String(invite.inviterUserId || invite.fromUserId || "").toLowerCase();
+    if (reqUser && senderUsername && reqUser !== senderUsername && reqUserId !== senderUserId) {
+      return res.status(403).json({ error: "Unauthorized: Only the inviter can cancel this invitation" });
+    }
+    invite.status = "cancelled";
+    console.log(`[PK SERVER INFO] Invite ${id} CANCELLED by inviter @${username}`);
+    return res.json({ success: true, status: "cancelled", invite });
+  }
+
   if (action === "accept") {
     invite.status = "accepted";
+    const isPk = !!(invite.isPkBattle || invite.inviteType === "pk_battle");
     
-    // Create active 1v1 session
-    const sessionId = `session_${invite.channelName}`;
-    const session = {
-      id: sessionId,
-      channelName: invite.channelName,
-      hostA: {
-        username: invite.fromUsername,
-        userId: invite.fromUserId,
-        avatar: invite.fromAvatar,
-        level: invite.fromLevel,
-        fans: invite.fromFans,
-        score: 0
-      },
-      hostB: {
-        username: username || invite.toUsername,
-        userId: invite.toUserId,
-        avatar: avatar || "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80",
-        level: Number(level) || 1,
-        fans: fans || "15K fans",
-        score: 0
-      },
-      status: "connected",
-      timer: 270,
-      startedAt: Date.now()
-    };
-
-    activePkSessions[sessionId] = session;
+    // Create or update active 1v1 / PK session
+    const sessionId = invite.liveSessionId || `session_${invite.channelName}`;
+    let session = activePkSessions[sessionId];
+    if (session) {
+      session.status = "connected";
+      session.pkActive = isPk;
+      if (isPk) {
+        session.hostA.score = 0;
+        session.hostB.score = 0;
+        session.timer = 240;
+      }
+    } else {
+      session = {
+        id: sessionId,
+        liveSessionId: sessionId,
+        channelName: invite.channelName,
+        hostA: {
+          username: invite.fromUsername,
+          userId: invite.inviterUserId || invite.fromUserId,
+          avatar: invite.fromAvatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
+          level: invite.fromLevel || 1,
+          fans: invite.fromFans || "10K fans",
+          score: 0
+        },
+        hostB: {
+          username: username || invite.toUsername,
+          userId: userId || invite.inviteeUserId || invite.toUserId,
+          avatar: avatar || invite.toAvatar || "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80",
+          level: Number(level) || 1,
+          fans: fans || "15K fans",
+          score: 0
+        },
+        status: "connected",
+        pkActive: isPk,
+        timer: 240,
+        startedAt: currentNow
+      };
+      activePkSessions[sessionId] = session;
+    }
 
     // Mark both in PK in presence
     const normA = invite.fromUsername.toLowerCase();
@@ -1942,7 +2031,7 @@ app.post("/api/v1/pk/invite/:id/respond", (req, res) => {
     if (onlineUserPresence[normA]) onlineUserPresence[normA].inPk = true;
     if (onlineUserPresence[normB]) onlineUserPresence[normB].inPk = true;
 
-    // Also update hosts array category or inPk flag
+    // Update hosts array
     dbData.hosts.forEach((h: any) => {
       if (h.hostUsername?.toLowerCase() === normA || h.hostUsername?.toLowerCase() === normB) {
         h.inPk = true;
@@ -1950,7 +2039,7 @@ app.post("/api/v1/pk/invite/:id/respond", (req, res) => {
       }
     });
 
-    console.log(`[PK SERVER SUCCESS] @${username} ACCEPTED invite from @${invite.fromUsername}! Session started on channel: ${invite.channelName}`);
+    console.log(`[PK SERVER SUCCESS] @${username} ACCEPTED invite (${isPk ? "PK Battle" : "Co-Host"}) from @${invite.fromUsername}! Session started on channel: ${invite.channelName}`);
     return res.json({ success: true, status: "accepted", invite, session });
   } else {
     invite.status = "rejected";
