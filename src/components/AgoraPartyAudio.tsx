@@ -5,6 +5,7 @@ import AgoraRTC, {
   IAgoraRTCRemoteUser 
 } from "agora-rtc-sdk-ng";
 import { Mic, MicOff, Radio, Users, ShieldAlert, Volume2, Wifi } from "lucide-react";
+import { authenticatedFetch, resolveApiUrl } from "../lib/apiClient";
 
 // Set log level for console clean-up
 AgoraRTC.setLogLevel(3);
@@ -30,37 +31,7 @@ const getNumericUid = (str: string): number => {
   return ((Math.abs(hash) % 1000) * 100000) + sessionRand;
 };
 
-const resolveApiUrl = (path: string): string => {
-  if (!path) return "";
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path;
-  }
 
-  const envApiUrl = (import.meta as any).env?.VITE_API_URL;
-  if (envApiUrl && typeof envApiUrl === "string" && envApiUrl.trim().length > 0) {
-    const base = envApiUrl.trim().replace(/\/+$/, "");
-    return `${base}${path.startsWith("/") ? path : `/${path}`}`;
-  }
-
-  const isAndroidAPK = typeof window !== "undefined" && (
-    (window as any).Capacitor || 
-    window.location.protocol === "file:" ||
-    window.location.protocol.includes("capacitor") ||
-    navigator.userAgent.toLowerCase().includes("android") ||
-    navigator.userAgent.toLowerCase().includes("capacitor") ||
-    (!window.location.hostname.includes("run.app") && (
-      window.location.hostname === "localhost" || 
-      window.location.hostname === "127.0.0.1" || 
-      !window.location.hostname
-    ))
-  );
-
-  if (isAndroidAPK) {
-    return `https://api.sehrlive.soulverseapps.com${path.startsWith("/") ? path : `/${path}`}`;
-  }
-
-  return path;
-};
 
 export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
   partyId,
@@ -187,13 +158,11 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
       let tokenData: any = null;
 
       try {
-        const token = localStorage.getItem("sehr_auth_token");
         const tokenUrl = resolveApiUrl("/api/v1/agora/token");
-        const res = await fetch(tokenUrl, {
+        const res = await authenticatedFetch(tokenUrl, {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
-            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+            "Content-Type": "application/json"
           },
           body: JSON.stringify({
             channelName,
@@ -201,6 +170,14 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
             uid: numericUid
           })
         });
+
+        if (res.status === 401) {
+          console.warn("[AgoraPartyAudio] App auth failed (401), user session expired or missing.");
+          setStatus("error");
+          setStatusDetails("FAILED STEP: APP_AUTH\nHTTP STATUS: 401\nMESSAGE: User session expired or missing.");
+          switchToSimulation("Direct WebRTC Fallback (Auth Error)");
+          return;
+        }
 
         if (!res.ok) {
           throw new Error(`Token API error: status ${res.status}`);

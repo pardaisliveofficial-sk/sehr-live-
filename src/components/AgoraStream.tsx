@@ -6,6 +6,7 @@ import AgoraRTC, {
   IAgoraRTCRemoteUser 
 } from "agora-rtc-sdk-ng";
 import { Camera, Volume2, Radio, AlertCircle } from "lucide-react";
+import { authenticatedFetch, resolveApiUrl } from "../lib/apiClient";
 
 // Disable default Agora console logging in production
 AgoraRTC.setLogLevel(4);
@@ -32,37 +33,7 @@ const sanitizeChannel = (ch: string) => {
   return `room_${str.replace(/[^a-zA-Z0-9_-]/g, "")}`;
 };
 
-const resolveApiUrl = (path: string): string => {
-  if (!path) return "";
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path;
-  }
 
-  const envApiUrl = (import.meta as any).env?.VITE_API_URL;
-  if (envApiUrl && typeof envApiUrl === "string" && envApiUrl.trim().length > 0) {
-    const base = envApiUrl.trim().replace(/\/+$/, "");
-    return `${base}${path.startsWith("/") ? path : `/${path}`}`;
-  }
-
-  const isAndroidAPK = typeof window !== "undefined" && (
-    (window as any).Capacitor || 
-    window.location.protocol === "file:" ||
-    window.location.protocol.includes("capacitor") ||
-    navigator.userAgent.toLowerCase().includes("android") ||
-    navigator.userAgent.toLowerCase().includes("capacitor") ||
-    (!window.location.hostname.includes("run.app") && (
-      window.location.hostname === "localhost" || 
-      window.location.hostname === "127.0.0.1" || 
-      !window.location.hostname
-    ))
-  );
-
-  if (isAndroidAPK) {
-    return `https://api.sehrlive.soulverseapps.com${path.startsWith("/") ? path : `/${path}`}`;
-  }
-
-  return path;
-};
 
 export const AgoraStream: React.FC<AgoraStreamProps> = ({
   channelName,
@@ -166,12 +137,10 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
       // 1. Request Token from Backend
       let tokenData: any = null;
       try {
-        const authToken = localStorage.getItem("sehr_auth_token");
-        const res = await fetch(tokenUrl, {
+        const res = await authenticatedFetch(tokenUrl, {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
-            ...(authToken ? { "Authorization": `Bearer ${authToken}` } : {})
+            "Content-Type": "application/json"
           },
           body: JSON.stringify({ channelName: cleanChannel, role, uid: requestUid })
         });
@@ -186,6 +155,13 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             uid: tokenData?.uid,
             channelName: tokenData?.channelName || cleanChannel
           });
+        } else if (res.status === 401) {
+          console.error("[AGORA APP AUTH FAILED]", res.status, tokenUrl);
+          if (!isUnmounted) {
+            setStatus("error");
+            setStatusDetails(`FAILED STEP: APP_AUTH\nHTTP STATUS: 401\nMESSAGE: User session expired or missing.`);
+          }
+          return;
         } else {
           const errData = await res.json().catch(() => ({}));
           const errMsg = errData.error || res.statusText || "Token API error";

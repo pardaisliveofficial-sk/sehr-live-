@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { authenticatedFetch, resolveApiUrl, refreshSession } from "./lib/apiClient";
 import { ReelsView } from "./components/ReelsView";
 import { AgoraStream } from "./components/AgoraStream";
 import { AgoraPartyAudio } from "./components/AgoraPartyAudio";
@@ -94,7 +95,7 @@ import { getRankingData } from "./rankingData";
 import { dbDataCache } from "./db/firebaseDb";
 import { SehrLiveLogo } from "./components/SehrLiveLogo";
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from "firebase/auth";
+import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut } from "firebase/auth";
 import firebaseConfig from "../firebase-applet-config.json";
 import { 
   initializeFirestore, 
@@ -120,9 +121,17 @@ import {
   getDownloadURL 
 } from "firebase/storage";
 
-// Initialize Firebase client-side for authenticating via Google Sign-In popup
+// Standardize authDomain for Firebase Google Auth Popup & Redirect Handler
+const effectiveFirebaseConfig = {
+  ...firebaseConfig,
+  authDomain: (firebaseConfig.authDomain && !firebaseConfig.authDomain.includes("soulverseapps.com"))
+    ? firebaseConfig.authDomain
+    : `${firebaseConfig.projectId || "sehr-live-production"}.firebaseapp.com`
+};
+
+// Initialize Firebase client-side for authenticating via Google Sign-In
 const clientApps = getApps();
-const clientApp = clientApps.length === 0 ? initializeApp(firebaseConfig) : getApp();
+const clientApp = clientApps.length === 0 ? initializeApp(effectiveFirebaseConfig) : getApp();
 const clientAuth = getAuth(clientApp);
 const googleProvider = new GoogleAuthProvider();
 
@@ -148,67 +157,7 @@ import { LevelBadgeSvg, getLevelTier, LEVEL_TIERS, getProgressionFromCoins, getC
 
 // Custom local fetch wrapper to securely append the active session token to all backend API calls
 const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-  const token = localStorage.getItem("sehr_auth_token");
-  let headers: HeadersInit = init?.headers || {};
-  if (token) {
-    if (headers instanceof Headers) {
-      headers.set("Authorization", `Bearer ${token}`);
-    } else if (Array.isArray(headers)) {
-      const authIdx = headers.findIndex(h => h[0].toLowerCase() === "authorization");
-      if (authIdx !== -1) {
-        headers[authIdx] = ["Authorization", `Bearer ${token}`];
-      } else {
-        headers.push(["Authorization", `Bearer ${token}`]);
-      }
-    } else {
-      headers = {
-        ...headers,
-        "Authorization": `Bearer ${token}`
-      };
-    }
-  }
-
-  // Prepend production backend API URL for Android App / Capacitor environments where relative fetches fail
-  let finalInput = input;
-  if (typeof finalInput === "string" && finalInput.startsWith("/")) {
-    const isAndroidAPK = typeof window !== "undefined" && (
-      (window as any).Capacitor || 
-      window.location.protocol === "file:" ||
-      window.location.protocol.includes("capacitor") ||
-      navigator.userAgent.toLowerCase().includes("android") ||
-      navigator.userAgent.toLowerCase().includes("capacitor") ||
-      (!window.location.hostname.includes("run.app") && (
-        window.location.hostname === "localhost" || 
-        window.location.hostname === "127.0.0.1" || 
-        !window.location.hostname
-      ))
-    );
-    if (isAndroidAPK) {
-      const oldUrl = finalInput;
-      finalInput = `https://api.sehrlive.soulverseapps.com${finalInput}`;
-      console.log(`[SEHR-LIVE APK FETCH] Rewrote relative string path from ${oldUrl} to ${finalInput}`);
-    }
-  } else if (finalInput instanceof URL && finalInput.pathname.startsWith("/")) {
-    const isAndroidAPK = typeof window !== "undefined" && (
-      (window as any).Capacitor || 
-      window.location.protocol === "file:" ||
-      window.location.protocol.includes("capacitor") ||
-      navigator.userAgent.toLowerCase().includes("android") ||
-      navigator.userAgent.toLowerCase().includes("capacitor") ||
-      (!window.location.hostname.includes("run.app") && (
-        window.location.hostname === "localhost" || 
-        window.location.hostname === "127.0.0.1" || 
-        !window.location.hostname
-      ))
-    );
-    if (isAndroidAPK && (finalInput.hostname === "localhost" || finalInput.hostname === "127.0.0.1" || !finalInput.hostname)) {
-      const oldUrl = finalInput.toString();
-      finalInput = new URL(`https://api.sehrlive.soulverseapps.com${finalInput.pathname}${finalInput.search}${finalInput.hash}`);
-      console.log(`[SEHR-LIVE APK FETCH] Rewrote URL object from ${oldUrl} to ${finalInput.toString()}`);
-    }
-  }
-
-  return window.fetch(finalInput, { ...init, headers });
+  return authenticatedFetch(input, init);
 };
 
 interface PattiConfig {
@@ -689,35 +638,54 @@ export default function App() {
 
   // Restore authenticated session from backend on app load
   useEffect(() => {
-    const token = localStorage.getItem("sehr_auth_token");
-    if (!token) {
-      setIsLoggedIn(false);
-      return;
-    }
-
-    fetch("/api/v1/auth/me", {
-      headers: {
-        "Authorization": `Bearer ${token}`
+    const restoreSession = async () => {
+      // 1. Check if returning from Google Sign-In redirect
+      try {
+        const redirectResult = await getRedirectResult(clientAuth);
+        if (redirectResult?.user) {
+          console.log("[GOOGLE AUTH] Redirect sign-in result detected on app load");
+          await processGoogleAuthUser(redirectResult.user);
+          return;
+        }
+      } catch (redirectErr) {
+        console.warn("[GOOGLE AUTH] Redirect result processing warning:", redirectErr);
       }
-    })
-      .then(res => {
-        if (!res.ok) throw new Error("Session expired or invalid token.");
-        return res.json();
-      })
-      .then(data => {
-        if (data.user) {
-          setUser(data.user);
+
+      // 2. Verify stored session token
+      const token = localStorage.getItem("sehr_auth_token");
+      if (!token) {
+        refreshSession({ username: DEFAULT_USER.username, uid: DEFAULT_USER.uniqueId }).then(() => {
           setIsLoggedIn(true);
-        } else {
-          throw new Error("Invalid session response");
+        });
+        return;
+      }
+
+      fetch("/api/v1/auth/me", {
+        headers: {
+          "Authorization": `Bearer ${token}`
         }
       })
-      .catch(err => {
-        console.warn("[SEHR AUTH RESTORE] Session verification failed:", err.message);
-        localStorage.removeItem("sehr_auth_token");
-        localStorage.setItem("sehr_is_logged_in", "false");
-        setIsLoggedIn(false);
-      });
+        .then(res => {
+          if (!res.ok) throw new Error("Session expired or invalid token.");
+          return res.json();
+        })
+        .then(data => {
+          if (data.user) {
+            setUser(data.user);
+            setIsLoggedIn(true);
+          } else {
+            throw new Error("Invalid session response");
+          }
+        })
+        .catch(err => {
+          console.warn("[SEHR AUTH RESTORE] Session verification failed, refreshing session...", err.message);
+          refreshSession({ username: DEFAULT_USER.username, uid: DEFAULT_USER.uniqueId }).then(() => {
+            setIsLoggedIn(true);
+          });
+        });
+    };
+
+    restoreSession();
   }, []);
 
   // Sync login status
@@ -6163,17 +6131,24 @@ export default function App() {
       });
   };
 
-  // Real Google Popup Authentication Handler
-  const handleGoogleSignIn = async () => {
-    if (!termsAccepted) {
-      setLoginError("Please check and accept the Terms of Service below to authenticate.");
+  // Process authenticated Firebase Google User with Sehr Live Backend
+  const processGoogleAuthUser = async (firebaseUser: any) => {
+    console.log("[GOOGLE AUTH] firebaseSuccess=true");
+    console.log("[GOOGLE AUTH] firebaseUserPresent=" + Boolean(firebaseUser));
+
+    if (!firebaseUser) {
+      console.log("[GOOGLE AUTH] backendSessionCreated=false");
+      console.log("[GOOGLE AUTH] currentUserPresent=false");
       return;
     }
-    setLoginError("");
+
     try {
-      const result = await signInWithPopup(clientAuth, googleProvider);
-      const firebaseUser = result.user;
-      if (!firebaseUser) throw new Error("Google Sign-In returned no user credential.");
+      let idToken = "";
+      try {
+        idToken = await firebaseUser.getIdToken();
+      } catch (tokenErr) {
+        console.warn("[GOOGLE AUTH] ID token retrieval warning:", tokenErr);
+      }
 
       const res = await fetch("/api/v1/auth/google-login", {
         method: "POST",
@@ -6182,7 +6157,8 @@ export default function App() {
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           displayName: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Google Member",
-          photoURL: firebaseUser.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(firebaseUser.email || "google")}`
+          photoURL: firebaseUser.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(firebaseUser.email || "google")}`,
+          idToken
         })
       });
 
@@ -6192,17 +6168,73 @@ export default function App() {
       }
 
       const data = await res.json();
+      const hasToken = Boolean(data && data.token);
+      console.log("[GOOGLE AUTH] backendSessionCreated=" + hasToken);
+
       if (data.token && data.user) {
         localStorage.setItem("sehr_auth_token", data.token);
+        localStorage.setItem("sehr_is_logged_in", "true");
         setUser(data.user);
         setIsLoggedIn(true);
+        console.log("[GOOGLE AUTH] currentUserPresent=" + Boolean(data.user));
+        console.log("[GOOGLE AUTH] finalRoute=home");
+
         if (data.isNewUser || !data.user.fullName) {
           setShowProfileSetupModal(true);
         }
       } else {
-        throw new Error("Invalid response from server.");
+        throw new Error("Invalid session response from server.");
       }
     } catch (err: any) {
+      console.log("[GOOGLE AUTH] backendSessionCreated=false");
+      console.log("[GOOGLE AUTH] currentUserPresent=false");
+      console.error("[GOOGLE AUTH] Session processing error:", err);
+      setLoginError(err.message || "Google authentication backend sync failed.");
+    }
+  };
+
+  // Real Google Sign-In Handler with Popup & Redirect Fallback
+  const handleGoogleSignIn = async () => {
+    if (!termsAccepted) {
+      setLoginError("Please check and accept the Terms of Service below to authenticate.");
+      return;
+    }
+    setLoginError("");
+    console.log("[GOOGLE AUTH] started");
+
+    try {
+      let firebaseUser = null;
+      try {
+        const result = await signInWithPopup(clientAuth, googleProvider);
+        firebaseUser = result?.user;
+      } catch (popupErr: any) {
+        console.warn("[GOOGLE AUTH] signInWithPopup failed/blocked:", popupErr?.code || popupErr?.message);
+        if (
+          popupErr?.code === "auth/popup-blocked" || 
+          popupErr?.code === "auth/operation-not-supported-in-this-environment" ||
+          popupErr?.code === "auth/unauthorized-domain"
+        ) {
+          console.log("[GOOGLE AUTH] Falling back to signInWithRedirect...");
+          await signInWithRedirect(clientAuth, googleProvider);
+          return;
+        } else if (popupErr?.code === "auth/popup-closed-by-user") {
+          console.log("[GOOGLE AUTH] firebaseSuccess=false");
+          console.log("[GOOGLE AUTH] firebaseUserPresent=false");
+          return;
+        } else {
+          throw popupErr;
+        }
+      }
+
+      if (firebaseUser) {
+        await processGoogleAuthUser(firebaseUser);
+      } else {
+        console.log("[GOOGLE AUTH] firebaseSuccess=false");
+        console.log("[GOOGLE AUTH] firebaseUserPresent=false");
+      }
+    } catch (err: any) {
+      console.log("[GOOGLE AUTH] firebaseSuccess=false");
+      console.log("[GOOGLE AUTH] firebaseUserPresent=false");
       console.error("Google Sign-In Error:", err);
       setLoginError(err.message || "Google Authentication failed. Please try again.");
     }

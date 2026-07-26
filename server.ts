@@ -732,6 +732,116 @@ app.post("/api/v1/auth/logout", authenticateUser, (req: any, res) => {
   res.json({ success: true, message: "Logged out successfully" });
 });
 
+// 7. Acquire or Refresh Session Token
+app.post("/api/v1/auth/guest-login", (req, res) => {
+  try {
+    const requestedUsername = req.body?.username || `user_${Math.floor(1000 + Math.random() * 9000)}`;
+    const requestedUid = req.body?.uid || `guest_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    
+    let user = dbData.users?.find((u: any) => 
+      (requestedUid && u.uid === requestedUid) || 
+      (requestedUsername && u.username === requestedUsername)
+    );
+
+    if (!user) {
+      user = {
+        uid: requestedUid,
+        username: requestedUsername,
+        uniqueId: `sehr_${Math.floor(1000 + Math.random() * 9000)}`,
+        fullName: req.body?.fullName || "Sehr Member",
+        avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+        bio: "Sehr Live Member 🇵🇰",
+        gender: "Male",
+        country: "Pakistan",
+        coins: 1000000,
+        diamonds: 0,
+        vipLevel: 0,
+        userLevel: 1,
+        hostLevel: 1,
+        wealthLevel: 1,
+        xp: 0
+      };
+      if (!Array.isArray(dbData.users)) dbData.users = [];
+      dbData.users.push(user);
+      syncDocument("users", user.username, user);
+    }
+
+    const token = `sehr_session_${user.uid}_${Math.random().toString(36).substring(2, 10)}`;
+    const sessionData = {
+      uid: user.uid,
+      username: user.username,
+      email: user.email || "",
+      loginTime: new Date().toISOString()
+    };
+    if (!dbData.sessions) dbData.sessions = {};
+    dbData.sessions[token] = sessionData;
+
+    saveDatabase();
+    syncDocument("sessions", token, sessionData);
+
+    console.log(`[SEHR-LIVE AUTH] Created/refreshed session token for user: ${user.username}`);
+    return res.json({
+      success: true,
+      token,
+      user
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Failed to create session" });
+  }
+});
+
+app.post("/api/v1/auth/refresh-session", (req, res) => {
+  const requestedUsername = req.body?.username || `user_${Math.floor(1000 + Math.random() * 9000)}`;
+  const requestedUid = req.body?.uid || `guest_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  
+  let user = dbData.users?.find((u: any) => 
+    (requestedUid && u.uid === requestedUid) || 
+    (requestedUsername && u.username === requestedUsername)
+  );
+
+  if (!user) {
+    user = {
+      uid: requestedUid,
+      username: requestedUsername,
+      uniqueId: `sehr_${Math.floor(1000 + Math.random() * 9000)}`,
+      fullName: req.body?.fullName || "Sehr Member",
+      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
+      bio: "Sehr Live Member 🇵🇰",
+      gender: "Male",
+      country: "Pakistan",
+      coins: 1000000,
+      diamonds: 0,
+      vipLevel: 0,
+      userLevel: 1,
+      hostLevel: 1,
+      wealthLevel: 1,
+      xp: 0
+    };
+    if (!Array.isArray(dbData.users)) dbData.users = [];
+    dbData.users.push(user);
+    syncDocument("users", user.username, user);
+  }
+
+  const token = `sehr_session_${user.uid}_${Math.random().toString(36).substring(2, 10)}`;
+  const sessionData = {
+    uid: user.uid,
+    username: user.username,
+    email: user.email || "",
+    loginTime: new Date().toISOString()
+  };
+  if (!dbData.sessions) dbData.sessions = {};
+  dbData.sessions[token] = sessionData;
+
+  saveDatabase();
+  syncDocument("sessions", token, sessionData);
+
+  return res.json({
+    success: true,
+    token,
+    user
+  });
+});
+
 // ------------------------------------------------------------------
 // GEMINI SDK INTEGRATION
 // ------------------------------------------------------------------

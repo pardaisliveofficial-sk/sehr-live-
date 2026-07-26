@@ -18,7 +18,7 @@ let firebaseConfig = {
   projectId: "sehr-live-production",
   appId: "1:496371999211:web:3caed46eb0e946c1c9b9ae",
   apiKey: "AIzaSyDUcaaRaU2ZJNUp90CMdl9gER_0oe1Db_E",
-  authDomain: "sehrlive.soulverseapps.com"
+  authDomain: "sehr-live-production.firebaseapp.com"
 };
 
 let FIRESTORE_DB_ID = "ai-studio-sehrlive-472fb6a7-1901-43d4-8fd3-710376199072";
