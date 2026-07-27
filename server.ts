@@ -1911,6 +1911,13 @@ app.get("/api/v1/pk/invites", (req, res) => {
     )
   ) || null;
 
+  if (activeSession && activeSession.pkActive) {
+    const duration = activeSession.duration || 300;
+    const startedAt = activeSession.startedAt || now;
+    const elapsed = Math.floor((now - startedAt) / 1000);
+    activeSession.timer = Math.max(0, duration - elapsed);
+  }
+
   res.json({
     incoming,
     outgoing,
@@ -1996,9 +2003,11 @@ app.post("/api/v1/pk/invite/:id/respond", (req, res) => {
       session.hostA = { ...session.hostA, ...hostAUser };
       session.hostB = { ...session.hostB, ...hostBUser };
       if (isPk) {
-        session.hostA.score = 0;
-        session.hostB.score = 0;
-        session.timer = 240;
+        session.hostA.score = session.hostA.score || 50;
+        session.hostB.score = session.hostB.score || 50;
+        session.duration = 300;
+        session.timer = 300;
+        session.startedAt = currentNow;
       }
     } else {
       session = {
@@ -2009,7 +2018,8 @@ app.post("/api/v1/pk/invite/:id/respond", (req, res) => {
         hostB: hostBUser,
         status: "connected",
         pkActive: isPk,
-        timer: 240,
+        duration: 300,
+        timer: 300,
         startedAt: currentNow
       };
       activePkSessions[sessionId] = session;
@@ -2072,8 +2082,11 @@ app.post("/api/v1/pk/start-battle", (req, res) => {
     if (matchChannel || matchUser) {
       s.pkActive = pkActive !== undefined ? Boolean(pkActive) : true;
       if (s.pkActive) {
-        s.timer = 240;
+        s.duration = 300;
+        s.timer = 300;
         s.startedAt = Date.now();
+        if (!s.hostA.score) s.hostA.score = 50;
+        if (!s.hostB.score) s.hostB.score = 50;
       }
       updatedSession = s;
     }
@@ -2081,6 +2094,38 @@ app.post("/api/v1/pk/start-battle", (req, res) => {
 
   saveDatabase();
   console.log(`[PK BATTLE TOGGLE] pkActive=${pkActive} for user @${username}`);
+  res.json({ success: true, session: updatedSession });
+});
+
+// Increment PK Score (Double-Tap & Real-Time Likes)
+app.post("/api/v1/pk/score", (req, res) => {
+  const { channelName, username, targetHostSide, targetUsername, scoreDelta } = req.body || {};
+  const normUser = String(username || "").toLowerCase();
+  const delta = Number(scoreDelta) || 1;
+
+  let updatedSession: any = null;
+  Object.values(activePkSessions).forEach((s: any) => {
+    if (!s || s.status === "ended") return;
+    const matchChannel = channelName && s.channelName === channelName;
+    const matchUser = normUser && (
+      s.hostA?.username?.toLowerCase() === normUser || 
+      s.hostB?.username?.toLowerCase() === normUser ||
+      String(s.hostA?.userId || "").toLowerCase() === normUser ||
+      String(s.hostB?.userId || "").toLowerCase() === normUser
+    );
+
+    if (matchChannel || matchUser) {
+      const isTargetB = targetHostSide === "hostB" || (targetUsername && s.hostB?.username?.toLowerCase() === targetUsername.toLowerCase());
+      if (isTargetB) {
+        s.hostB.score = (s.hostB.score || 50) + delta;
+      } else {
+        s.hostA.score = (s.hostA.score || 50) + delta;
+      }
+      updatedSession = s;
+    }
+  });
+
+  saveDatabase();
   res.json({ success: true, session: updatedSession });
 });
 

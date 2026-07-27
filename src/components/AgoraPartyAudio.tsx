@@ -209,7 +209,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
 
         // Suppress expected internal SDK exception events (e.g. ERR_REJOIN_NOT_JOINED during fast teardown)
         agoraClient.on("exception", (event) => {
-          if (event && (event.code === 2025 || String(event.msg || event.code || "").includes("REJOIN"))) {
+          if (event && (event.code === 2025 || String(event.msg || event.code || "").includes("REJOIN") || String(event.msg || "").includes("WS_ABORT") || String(event.msg || "").includes("ping"))) {
             return;
           }
         });
@@ -329,7 +329,7 @@ export const AgoraPartyAudio: React.FC<AgoraPartyAudioProps> = ({
         try {
           activeClient.removeAllListeners();
           const connState = activeClient.connectionState as string;
-          if (connState === "CONNECTED") {
+          if (connState !== "DISCONNECTED") {
             activeClient.leave().catch(e => console.log("Error leaving client:", e));
           }
         } catch (e) {}

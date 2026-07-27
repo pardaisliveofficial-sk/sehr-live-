@@ -65,8 +65,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
   const [client, setClient] = useState<IAgoraRTCClient | null>(null);
   const [localVideoTrack, setLocalVideoTrack] = useState<ICameraVideoTrack | null>(null);
   const [localAudioTrack, setLocalAudioTrack] = useState<IMicrophoneAudioTrack | null>(null);
-  const [remoteUser, setRemoteUser] = useState<IAgoraRTCRemoteUser | null>(null);
-  const [hasRemoteVideo, setHasRemoteVideo] = useState<boolean>(false);
+  const [remoteUsersList, setRemoteUsersList] = useState<IAgoraRTCRemoteUser[]>([]);
   const [audioBlocked, setAudioBlocked] = useState<boolean>(false);
   
   // App Streaming Status
@@ -87,6 +86,8 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
   const defaultAvatar = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80";
   const avatarUrl = hostAvatar && hostAvatar.trim().length > 0 ? hostAvatar : defaultAvatar;
   const coHostAvatarUrl = coHostAvatar && coHostAvatar.trim().length > 0 ? coHostAvatar : defaultAvatar;
+
+  const hasRemoteVideo = remoteUsersList.length > 0;
 
   // Camera off determination
   const isCameraOff = role === "publisher" 
@@ -202,7 +203,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         await agoraClient.setClientRole(agoraRole);
 
         agoraClient.on("exception", (event) => {
-          if (event && (event.code === 2025 || String(event.msg || event.code || "").includes("REJOIN") || String(event.msg || "").includes("WS_ABORT"))) {
+          if (event && (event.code === 2025 || String(event.msg || event.code || "").includes("REJOIN") || String(event.msg || event.code || "").includes("WS_ABORT") || String(event.msg || event.code || "").includes("ping") || String(event.msg || event.code || "").includes("PUBLISH"))) {
             return;
           }
         });
@@ -210,8 +211,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         agoraClient.on("connection-state-change", (curState, prevState, reason) => {
           console.log(`[AGORA CONN STATE] ${prevState} -> ${curState}, reason: ${reason}`);
           if (curState === "DISCONNECTED" && !isUnmounted) {
-            setStatus("error");
-            setStatusDetails(`Stream disconnected (${reason || "WS_ABORT"})`);
+            // Only flag error if not unmounted
           }
         });
 
@@ -229,14 +229,11 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             const currState = agoraClient.connectionState as string;
             if (isUnmounted || currState === "DISCONNECTED" || currState === "DISCONNECTING") return;
 
-            setRemoteUser(user);
-
             if (mediaType === "video") {
-              setHasRemoteVideo(true);
-              const targetElem = isCoHostMode ? remoteContainerRef.current : containerRef.current;
-              if (targetElem) {
-                user.videoTrack?.play(targetElem);
-              }
+              setRemoteUsersList(prev => {
+                if (prev.some(u => u.uid === user.uid)) return prev;
+                return [...prev, user];
+              });
             }
             if (mediaType === "audio") {
               user.audioTrack?.play();
@@ -249,7 +246,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         const handleUserUnpublished = (user: IAgoraRTCRemoteUser, mediaType: "video" | "audio") => {
           console.log("[AGORA USER UNPUBLISHED]", { remoteUid: user.uid, mediaType });
           if (mediaType === "video") {
-            setHasRemoteVideo(false);
+            setRemoteUsersList(prev => prev.filter(u => u.uid !== user.uid));
           }
         };
 
@@ -295,12 +292,31 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
               vTrack.play(targetElem);
             }
 
-            // Publish tracks
-            await agoraClient.publish([aTrack, vTrack]);
+            // Publish tracks safely
+            try {
+              const alreadyPublishedVideo = agoraClient.localTracks.some(t => t.trackMediaType === "video");
+              const alreadyPublishedAudio = agoraClient.localTracks.some(t => t.trackMediaType === "audio");
+              const tracksToPub = [];
+              if (!alreadyPublishedAudio && aTrack) tracksToPub.push(aTrack);
+              if (!alreadyPublishedVideo && vTrack) tracksToPub.push(vTrack);
+
+              if (tracksToPub.length > 0) {
+                await agoraClient.publish(tracksToPub);
+              }
+            } catch (pubError: any) {
+              console.log("[AGORA PUBLISH NOTICE]", pubError?.message || pubError);
+            }
+
             setStatus("connected");
             setStatusDetails("Broadcasting Live via Agora RTC");
             if (onPublishSuccess) {
               onPublishSuccess({ channelName: targetChannel, uid: targetUid });
+            }
+
+            // Check for existing remote users already in channel
+            for (const user of agoraClient.remoteUsers) {
+              if (user.hasVideo) await handleUserPublished(user, "video");
+              if (user.hasAudio) await handleUserPublished(user, "audio");
             }
           } catch (trackErr) {
             console.error("[AGORA HOST TRACK CREATION ERROR]", trackErr);
@@ -347,43 +363,64 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         try {
           activeClient.removeAllListeners();
           const connState = activeClient.connectionState as string;
-          if (connState === "CONNECTED") {
+          if (connState !== "DISCONNECTED") {
             activeClient.leave().catch(() => {});
           }
         } catch (e) {}
       }
-      setRemoteUser(null);
-      setHasRemoteVideo(false);
+      setRemoteUsersList([]);
     };
   }, [channelName, role, facingMode, isCoHostMode]);
 
-  // Re-play local video track when containers change
+  // Re-play video tracks when containers change or remoteUsersList updates
   useEffect(() => {
-    if (localVideoTrack && !videoMuted) {
-      const targetElem = isCoHostMode ? localContainerRef.current : containerRef.current;
-      if (targetElem) {
-        try {
-          localVideoTrack.play(targetElem);
-        } catch (e) {
-          console.warn("[AGORA LOCAL TRACK PLAY WARN]", e);
+    if (role === "publisher") {
+      if (localVideoTrack && !videoMuted) {
+        const targetElem = isCoHostMode ? localContainerRef.current : containerRef.current;
+        if (targetElem) {
+          try {
+            localVideoTrack.play(targetElem);
+          } catch (e) {
+            console.warn("[AGORA LOCAL TRACK PLAY WARN]", e);
+          }
+        }
+      }
+      if (isCoHostMode && remoteUsersList[0]?.videoTrack && !coHostVideoMuted) {
+        if (remoteContainerRef.current) {
+          try {
+            remoteUsersList[0].videoTrack.play(remoteContainerRef.current);
+          } catch (e) {
+            console.warn("[AGORA REMOTE TRACK PLAY WARN]", e);
+          }
+        }
+      }
+    } else {
+      // Subscriber
+      if (isCoHostMode) {
+        if (remoteUsersList[0]?.videoTrack && localContainerRef.current) {
+          try {
+            remoteUsersList[0].videoTrack.play(localContainerRef.current);
+          } catch (e) {}
+        }
+        if (remoteUsersList[1]?.videoTrack && remoteContainerRef.current) {
+          try {
+            remoteUsersList[1].videoTrack.play(remoteContainerRef.current);
+          } catch (e) {}
+        }
+      } else {
+        if (remoteUsersList[0]?.videoTrack && containerRef.current) {
+          try {
+            remoteUsersList[0].videoTrack.play(containerRef.current);
+          } catch (e) {}
         }
       }
     }
-  }, [localVideoTrack, videoMuted, isCoHostMode]);
+  }, [localVideoTrack, videoMuted, remoteUsersList, coHostVideoMuted, isCoHostMode, role]);
 
-  // Re-play remote video track when containers change
-  useEffect(() => {
-    if (remoteUser?.videoTrack && hasRemoteVideo && !coHostVideoMuted) {
-      const targetElem = isCoHostMode ? remoteContainerRef.current : containerRef.current;
-      if (targetElem) {
-        try {
-          remoteUser.videoTrack.play(targetElem);
-        } catch (e) {
-          console.warn("[AGORA REMOTE TRACK PLAY WARN]", e);
-        }
-      }
-    }
-  }, [remoteUser, hasRemoteVideo, coHostVideoMuted, isCoHostMode]);
+  const hasLeftVideo = role === "publisher" ? !videoMuted : Boolean(remoteUsersList[0]?.videoTrack || remoteUsersList[0]?.hasVideo);
+  const hasRightVideo = role === "publisher" 
+    ? Boolean(remoteUsersList[0]?.videoTrack || remoteUsersList[0]?.hasVideo) && !coHostVideoMuted
+    : Boolean(remoteUsersList[1]?.videoTrack || remoteUsersList[1]?.hasVideo) && !coHostVideoMuted;
 
   if (isCoHostMode) {
     return (
@@ -393,9 +430,8 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           <div 
             ref={localContainerRef} 
             className="absolute inset-0 z-0 w-full h-full object-cover"
-            style={{ display: videoMuted ? "none" : "block" }}
           />
-          {videoMuted && (
+          {!hasLeftVideo && (
             <div className="absolute inset-0 z-10 bg-[#120e24] flex flex-col items-center justify-center p-2 text-center overflow-hidden">
               <img 
                 src={avatarUrl} 
@@ -422,9 +458,8 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           <div 
             ref={remoteContainerRef} 
             className="absolute inset-0 z-0 w-full h-full object-cover"
-            style={{ display: !hasRemoteVideo || coHostVideoMuted ? "none" : "block" }}
           />
-          {(!hasRemoteVideo || coHostVideoMuted) && (
+          {!hasRightVideo && (
             <div className="absolute inset-0 z-10 bg-[#0d1220] flex flex-col items-center justify-center p-2 text-center overflow-hidden">
               <img 
                 src={coHostAvatarUrl} 
@@ -439,7 +474,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
                 />
                 <span className="text-[10px] font-black text-white truncate max-w-[100px]">{coHostName}</span>
                 <span className="text-[7px] text-blue-300 font-bold bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/30 uppercase">
-                  {!hasRemoteVideo ? "Connecting..." : "📷 Cam Off"}
+                  📷 Cam Off
                 </span>
               </div>
             </div>
@@ -557,10 +592,8 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
       {audioBlocked && role === "subscriber" && (
         <button
           onClick={() => {
-            if (remoteUser && remoteUser.audioTrack) {
-              remoteUser.audioTrack.play();
-              setAudioBlocked(false);
-            }
+            remoteUsersList.forEach(u => u.audioTrack?.play());
+            setAudioBlocked(false);
           }}
           className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30 bg-pink-600/90 hover:bg-pink-500 text-white text-xs font-bold px-4 py-2 rounded-full shadow-2xl backdrop-blur-md flex items-center space-x-2 border border-white/20 animate-bounce cursor-pointer"
         >

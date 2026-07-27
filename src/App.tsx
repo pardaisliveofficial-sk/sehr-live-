@@ -3300,9 +3300,9 @@ export default function App() {
   }>>([]);
   const [userLivePkChannelName, setUserLivePkChannelName] = useState<string>("");
   const [incoming1v1Invite, setIncoming1v1Invite] = useState<any>(null);
-  const [userLivePkTimer, setUserLivePkTimer] = useState<number>(272); // 4 minutes 32 seconds like reference
-  const [userLivePkScoreMy, setUserLivePkScoreMy] = useState<number>(0);
-  const [userLivePkScoreOther, setUserLivePkScoreOther] = useState<number>(0);
+  const [userLivePkTimer, setUserLivePkTimer] = useState<number>(300); // 5 minutes default (300 seconds)
+  const [userLivePkScoreMy, setUserLivePkScoreMy] = useState<number>(50);
+  const [userLivePkScoreOther, setUserLivePkScoreOther] = useState<number>(50);
   const [userLiveInvitedHostId, setUserLiveInvitedHostId] = useState<string | null>(null);
   const [currentOutgoingInviteId, setCurrentOutgoingInviteId] = useState<string | null>(null);
   const [userLiveInviteCountdown, setUserLiveInviteCountdown] = useState<number | null>(null);
@@ -3546,8 +3546,8 @@ export default function App() {
             }
 
             if (isPkActive && myHost && otherHost) {
-              setUserLivePkScoreMy(myHost.score || 0);
-              setUserLivePkScoreOther(otherHost.score || 0);
+              setUserLivePkScoreMy(myHost.score !== undefined ? myHost.score : 50);
+              setUserLivePkScoreOther(otherHost.score !== undefined ? otherHost.score : 50);
               if (sess.timer !== undefined && sess.timer !== null) {
                 setUserLivePkTimer(sess.timer);
               }
@@ -4917,7 +4917,7 @@ export default function App() {
           if (prev <= 1) {
             setUserLivePkActive(false);
             setUserLivePkConnected(true); // Return to co-host state
-            return 240; // Reset
+            return 300; // Reset to 5 minutes
           }
           return prev - 1;
         });
@@ -5847,7 +5847,7 @@ export default function App() {
     setUserLivePkChannelName("");
     setUserLivePkScoreMy(0);
     setUserLivePkScoreOther(0);
-    setUserLivePkTimer(240);
+    setUserLivePkTimer(300);
     setIncoming1v1Invite(null);
     setCurrentOutgoingInviteId(null);
     setUserLiveInvitedHostId(null);
@@ -5947,27 +5947,37 @@ export default function App() {
 
     if (isTargetingHostA) {
       // Target: Host A (Main Host / Broadcaster)
-      // 1. Total Hearts: ALWAYS increase with NO limit
       setUserLiveLikes(prev => prev + 1);
 
-      // 2. PK Match Score: ONLY +3 on first valid double-tap in current PK match
       if (userLivePkActive) {
-        if (!pkDoubleTapContributorsHostA.current.has(currentUserId)) {
-          pkDoubleTapContributorsHostA.current.add(currentUserId);
-          setUserLivePkScoreMy(prev => prev + 3);
-        }
+        setUserLivePkScoreMy(prev => prev + 1);
+        fetch("/api/v1/pk/score", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            channelName: userLivePkChannelName,
+            username: user.username,
+            targetHostSide: "hostA",
+            scoreDelta: 1
+          })
+        }).catch(() => {});
       }
     } else {
       // Target: Host B (Opponent Host)
-      // 1. Total Hearts: ALWAYS increase with NO limit
       setUserLiveCoHostLikes(prev => prev + 1);
 
-      // 2. PK Match Score: ONLY +3 on first valid double-tap in current PK match
       if (userLivePkActive) {
-        if (!pkDoubleTapContributorsHostB.current.has(currentUserId)) {
-          pkDoubleTapContributorsHostB.current.add(currentUserId);
-          setUserLivePkScoreOther(prev => prev + 3);
-        }
+        setUserLivePkScoreOther(prev => prev + 1);
+        fetch("/api/v1/pk/score", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            channelName: userLivePkChannelName,
+            username: user.username,
+            targetHostSide: "hostB",
+            scoreDelta: 1
+          })
+        }).catch(() => {});
       }
     }
     
@@ -6123,7 +6133,7 @@ export default function App() {
     setUserLivePkChannelName("");
     setUserLivePkScoreMy(0);
     setUserLivePkScoreOther(0);
-    setUserLivePkTimer(240);
+    setUserLivePkTimer(300);
     setIncoming1v1Invite(null);
     setCurrentOutgoingInviteId(null);
     setUserLiveInvitedHostId(null);
@@ -16205,23 +16215,39 @@ export default function App() {
                                     <button
                                       onClick={async () => {
                                         setUserLiveShowOutgoingPkRequest(false);
-                                        setUserLivePkActive(true);
-                                        setUserLivePkTimer(240);
-                                        setUserLivePkScoreMy(0);
-                                        setUserLivePkScoreOther(0);
+                                        const ch = userLivePkChannelName || `pk_room_${[user.username.toLowerCase(), (userLiveCoHost?.username || "opponent").toLowerCase()].sort().join("_")}`;
+                                        setUserLivePkChannelName(ch);
+                                        const targetUsername = userLiveCoHost?.username || "opponent";
+                                        setUserLiveInvitedHostId(targetUsername);
+                                        setUserLiveInviteCountdown(20);
 
                                         try {
-                                          await fetch("/api/v1/pk/start-battle", {
+                                          const res = await fetch("/api/v1/pk/invite", {
                                             method: "POST",
                                             headers: { "Content-Type": "application/json" },
                                             body: JSON.stringify({
-                                              channelName: userLivePkChannelName,
-                                              username: user.username,
-                                              pkActive: true
+                                              fromUsername: user.username,
+                                              fromUserId: user.uid || user.username,
+                                              fromAvatar: user.avatar,
+                                              fromLevel: user.userLevel || 1,
+                                              fromFans: user.fans || "10K fans",
+                                              toUsername: targetUsername,
+                                              toUserId: userLiveCoHost?.userId || targetUsername,
+                                              toAvatar: userLiveCoHost?.avatar,
+                                              toLevel: userLiveCoHost?.level,
+                                              toFans: userLiveCoHost?.fans,
+                                              inviteType: "pk_battle",
+                                              isPkBattle: true,
+                                              channelName: ch,
+                                              liveSessionId: `session_${ch}`
                                             })
                                           });
+                                          const data = await res.json();
+                                          if (data?.id) {
+                                            setCurrentOutgoingInviteId(data.id);
+                                          }
                                         } catch (e) {
-                                          console.error("[START PK ERROR]", e);
+                                          console.error("[SEND PK INVITE ERROR]", e);
                                         }
                                       }}
                                       className="w-full bg-gradient-to-r from-pink-600 via-rose-600 to-purple-600 hover:scale-102 active:scale-95 text-white font-black py-2.5 rounded-xl text-[9.5px] uppercase tracking-wide transition-all shadow-lg flex items-center justify-center space-x-1.5 cursor-pointer"
@@ -16231,26 +16257,13 @@ export default function App() {
                                     </button>
 
                                     <button
-                                      onClick={async () => {
+                                      onClick={() => {
                                         setUserLiveShowOutgoingPkRequest(false);
-                                        try {
-                                          await fetch("/api/v1/pk/start-battle", {
-                                            method: "POST",
-                                            headers: { "Content-Type": "application/json" },
-                                            body: JSON.stringify({
-                                              channelName: userLivePkChannelName,
-                                              username: user.username,
-                                              pkActive: false
-                                            })
-                                          });
-                                        } catch (e) {
-                                          console.error("[REJECT PK ERROR]", e);
-                                        }
                                       }}
                                       className="w-full bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 font-bold py-2 rounded-xl text-[9px] uppercase tracking-wide transition-all active:scale-95 cursor-pointer flex items-center justify-center space-x-1.5"
                                     >
                                       <span>❌</span>
-                                      <span>Reject PK Request</span>
+                                      <span>Cancel</span>
                                     </button>
                                   </div>
                                 </div>
@@ -16270,7 +16283,7 @@ export default function App() {
                                       />
                                     </div>
                                     <h4 className="text-[14px] font-black text-white uppercase tracking-wider font-mono">
-                                      Start PK
+                                      PK Request Received
                                     </h4>
                                     <p className="text-[9.5px] text-gray-300 font-sans leading-relaxed">
                                       <strong className="text-purple-400">@{incoming1v1Invite.inviterName || incoming1v1Invite.fromUsername || "Live Host"}</strong> {incoming1v1Invite.isPkBattle || incoming1v1Invite.inviteType === "pk_battle" ? "challenged you to a 1v1 PK Battle!" : "invited you to join their Solo Live as Co-Host."}
@@ -16309,7 +16322,7 @@ export default function App() {
                                                 setUserLivePkActive(true);
                                                 setUserLivePkScoreMy(0);
                                                 setUserLivePkScoreOther(0);
-                                                setUserLivePkTimer(240);
+                                                setUserLivePkTimer(data.session.timer !== undefined ? data.session.timer : 300);
                                               }
                                               setUserLiveCoHost({
                                                 username: incoming1v1Invite.inviterName || incoming1v1Invite.fromUsername,
@@ -16328,7 +16341,7 @@ export default function App() {
                                       className="flex-1 bg-gradient-to-r from-emerald-600 to-green-600 hover:scale-105 active:scale-95 text-white font-black py-2 rounded-xl text-[9px] uppercase tracking-wide transition-all shadow-md flex items-center justify-center space-x-1 cursor-pointer"
                                     >
                                       <span>⚔️</span>
-                                      <span>Send PK Request</span>
+                                      <span>Accept PK Request</span>
                                     </button>
                                     <button
                                       onClick={async () => {
