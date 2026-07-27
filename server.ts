@@ -2052,6 +2052,38 @@ app.post("/api/v1/pk/invite/:id/respond", (req, res) => {
   }
 });
 
+// Start or Toggle PK Battle in Active Session
+app.post("/api/v1/pk/start-battle", (req, res) => {
+  const { channelName, username, pkActive } = req.body || {};
+  const normUser = String(username || "").toLowerCase();
+
+  let updatedSession: any = null;
+  Object.keys(activePkSessions).forEach((sessionId) => {
+    const s = activePkSessions[sessionId];
+    if (!s) return;
+    const matchChannel = channelName && s.channelName === channelName;
+    const matchUser = normUser && (
+      s.hostA?.username?.toLowerCase() === normUser || 
+      s.hostB?.username?.toLowerCase() === normUser ||
+      String(s.hostA?.userId || "").toLowerCase() === normUser ||
+      String(s.hostB?.userId || "").toLowerCase() === normUser
+    );
+
+    if (matchChannel || matchUser) {
+      s.pkActive = pkActive !== undefined ? Boolean(pkActive) : true;
+      if (s.pkActive) {
+        s.timer = 240;
+        s.startedAt = Date.now();
+      }
+      updatedSession = s;
+    }
+  });
+
+  saveDatabase();
+  console.log(`[PK BATTLE TOGGLE] pkActive=${pkActive} for user @${username}`);
+  res.json({ success: true, session: updatedSession });
+});
+
 // End 1v1 / PK Session
 app.post("/api/v1/pk/end", (req, res) => {
   const { channelName, username } = req.body || {};

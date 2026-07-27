@@ -14921,9 +14921,9 @@ export default function App() {
                                         }
                                       }}
                                       className="text-[7.5px] font-black uppercase text-pink-500 bg-pink-950/20 px-2 py-0.5 rounded-full border border-pink-500/25 tracking-wider animate-pulse cursor-pointer hover:scale-105 active:scale-95 transition-all"
-                                      title={userLivePkActive ? "PK Battle Active" : "Click to Start PK!"}
+                                      title={userLivePkActive ? "PK Battle Active" : "Click for One Versus One Lobby!"}
                                     >
-                                      {userLivePkActive ? "⚔️ PK Battle" : "👥 1VS1 Lobby"}
+                                      {userLivePkActive ? "⚔️ PK Battle" : "👥 One Versus One Lobby"}
                                     </button>
                                     <span className="text-[6.5px] text-gray-500 font-mono mt-0.5">ROOM #3041</span>
                                   </div>
@@ -16164,38 +16164,100 @@ export default function App() {
                               </div>
                             )}
 
-                            {/* Outgoing PK Battle Challenge Pending Modal */}
+                            {/* Outgoing PK Battle Challenge Modal */}
                             {userLiveShowOutgoingPkRequest && (
                               <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-                                <div className="bg-[#0f0e15] border border-pink-500/30 rounded-2xl p-5 w-full max-w-[280px] text-center space-y-4 shadow-2xl animate-scale-in text-left">
+                                <div className="bg-[#0f0e15] border border-pink-500/30 rounded-2xl p-5 w-full max-w-[285px] text-center space-y-4 shadow-2xl animate-scale-in text-left">
                                   <div className="flex flex-col items-center space-y-2 text-center bg-transparent">
                                     <div className="w-12 h-12 rounded-full bg-pink-950/45 border border-pink-500/30 flex items-center justify-center animate-bounce">
                                       <span className="text-xl">⚔️</span>
                                     </div>
-                                    <h4 className="text-[13px] font-black text-white uppercase tracking-wider font-mono">
-                                      Sending PK Challenge...
+                                    <h4 className="text-[14px] font-black text-white uppercase tracking-wider font-mono">
+                                      Start PK
                                     </h4>
-                                    <p className="text-[9px] text-gray-400 font-sans leading-normal">
-                                      Challenging <strong className="text-pink-400">{userLiveCoHost?.username || "co-host"}</strong> to a 1v1 PK Battle! Waiting for acceptance...
+                                    <p className="text-[9.5px] text-gray-300 font-sans leading-normal">
+                                      One Versus One Lobby Request for <strong className="text-pink-400">@{userLiveCoHost?.username || "co-host"}</strong>
                                     </p>
                                   </div>
 
-                                  <div className="p-2 bg-purple-950/30 border border-purple-500/20 rounded-xl flex items-center justify-center space-x-2">
-                                    <span className="w-2 h-2 rounded-full bg-pink-500 animate-ping" />
-                                    <span className="text-[8.5px] font-mono text-purple-300">Waiting for co-host response...</span>
+                                  {/* VS Host Card */}
+                                  <div className="flex items-center justify-center space-x-3 py-2 px-3 bg-white/5 rounded-xl border border-white/10">
+                                    <div className="flex flex-col items-center">
+                                      <img 
+                                        src={user.avatar || DEFAULT_USER.avatar} 
+                                        className="w-9 h-9 rounded-full border border-pink-500 object-cover" 
+                                        alt={user.username}
+                                      />
+                                      <span className="text-[7.5px] text-gray-300 font-bold mt-0.5 truncate max-w-[60px]">{user.username}</span>
+                                    </div>
+                                    <span className="text-pink-500 font-black text-sm font-mono">VS</span>
+                                    <div className="flex flex-col items-center">
+                                      <img 
+                                        src={userLiveCoHost?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80"} 
+                                        className="w-9 h-9 rounded-full border border-purple-500 object-cover" 
+                                        alt={userLiveCoHost?.username || "Opponent"}
+                                      />
+                                      <span className="text-[7.5px] text-purple-300 font-bold mt-0.5 truncate max-w-[60px]">{userLiveCoHost?.username || "Co-Host"}</span>
+                                    </div>
                                   </div>
 
-                                  <button
-                                    onClick={() => setUserLiveShowOutgoingPkRequest(false)}
-                                    className="w-full bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 font-bold py-1.5 rounded-xl text-[9px] uppercase tracking-wide transition-all active:scale-95 cursor-pointer"
-                                  >
-                                    Cancel Request
-                                  </button>
+                                  <div className="flex flex-col space-y-2 pt-1 bg-transparent">
+                                    <button
+                                      onClick={async () => {
+                                        setUserLiveShowOutgoingPkRequest(false);
+                                        setUserLivePkActive(true);
+                                        setUserLivePkTimer(240);
+                                        setUserLivePkScoreMy(0);
+                                        setUserLivePkScoreOther(0);
+
+                                        try {
+                                          await fetch("/api/v1/pk/start-battle", {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({
+                                              channelName: userLivePkChannelName,
+                                              username: user.username,
+                                              pkActive: true
+                                            })
+                                          });
+                                        } catch (e) {
+                                          console.error("[START PK ERROR]", e);
+                                        }
+                                      }}
+                                      className="w-full bg-gradient-to-r from-pink-600 via-rose-600 to-purple-600 hover:scale-102 active:scale-95 text-white font-black py-2.5 rounded-xl text-[9.5px] uppercase tracking-wide transition-all shadow-lg flex items-center justify-center space-x-1.5 cursor-pointer"
+                                    >
+                                      <span>⚔️</span>
+                                      <span>Send PK Request</span>
+                                    </button>
+
+                                    <button
+                                      onClick={async () => {
+                                        setUserLiveShowOutgoingPkRequest(false);
+                                        try {
+                                          await fetch("/api/v1/pk/start-battle", {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({
+                                              channelName: userLivePkChannelName,
+                                              username: user.username,
+                                              pkActive: false
+                                            })
+                                          });
+                                        } catch (e) {
+                                          console.error("[REJECT PK ERROR]", e);
+                                        }
+                                      }}
+                                      className="w-full bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 font-bold py-2 rounded-xl text-[9px] uppercase tracking-wide transition-all active:scale-95 cursor-pointer flex items-center justify-center space-x-1.5"
+                                    >
+                                      <span>❌</span>
+                                      <span>Reject PK Request</span>
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             )}
 
-                            {/* Incoming Co-Host Invitation Request Modal */}
+                            {/* Incoming Co-Host / PK Invitation Request Modal */}
                             {userLiveShowIncomingPkRequest && incoming1v1Invite && (
                               <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
                                 <div className="bg-[#0f0e15] border border-purple-500/40 rounded-2xl p-5 w-full max-w-[290px] text-center space-y-4 shadow-2xl animate-scale-in text-left">
@@ -16207,8 +16269,8 @@ export default function App() {
                                         alt={incoming1v1Invite.inviterName || incoming1v1Invite.fromUsername || "Host"}
                                       />
                                     </div>
-                                    <h4 className="text-[13px] font-black text-white uppercase tracking-wider font-mono">
-                                      {incoming1v1Invite.isPkBattle || incoming1v1Invite.inviteType === "pk_battle" ? "⚔️ PK Battle Challenge!" : "👥 Co-Host Invitation!"}
+                                    <h4 className="text-[14px] font-black text-white uppercase tracking-wider font-mono">
+                                      Start PK
                                     </h4>
                                     <p className="text-[9.5px] text-gray-300 font-sans leading-relaxed">
                                       <strong className="text-purple-400">@{incoming1v1Invite.inviterName || incoming1v1Invite.fromUsername || "Live Host"}</strong> {incoming1v1Invite.isPkBattle || incoming1v1Invite.inviteType === "pk_battle" ? "challenged you to a 1v1 PK Battle!" : "invited you to join their Solo Live as Co-Host."}
@@ -16265,8 +16327,8 @@ export default function App() {
                                       }}
                                       className="flex-1 bg-gradient-to-r from-emerald-600 to-green-600 hover:scale-105 active:scale-95 text-white font-black py-2 rounded-xl text-[9px] uppercase tracking-wide transition-all shadow-md flex items-center justify-center space-x-1 cursor-pointer"
                                     >
-                                      <span>✅</span>
-                                      <span>ACCEPT</span>
+                                      <span>⚔️</span>
+                                      <span>Send PK Request</span>
                                     </button>
                                     <button
                                       onClick={async () => {
@@ -16291,7 +16353,7 @@ export default function App() {
                                       className="flex-1 bg-gradient-to-r from-red-600 to-pink-600 hover:scale-105 active:scale-95 text-white font-black py-2 rounded-xl text-[9px] uppercase tracking-wide transition-all shadow-md flex items-center justify-center space-x-1 cursor-pointer"
                                     >
                                       <span>❌</span>
-                                      <span>REJECT</span>
+                                      <span>Reject PK Request</span>
                                     </button>
                                   </div>
                                 </div>
@@ -17357,7 +17419,7 @@ export default function App() {
                                       }}
                                       className="col-span-2 p-2.5 rounded bg-gradient-to-r from-red-600 via-[#ff007f] to-purple-600 hover:from-red-500 hover:to-purple-500 text-white border border-red-500/20 text-center font-black text-[8.5px] uppercase tracking-wider animate-pulse cursor-pointer"
                                     >
-                                      ⚔️ Start PK Battle Request
+                                      👥 One Versus One Lobby
                                     </button>
                                   )}
                                   <button
@@ -17419,7 +17481,7 @@ export default function App() {
                                     }}
                                     className="p-2 rounded bg-white/5 hover:bg-white/10 text-white border border-white/5 text-center font-bold text-[8px] cursor-pointer"
                                   >
-                                    ⚔️ Start PK
+                                    👥 One Versus One Lobby
                                   </button>
                                   <button
                                     onClick={() => {

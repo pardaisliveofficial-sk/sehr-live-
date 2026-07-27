@@ -202,8 +202,16 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         await agoraClient.setClientRole(agoraRole);
 
         agoraClient.on("exception", (event) => {
-          if (event && (event.code === 2025 || String(event.msg || event.code || "").includes("REJOIN"))) {
+          if (event && (event.code === 2025 || String(event.msg || event.code || "").includes("REJOIN") || String(event.msg || "").includes("WS_ABORT"))) {
             return;
+          }
+        });
+
+        agoraClient.on("connection-state-change", (curState, prevState, reason) => {
+          console.log(`[AGORA CONN STATE] ${prevState} -> ${curState}, reason: ${reason}`);
+          if (curState === "DISCONNECTED" && !isUnmounted) {
+            setStatus("error");
+            setStatusDetails(`Stream disconnected (${reason || "WS_ABORT"})`);
           }
         });
 
