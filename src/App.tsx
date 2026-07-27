@@ -16504,7 +16504,7 @@ export default function App() {
                                           setUserLivePkConnected(true);
                                           setUserLivePkScoreMy(selectedPkMatch.hostA.score);
                                           setUserLivePkScoreOther(selectedPkMatch.hostB.score);
-                                          setUserLivePkTimer(240);
+                                          setUserLivePkTimer(300);
                                           setUserLiveShowPkMatchesModal(false);
                                           setSelectedPkMatch(null);
                                           alert(`Successfully joined ${selectedPkMatch.hostA.username}'s side of the PK battle room!`);
@@ -16530,7 +16530,7 @@ export default function App() {
                                           setUserLivePkConnected(true);
                                           setUserLivePkScoreMy(selectedPkMatch.hostB.score);
                                           setUserLivePkScoreOther(selectedPkMatch.hostA.score);
-                                          setUserLivePkTimer(240);
+                                          setUserLivePkTimer(300);
                                           setUserLiveShowPkMatchesModal(false);
                                           setSelectedPkMatch(null);
                                           alert(`Successfully joined ${selectedPkMatch.hostB.username}'s side of the PK battle room!`);

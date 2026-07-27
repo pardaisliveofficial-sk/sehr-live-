@@ -1913,9 +1913,21 @@ app.get("/api/v1/pk/invites", (req, res) => {
 
   if (activeSession && activeSession.pkActive) {
     const duration = activeSession.duration || 300;
-    const startedAt = activeSession.startedAt || now;
-    const elapsed = Math.floor((now - startedAt) / 1000);
+    let startedAtMs = typeof activeSession.startedAt === "number"
+      ? activeSession.startedAt
+      : (activeSession.startedAt ? new Date(activeSession.startedAt).getTime() : now);
+
+    if (isNaN(startedAtMs) || !activeSession.startedAt) {
+      startedAtMs = now;
+      activeSession.startedAt = now;
+    }
+
+    const elapsed = Math.max(0, Math.floor((now - startedAtMs) / 1000));
     activeSession.timer = Math.max(0, duration - elapsed);
+
+    if (activeSession.timer <= 0) {
+      activeSession.pkActive = false;
+    }
   }
 
   res.json({

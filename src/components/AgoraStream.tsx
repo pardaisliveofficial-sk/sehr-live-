@@ -203,43 +203,64 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         await agoraClient.setClientRole(agoraRole);
 
         agoraClient.on("exception", (event) => {
-          if (event && (event.code === 2025 || String(event.msg || event.code || "").includes("REJOIN") || String(event.msg || event.code || "").includes("WS_ABORT") || String(event.msg || event.code || "").includes("ping") || String(event.msg || event.code || "").includes("PUBLISH"))) {
+          if (event && (event.code === 2025 || String(event.msg || event.code || "").includes("REJOIN") || String(event.msg || event.code || "").includes("WS_ABORT") || String(event.msg || event.code || "").includes("ping") || String(event.msg || event.code || "").includes("PUBLISH") || String(event.msg || event.code || "").includes("traffic_stats") || String(event.msg || event.code || "").includes("restart_ice"))) {
             return;
           }
         });
 
         agoraClient.on("connection-state-change", (curState, prevState, reason) => {
           console.log(`[AGORA CONN STATE] ${prevState} -> ${curState}, reason: ${reason}`);
-          if (curState === "DISCONNECTED" && !isUnmounted) {
-            // Only flag error if not unmounted
-          }
         });
 
         // Setup Event Listeners BEFORE Joining
         const handleUserPublished = async (user: IAgoraRTCRemoteUser, mediaType: "video" | "audio") => {
           if (isUnmounted) return;
           try {
-            const connState = agoraClient.connectionState as string;
-            if (connState === "DISCONNECTED" || connState === "DISCONNECTING") return;
+            if (agoraClient.connectionState !== "CONNECTED") return;
 
-            console.log("[AGORA USER PUBLISHED]", { remoteUid: user.uid, mediaType });
-
-            await agoraClient.subscribe(user, mediaType);
-            
-            const currState = agoraClient.connectionState as string;
-            if (isUnmounted || currState === "DISCONNECTED" || currState === "DISCONNECTING") return;
-
-            if (mediaType === "video") {
+            if (mediaType === "audio" && user.audioTrack) {
+              try { user.audioTrack.play(); } catch (e) {}
+            }
+            if (mediaType === "video" && user.videoTrack) {
               setRemoteUsersList(prev => {
                 if (prev.some(u => u.uid === user.uid)) return prev;
                 return [...prev, user];
               });
             }
-            if (mediaType === "audio") {
-              user.audioTrack?.play();
+
+            if ((mediaType === "video" && !user.videoTrack) || (mediaType === "audio" && !user.audioTrack)) {
+              if (agoraClient.connectionState === "CONNECTED") {
+                await agoraClient.subscribe(user, mediaType);
+              }
             }
-          } catch (err) {
-            console.warn("[AGORA REMOTE SUBSCRIBE ERROR]", err);
+            
+            if (isUnmounted || agoraClient.connectionState !== "CONNECTED") return;
+
+            if (mediaType === "video" && user.videoTrack) {
+              setRemoteUsersList(prev => {
+                if (prev.some(u => u.uid === user.uid)) return prev;
+                return [...prev, user];
+              });
+            }
+            if (mediaType === "audio" && user.audioTrack) {
+              try {
+                user.audioTrack.play();
+              } catch (e) {}
+            }
+          } catch (err: any) {
+            if (
+              err?.code === "INVALID_OPERATION" ||
+              err?.code === "WS_ABORT" ||
+              String(err?.message || err).includes("disconnected") ||
+              String(err?.message || err).includes("not published") ||
+              String(err?.message || err).includes("WS_ABORT") ||
+              String(err?.name || err).includes("INVALID_OPERATION") ||
+              String(err?.name || err).includes("WS_ABORT")
+            ) {
+              // Ignore transient Agora race conditions when subscribing/disconnecting
+              return;
+            }
+            console.warn("[AGORA REMOTE SUBSCRIBE WARN]", err);
           }
         };
 
