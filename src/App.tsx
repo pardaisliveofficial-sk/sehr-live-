@@ -3553,16 +3553,24 @@ export default function App() {
               }
             }
           } else if (!data.activeSession && userLivePkConnected) {
-            // Require 3 consecutive missing session polls before dropping connection
-            // to avoid transient drops during brief re-polling or network blips
-            missedActiveSessionCountRef.current += 1;
-            if (missedActiveSessionCountRef.current >= 3) {
-              setUserLivePkConnected(false);
-              setUserLivePkActive(false);
-              setUserLiveCoHost(null);
-              setUserLivePkChannelName("");
-              missedActiveSessionCountRef.current = 0;
-            }
+            setUserLivePkConnected(false);
+            setUserLivePkActive(false);
+            setUserLiveCoHost(null);
+            setUserLivePkChannelName("");
+            missedActiveSessionCountRef.current = 0;
+            setUserLiveMessages(prev => [
+              ...prev,
+              {
+                id: "ul-cohost-disconnect-" + Date.now(),
+                username: "System ⚔️",
+                message: "Co-host session ended. Returned to Solo Live!",
+                vipLevel: 0,
+                userLevel: 0,
+                isSystem: true,
+                isFlagged: false,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              }
+            ]);
           }
         }
       } catch (e) {
@@ -6170,6 +6178,44 @@ export default function App() {
         ));
       })
       .catch(err => console.error("[LIVE END ERROR] Error deleting host stream on backend:", err));
+  };
+
+  const handleReturnToSoloLive = () => {
+    const ch = userLivePkChannelName;
+    setUserLivePkActive(false);
+    setUserLivePkConnected(false);
+    setUserLiveCoHost(null);
+    setUserLivePkChannelName("");
+    setUserLiveShowExitOptions(false);
+    setUserLiveInvitedHostId(null);
+    setUserLiveInviteCountdown(null);
+    setCurrentOutgoingInviteId(null);
+    setUserLiveShowOutgoingPkRequest(false);
+
+    // Call /api/v1/pk/end on server so session is permanently deleted
+    fetch("/api/v1/pk/end", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channelName: ch,
+        username: user.username,
+        userId: user.uid || user.username
+      })
+    }).catch(() => {});
+
+    setUserLiveMessages(prev => [
+      ...prev,
+      {
+        id: "ul-cohost-disconnect-" + Date.now(),
+        username: "System ⚔️",
+        message: "PK/Co-host disconnected. You have returned to Solo Live!",
+        vipLevel: 0,
+        userLevel: 0,
+        isSystem: true,
+        isFlagged: false,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }
+    ]);
   };
 
   // Email OTP Login Handlers
@@ -14792,8 +14838,9 @@ export default function App() {
                                     <div className="flex items-center space-x-2 bg-white/5 px-2 py-1 rounded-full border border-white/5 shadow-lg">
                                       <div className="relative">
                                         <img
-                                          src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80"
+                                          src={user.avatar || liveBroadcasterAvatar || DEFAULT_USER.avatar}
                                           className="w-7 h-7 rounded-full border border-pink-500 object-cover"
+                                          alt={user.username}
                                         />
                                         <span className="absolute bottom-0 right-0 bg-blue-500 text-white rounded-full p-0.5 text-[5px] flex items-center justify-center border border-white">
                                           ✓
@@ -14801,12 +14848,16 @@ export default function App() {
                                       </div>
                                       <div className="flex flex-col text-left">
                                         <span className="text-[9px] font-black text-white flex items-center space-x-0.5 leading-none">
-                                          <span>Arooj Queen</span>
+                                          <span>{user.username || user.displayName || liveBroadcasterName}</span>
                                           <span className="text-blue-400 text-[7px]">✔️</span>
                                         </span>
                                         <div className="flex items-center space-x-1 mt-0.5">
-                                          <span className="text-[6.5px] bg-purple-600 text-white px-1 py-0.2 rounded font-black font-mono">Lv.25</span>
-                                          <span className="text-[6.5px] text-gray-400 font-bold font-mono">Solo Live</span>
+                                          <span className="text-[6.5px] bg-purple-600 text-white px-1 py-0.2 rounded font-black font-mono">
+                                            Lv.{user.userLevel || liveBroadcasterLevel || 1}
+                                          </span>
+                                          <span className="text-[6.5px] text-pink-300 font-bold font-mono">
+                                            {userLivePkActive ? "⚔️ PK Battle" : "👥 1v1 Co-Host"}
+                                          </span>
                                         </div>
                                       </div>
                                       
@@ -14902,6 +14953,25 @@ export default function App() {
 
                                 {/* MIDDLE 50%: BOTH HOSTS CAMERA split-screen & PK BARS & THEIR MVPs */}
                                 <div className="h-[50%] min-h-[260px] max-h-[310px] w-full bg-black relative flex flex-col shrink-0 overflow-hidden border-b border-white/5">
+                                  {/* Real-time WebRTC 1v1 Split Screen Video Stream */}
+                                  <div className="absolute inset-0 z-0 overflow-hidden">
+                                    <AgoraStream
+                                      channelName={userLivePkChannelName || `room_${user.uniqueId || user.username || "sehr_1001"}`}
+                                      role="publisher"
+                                      userId={user.username || user.uniqueId || "host_101"}
+                                      publishCameraTrack={userLiveCam}
+                                      publishMicrophoneTrack={userLiveMic}
+                                      videoMuted={!userLiveCam}
+                                      hostAvatar={user.avatar || DEFAULT_USER.avatar}
+                                      hostName={user.username || DEFAULT_USER.username}
+                                      isCoHostMode={true}
+                                      coHostAvatar={userLiveCoHost?.avatar}
+                                      coHostName={userLiveCoHost?.username}
+                                      coHostVideoMuted={userLiveCoHost?.isCamOff}
+                                      onPublishSuccess={handleHostPublishSuccess}
+                                    />
+                                  </div>
+
                                   {(() => {
                                     const isMatchEnd = userLivePkTimer <= 15;
                                     const isMyWinner = userLivePkScoreMy > userLivePkScoreOther;
@@ -16032,27 +16102,7 @@ export default function App() {
                                   <div className="flex flex-col space-y-2 bg-transparent">
                                     {/* Option 1: Return to Solo Live */}
                                     <button
-                                      onClick={() => {
-                                        setUserLivePkActive(false);
-                                        setUserLivePkConnected(false);
-                                        setUserLiveCoHost(null);
-                                        setUserLiveShowExitOptions(false);
-                                        setUserLiveInvitedHostId(null);
-                                        setUserLiveMessages(prev => [
-                                          ...prev,
-                                          {
-                                            id: "ul-cohost-disconnect-" + Date.now(),
-                                            username: "System ⚔️",
-                                            message: "PK/Co-host disconnected. You have returned to Solo Live!",
-                                            vipLevel: 0,
-                                            userLevel: 0,
-                                            isSystem: true,
-                                            isFlagged: false,
-                                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                          }
-                                        ]);
-                                        alert("Returned to Solo Live successfully!");
-                                      }}
+                                      onClick={() => handleReturnToSoloLive()}
                                       className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-2.5 px-3 rounded-xl text-[9.5px] uppercase tracking-wide transition-all active:scale-95 shadow-md flex items-center justify-center space-x-1.5"
                                     >
                                       <span>🎥</span>
@@ -16618,7 +16668,7 @@ export default function App() {
                             {userLiveShowFanClubModal && (
                               <div className="absolute inset-x-4 bottom-20 z-30 bg-black/90 backdrop-blur-md border border-pink-500/20 rounded-2xl p-4 space-y-3 shadow-2xl animate-slide-up text-left">
                                 <div className="flex justify-between items-center border-b border-pink-500/10 pb-2 bg-transparent">
-                                  <h5 className="text-[10px] font-black text-pink-500 uppercase tracking-wider font-mono">👥 Join Arooj Queen's Fan Club</h5>
+                                  <h5 className="text-[10px] font-black text-pink-500 uppercase tracking-wider font-mono">👥 Join {user.username || "Host"}'s Fan Club</h5>
                                   <button onClick={() => setUserLiveShowFanClubModal(false)} className="text-gray-400 hover:text-white text-xs">✕</button>
                                 </div>
                                 <div className="space-y-2 text-[8px] text-gray-300 bg-transparent">
@@ -16638,7 +16688,7 @@ export default function App() {
                                     }
                                     setUser(prev => ({ ...prev, coins: prev.coins - 99 }));
                                     setUserLiveShowFanClubModal(false);
-                                    alert("🎉 Congratulations! You have successfully joined the Arooj Queen Fan Club. Badge assigned!");
+                                    alert(`🎉 Congratulations! You have successfully joined the ${user.username || "Host"} Fan Club. Badge assigned!`);
                                   }}
                                   className="w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all shadow-lg hover:opacity-95"
                                 >
@@ -17419,7 +17469,7 @@ export default function App() {
                                           {
                                             id: "ul-guest-start-" + Date.now(),
                                             username: "System 🎙️",
-                                            message: "Host Arooj Queen started Guest Mode! Click empty seats to apply or invite viewers.",
+                                            message: `Host ${user.username || "Host"} started Guest Mode! Click empty seats to apply or invite viewers.`,
                                             vipLevel: 0,
                                             userLevel: 0,
                                             isSystem: true,

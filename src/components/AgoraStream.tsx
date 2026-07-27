@@ -349,6 +349,34 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
     };
   }, [channelName, role, facingMode, isCoHostMode]);
 
+  // Re-play local video track when containers change
+  useEffect(() => {
+    if (localVideoTrack && !videoMuted) {
+      const targetElem = isCoHostMode ? localContainerRef.current : containerRef.current;
+      if (targetElem) {
+        try {
+          localVideoTrack.play(targetElem);
+        } catch (e) {
+          console.warn("[AGORA LOCAL TRACK PLAY WARN]", e);
+        }
+      }
+    }
+  }, [localVideoTrack, videoMuted, isCoHostMode]);
+
+  // Re-play remote video track when containers change
+  useEffect(() => {
+    if (remoteUser?.videoTrack && hasRemoteVideo && !coHostVideoMuted) {
+      const targetElem = isCoHostMode ? remoteContainerRef.current : containerRef.current;
+      if (targetElem) {
+        try {
+          remoteUser.videoTrack.play(targetElem);
+        } catch (e) {
+          console.warn("[AGORA REMOTE TRACK PLAY WARN]", e);
+        }
+      }
+    }
+  }, [remoteUser, hasRemoteVideo, coHostVideoMuted, isCoHostMode]);
+
   if (isCoHostMode) {
     return (
       <div className="w-full h-full relative overflow-hidden bg-[#0a0814] flex flex-row select-none">
