@@ -1225,7 +1225,7 @@ const findHostIndex = (id: string) => {
   );
 };
 
-const terminateHostLiveSession = (targetId: string) => {
+const terminateHostLiveSession = (targetId: string, terminatePk: boolean = false) => {
   if (!targetId) return;
   const cleanId = String(targetId).replace(/^h-/, "");
 
@@ -1267,24 +1267,26 @@ const terminateHostLiveSession = (targetId: string) => {
     );
   }
 
-  // Terminate any active PK / 1v1 sessions involving these matched usernames
-  Object.keys(activePkSessions).forEach((sessionId) => {
-    const s = activePkSessions[sessionId];
-    if (!s) return;
-    const uA = s.hostA?.username?.toLowerCase();
-    const uB = s.hostB?.username?.toLowerCase();
-    const idA = String(s.hostA?.userId || "").toLowerCase();
-    const idB = String(s.hostB?.userId || "").toLowerCase();
+  // Only terminate active PK / 1v1 sessions if terminatePk flag is explicitly requested
+  if (terminatePk) {
+    Object.keys(activePkSessions).forEach((sessionId) => {
+      const s = activePkSessions[sessionId];
+      if (!s) return;
+      const uA = s.hostA?.username?.toLowerCase();
+      const uB = s.hostB?.username?.toLowerCase();
+      const idA = String(s.hostA?.userId || "").toLowerCase();
+      const idB = String(s.hostB?.userId || "").toLowerCase();
 
-    const matches = matchedUsernames.some(u => u && (u === uA || u === uB || u === idA || u === idB));
-    if (matches) {
-      s.status = "ended";
-      s.pkActive = false;
-      if (uA && onlineUserPresence[uA]) onlineUserPresence[uA].inPk = false;
-      if (uB && onlineUserPresence[uB]) onlineUserPresence[uB].inPk = false;
-      delete activePkSessions[sessionId];
-    }
-  });
+      const matches = matchedUsernames.some(u => u && (u === uA || u === uB || u === idA || u === idB));
+      if (matches) {
+        s.status = "ended";
+        s.pkActive = false;
+        if (uA && onlineUserPresence[uA]) onlineUserPresence[uA].inPk = false;
+        if (uB && onlineUserPresence[uB]) onlineUserPresence[uB].inPk = false;
+        delete activePkSessions[sessionId];
+      }
+    });
+  }
 
   // Expire/cancel any pending invites for these usernames
   Object.keys(activePkInvites).forEach((inviteId) => {
@@ -1788,13 +1790,27 @@ app.get("/api/v1/pk/available-hosts", (req, res) => {
 
 // Send PK / 1v1 Co-Host Invite
 app.post("/api/v1/pk/invite", (req, res) => {
-  const { fromUsername, fromUserId, fromAvatar, fromLevel, fromFans, toUsername, toUserId, liveSessionId, channelName: customChannelName, inviteType, isPkBattle } = req.body || {};
+  const { fromUsername, fromUserId, fromAvatar, fromLevel, fromFans, toUsername, toUserId, toAvatar, toLevel, toFans, liveSessionId, channelName: customChannelName, inviteType, isPkBattle } = req.body || {};
   if (!fromUsername || !toUsername) {
     return res.status(400).json({ error: "Sender and receiver usernames are required" });
   }
 
   const normFrom = fromUsername.toLowerCase();
   const normTo = toUsername.toLowerCase();
+
+  // Look up missing user details from online presence or dbData
+  const presenceFrom = onlineUserPresence[normFrom];
+  const presenceTo = onlineUserPresence[normTo];
+  const hostTo = (dbData.hosts || []).find((h: any) => h.hostUsername?.toLowerCase() === normTo || h.name?.toLowerCase() === normTo);
+
+  const finalFromAvatar = fromAvatar || presenceFrom?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80";
+  const finalFromLevel = Number(fromLevel) || Number(presenceFrom?.level) || 1;
+  const finalFromFans = fromFans || presenceFrom?.fans || "10K fans";
+
+  const finalToUserId = toUserId || presenceTo?.userId || hostTo?.hostUid || hostTo?.id || toUsername;
+  const finalToAvatar = toAvatar || presenceTo?.avatar || hostTo?.hostAvatar || hostTo?.avatar || "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80";
+  const finalToLevel = Number(toLevel) || Number(presenceTo?.level) || Number(hostTo?.level) || Number(hostTo?.hostLevel) || 1;
+  const finalToFans = toFans || presenceTo?.fans || `${hostTo?.followersCount || 0} fans` || "15K fans";
 
   // Expire or cancel any previous pending invite from same sender
   Object.keys(activePkInvites).forEach(id => {
@@ -1817,15 +1833,18 @@ app.post("/api/v1/pk/invite", (req, res) => {
     channelName,
     inviterUserId: fromUserId || fromUsername,
     inviterName: fromUsername,
-    inviterAvatar: fromAvatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
+    inviterAvatar: finalFromAvatar,
     fromUsername,
     fromUserId: fromUserId || fromUsername,
-    fromAvatar: fromAvatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
-    fromLevel: Number(fromLevel) || 1,
-    fromFans: fromFans || "10K fans",
-    inviteeUserId: toUserId || toUsername,
+    fromAvatar: finalFromAvatar,
+    fromLevel: finalFromLevel,
+    fromFans: finalFromFans,
+    inviteeUserId: finalToUserId,
     toUsername,
-    toUserId: toUserId || toUsername,
+    toUserId: finalToUserId,
+    toAvatar: finalToAvatar,
+    toLevel: finalToLevel,
+    toFans: finalToFans,
     inviteType: inviteType || (isPk ? "pk_battle" : "cohost"),
     isPkBattle: isPk,
     status: "pending",
@@ -1834,7 +1853,7 @@ app.post("/api/v1/pk/invite", (req, res) => {
   };
 
   activePkInvites[inviteId] = newInvite;
-  console.log(`[PK SERVER SUCCESS] Host @${fromUsername} invited @${toUsername} (${isPk ? "PK Battle" : "Co-Host"}) (Channel: ${channelName}, InviteId: ${inviteId})`);
+  console.log(`[PK SERVER SUCCESS] Host @${fromUsername} (Lv.${finalFromLevel}) invited @${toUsername} (Lv.${finalToLevel}) (${isPk ? "PK Battle" : "Co-Host"}) (Channel: ${channelName}, InviteId: ${inviteId})`);
 
   res.status(201).json(newInvite);
 });
@@ -1883,12 +1902,12 @@ app.get("/api/v1/pk/invites", (req, res) => {
 
   // Find active session
   const activeSession = Object.values(activePkSessions).find((s: any) => 
-    s.status !== "ended" && 
+    s && s.status !== "ended" && 
     (
-      s.hostA.username.toLowerCase() === username || 
-      s.hostB.username.toLowerCase() === username ||
-      (s.hostA.userId && String(s.hostA.userId).toLowerCase() === userId) ||
-      (s.hostB.userId && String(s.hostB.userId).toLowerCase() === userId)
+      (s.hostA?.username && s.hostA.username.toLowerCase() === username) || 
+      (s.hostB?.username && s.hostB.username.toLowerCase() === username) ||
+      (s.hostA?.userId && String(s.hostA.userId).toLowerCase() === userId) ||
+      (s.hostB?.userId && String(s.hostB.userId).toLowerCase() === userId)
     )
   ) || null;
 
@@ -1941,13 +1960,41 @@ app.post("/api/v1/pk/invite/:id/respond", (req, res) => {
   if (action === "accept") {
     invite.status = "accepted";
     const isPk = !!(invite.isPkBattle || invite.inviteType === "pk_battle");
-    
+
+    const normA = invite.fromUsername.toLowerCase();
+    const normB = (username || invite.toUsername).toLowerCase();
+
+    const presenceA = onlineUserPresence[normA];
+    const presenceB = onlineUserPresence[normB];
+    const hostAObj = (dbData.hosts || []).find((h: any) => h.hostUsername?.toLowerCase() === normA || h.name?.toLowerCase() === normA);
+    const hostBObj = (dbData.hosts || []).find((h: any) => h.hostUsername?.toLowerCase() === normB || h.name?.toLowerCase() === normB);
+
+    const hostAUser = {
+      username: invite.fromUsername,
+      userId: invite.inviterUserId || invite.fromUserId || presenceA?.userId || hostAObj?.hostUid || invite.fromUsername,
+      avatar: invite.fromAvatar || presenceA?.avatar || hostAObj?.hostAvatar || hostAObj?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
+      level: Number(invite.fromLevel) || Number(presenceA?.level) || Number(hostAObj?.hostLevel) || 1,
+      fans: invite.fromFans || presenceA?.fans || `${hostAObj?.followersCount || 0} fans` || "10K fans",
+      score: 0
+    };
+
+    const hostBUser = {
+      username: username || invite.toUsername,
+      userId: userId || invite.inviteeUserId || invite.toUserId || presenceB?.userId || hostBObj?.hostUid || (username || invite.toUsername),
+      avatar: avatar || invite.toAvatar || presenceB?.avatar || hostBObj?.hostAvatar || hostBObj?.avatar || "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80",
+      level: Number(level) || Number(invite.toLevel) || Number(presenceB?.level) || Number(hostBObj?.hostLevel) || 1,
+      fans: fans || invite.toFans || presenceB?.fans || `${hostBObj?.followersCount || 0} fans` || "15K fans",
+      score: 0
+    };
+
     // Create or update active 1v1 / PK session
     const sessionId = invite.liveSessionId || `session_${invite.channelName}`;
     let session = activePkSessions[sessionId];
     if (session) {
       session.status = "connected";
       session.pkActive = isPk;
+      session.hostA = { ...session.hostA, ...hostAUser };
+      session.hostB = { ...session.hostB, ...hostBUser };
       if (isPk) {
         session.hostA.score = 0;
         session.hostB.score = 0;
@@ -1958,22 +2005,8 @@ app.post("/api/v1/pk/invite/:id/respond", (req, res) => {
         id: sessionId,
         liveSessionId: sessionId,
         channelName: invite.channelName,
-        hostA: {
-          username: invite.fromUsername,
-          userId: invite.inviterUserId || invite.fromUserId,
-          avatar: invite.fromAvatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
-          level: invite.fromLevel || 1,
-          fans: invite.fromFans || "10K fans",
-          score: 0
-        },
-        hostB: {
-          username: username || invite.toUsername,
-          userId: userId || invite.inviteeUserId || invite.toUserId,
-          avatar: avatar || invite.toAvatar || "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80",
-          level: Number(level) || 1,
-          fans: fans || "15K fans",
-          score: 0
-        },
+        hostA: hostAUser,
+        hostB: hostBUser,
         status: "connected",
         pkActive: isPk,
         timer: 240,
@@ -1983,20 +2016,34 @@ app.post("/api/v1/pk/invite/:id/respond", (req, res) => {
     }
 
     // Mark both in PK in presence
-    const normA = invite.fromUsername.toLowerCase();
-    const normB = (username || invite.toUsername).toLowerCase();
     if (onlineUserPresence[normA]) onlineUserPresence[normA].inPk = true;
     if (onlineUserPresence[normB]) onlineUserPresence[normB].inPk = true;
 
-    // Update hosts array
+    // Update hosts array so viewers watching either host see 1v1 PK status
     dbData.hosts.forEach((h: any) => {
-      if (h.hostUsername?.toLowerCase() === normA || h.hostUsername?.toLowerCase() === normB) {
+      const hNorm = h.hostUsername?.toLowerCase() || h.name?.toLowerCase();
+      if (hNorm === normA) {
         h.inPk = true;
         h.category = "pk";
+        h.coHostUsername = hostBUser.username;
+        h.coHostUserId = hostBUser.userId;
+        h.coHostAvatar = hostBUser.avatar;
+        h.coHostLevel = hostBUser.level;
+        h.coHostScore = hostBUser.score;
+        h.pkActive = isPk;
+      } else if (hNorm === normB) {
+        h.inPk = true;
+        h.category = "pk";
+        h.coHostUsername = hostAUser.username;
+        h.coHostUserId = hostAUser.userId;
+        h.coHostAvatar = hostAUser.avatar;
+        h.coHostLevel = hostAUser.level;
+        h.coHostScore = hostAUser.score;
+        h.pkActive = isPk;
       }
     });
 
-    console.log(`[PK SERVER SUCCESS] @${username} ACCEPTED invite (${isPk ? "PK Battle" : "Co-Host"}) from @${invite.fromUsername}! Session started on channel: ${invite.channelName}`);
+    console.log(`[PK SERVER SUCCESS] @${username} (Lv.${hostBUser.level}) ACCEPTED invite from @${invite.fromUsername} (Lv.${hostAUser.level})! Session started on channel: ${invite.channelName}`);
     return res.json({ success: true, status: "accepted", invite, session });
   } else {
     invite.status = "rejected";

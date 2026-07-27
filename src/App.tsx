@@ -3449,6 +3449,8 @@ export default function App() {
     return () => clearInterval(interval);
   }, [userLivePkInvitePanelOpen, user.username]);
 
+  const missedActiveSessionCountRef = useRef<number>(0);
+
   // Real-time Invites & Active Session Sync (runs continuously every 1.2s)
   useEffect(() => {
     if (!user?.username) return;
@@ -3489,8 +3491,9 @@ export default function App() {
                 const otherHost = sess.hostA.username.toLowerCase() === user.username.toLowerCase() ? sess.hostB : sess.hostA;
                 setUserLiveCoHost({
                   username: otherHost.username,
-                  avatar: otherHost.avatar,
-                  level: otherHost.level || 1,
+                  userId: otherHost.userId || otherHost.username,
+                  avatar: otherHost.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
+                  level: Number(otherHost.level) || 1,
                   fans: otherHost.fans || "10K fans"
                 });
                 setUserLivePkConnected(true);
@@ -3518,18 +3521,19 @@ export default function App() {
 
           // 3. Active Session Sync
           if (data.activeSession && (data.activeSession.status === "connected" || data.activeSession.status === "pk_active")) {
+            missedActiveSessionCountRef.current = 0; // reset consecutive missed poll counter
             const sess = data.activeSession;
             const isHostA = (sess.hostA.username && sess.hostA.username.toLowerCase() === user.username.toLowerCase()) ||
                             (sess.hostA.userId && String(sess.hostA.userId).toLowerCase() === String(user.uid || user.username).toLowerCase());
             const myHost = isHostA ? sess.hostA : sess.hostB;
             const otherHost = isHostA ? sess.hostB : sess.hostA;
 
-            if (!userLivePkConnected || userLiveCoHost?.username !== otherHost.username) {
+            if (otherHost && (!userLivePkConnected || userLiveCoHost?.username !== otherHost.username || userLiveCoHost?.level !== otherHost.level)) {
               setUserLiveCoHost({
                 username: otherHost.username,
-                userId: otherHost.userId,
+                userId: otherHost.userId || otherHost.username,
                 avatar: otherHost.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
-                level: otherHost.level || 1,
+                level: Number(otherHost.level) || 1,
                 fans: otherHost.fans || "10K fans"
               });
               setUserLivePkConnected(true);
@@ -3541,7 +3545,7 @@ export default function App() {
               setUserLivePkActive(isPkActive);
             }
 
-            if (isPkActive) {
+            if (isPkActive && myHost && otherHost) {
               setUserLivePkScoreMy(myHost.score || 0);
               setUserLivePkScoreOther(otherHost.score || 0);
               if (sess.timer !== undefined && sess.timer !== null) {
@@ -3549,11 +3553,16 @@ export default function App() {
               }
             }
           } else if (!data.activeSession && userLivePkConnected) {
-            // Session ended on backend
-            setUserLivePkConnected(false);
-            setUserLivePkActive(false);
-            setUserLiveCoHost(null);
-            setUserLivePkChannelName("");
+            // Require 3 consecutive missing session polls before dropping connection
+            // to avoid transient drops during brief re-polling or network blips
+            missedActiveSessionCountRef.current += 1;
+            if (missedActiveSessionCountRef.current >= 3) {
+              setUserLivePkConnected(false);
+              setUserLivePkActive(false);
+              setUserLiveCoHost(null);
+              setUserLivePkChannelName("");
+              missedActiveSessionCountRef.current = 0;
+            }
           }
         }
       } catch (e) {
@@ -10334,6 +10343,10 @@ export default function App() {
                                   videoMuted={activeHost.cameraEnabled === false || activeHost.isCamOff === true || activeHost.cameraMuted === true}
                                   hostAvatar={activeHost.avatar || activeHost.hostAvatar || liveBroadcasterAvatar}
                                   hostName={activeHost.name || activeHost.hostUsername || liveBroadcasterName}
+                                  isCoHostMode={Boolean(activeHost.category === "pk" || activeHost.coHostUsername || activeHost.inPk)}
+                                  coHostAvatar={activeHost.coHostAvatar}
+                                  coHostName={activeHost.coHostUsername || activeHost.coHostName}
+                                  coHostVideoMuted={activeHost.coHostCamOff}
                                 />
                               </div>
 
@@ -14972,21 +14985,10 @@ export default function App() {
                                         )}
 
                                         {/* BOTH HOSTS VIEWPORT SPLIT */}
-                                        <div className="flex-1 w-full flex bg-black relative">
+                                        <div className="flex-1 w-full flex bg-transparent relative">
                                           {/* Left Host: Main Host (Host A / Broadcaster / You) - NOW LEFT */}
-                                          <div className="w-1/2 h-full relative border-r border-white/5 bg-[#171324] flex items-center justify-center">
-                                            {userLiveCam ? (
-                                              <img
-                                                src={USER_LIVE_BG_IMAGES[userLiveBgIndex]}
-                                                className="w-full h-full object-cover opacity-90 transition-all duration-300"
-                                                style={{
-                                                  filter: `brightness(${userLiveBeauty.brightness}%) contrast(105%) saturate(110%) blur(${userLiveBeauty.smooth > 80 ? '0.5px' : '0px'})`,
-                                                  transform: `scaleX(${userLiveCamFlipped ? -1 : 1}) rotate(${userLiveCamRotation}deg)`
-                                                }}
-                                                alt="Broadcaster portrait"
-                                                referrerPolicy="no-referrer"
-                                              />
-                                            ) : (
+                                          <div className="w-1/2 h-full relative border-r border-white/5 bg-transparent flex items-center justify-center">
+                                            {userLiveCam ? null : (
                                               <div className="relative w-full h-full flex flex-col items-center justify-center bg-[#130f24] overflow-hidden select-none p-2">
                                                 <img 
                                                   src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80"}
@@ -15076,7 +15078,7 @@ export default function App() {
                                           </div>
 
                                           {/* Right Host: Opponent Host (Host B / Hamza / Co-host) - NOW RIGHT */}
-                                          <div className="w-1/2 h-full relative bg-[#0f1422] flex items-center justify-center">
+                                          <div className="w-1/2 h-full relative bg-transparent flex items-center justify-center">
                                             {userLiveCoHost?.isCamOff ? (
                                               <div className="relative w-full h-full flex flex-col items-center justify-center bg-[#0d1220] overflow-hidden select-none p-2">
                                                 <img 
@@ -15096,14 +15098,7 @@ export default function App() {
                                                   </span>
                                                 </div>
                                               </div>
-                                            ) : (
-                                              <img
-                                                src={userLiveCoHost?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80"}
-                                                className="w-full h-full object-cover opacity-90"
-                                                alt="Opponent portrait"
-                                                referrerPolicy="no-referrer"
-                                              />
-                                            )}
+                                            ) : null}
 
                                             {/* Host B Supporters Row -> RIGHT */}
                                             <div className="absolute bottom-11 right-2 z-10 flex items-center space-x-1.5 select-none bg-transparent">
@@ -15515,6 +15510,10 @@ export default function App() {
                                   videoMuted={!userLiveCam}
                                   hostAvatar={user.avatar || DEFAULT_USER.avatar}
                                   hostName={user.username || DEFAULT_USER.username}
+                                  isCoHostMode={Boolean(userLivePkConnected || userLiveCoHost)}
+                                  coHostAvatar={userLiveCoHost?.avatar}
+                                  coHostName={userLiveCoHost?.username}
+                                  coHostVideoMuted={userLiveCoHost?.isCamOff}
                                   onPublishSuccess={handleHostPublishSuccess}
                                 />
                               </div>
@@ -17360,15 +17359,10 @@ export default function App() {
                                       setUserLiveShowMoreModal(false);
                                       if (!userLivePkActive) {
                                         if (!userLiveCoHost) {
-                                          setUserLiveCoHost({
-                                            username: userLiveCoHost?.username || "Host_B",
-                                            avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
-                                            fans: "125K fans",
-                                            level: 45
-                                          });
-                                          setUserLivePkConnected(true);
+                                          setUserLivePkInvitePanelOpen(true);
+                                        } else {
+                                          setUserLiveShowOutgoingPkRequest(true);
                                         }
-                                        setUserLiveShowOutgoingPkRequest(true);
                                       } else {
                                         alert("PK Battle is already active!");
                                       }

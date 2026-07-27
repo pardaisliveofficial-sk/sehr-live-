@@ -24,6 +24,10 @@ interface AgoraStreamProps {
   publishMicrophoneTrack?: boolean;
   onStatusChange?: (status: "idle" | "connecting" | "connected" | "error" | "simulated", details?: string) => void;
   onPublishSuccess?: (info: { channelName: string; uid: number }) => void;
+  isCoHostMode?: boolean;
+  coHostAvatar?: string;
+  coHostName?: string;
+  coHostVideoMuted?: boolean;
 }
 
 const sanitizeChannel = (ch: string) => {
@@ -47,9 +51,15 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
   publishCameraTrack,
   publishMicrophoneTrack,
   onStatusChange,
-  onPublishSuccess
+  onPublishSuccess,
+  isCoHostMode = false,
+  coHostAvatar = "",
+  coHostName = "Co-Host",
+  coHostVideoMuted = false
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const localContainerRef = useRef<HTMLDivElement>(null);
+  const remoteContainerRef = useRef<HTMLDivElement>(null);
   
   // Real Agora States
   const [client, setClient] = useState<IAgoraRTCClient | null>(null);
@@ -76,6 +86,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
 
   const defaultAvatar = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80";
   const avatarUrl = hostAvatar && hostAvatar.trim().length > 0 ? hostAvatar : defaultAvatar;
+  const coHostAvatarUrl = coHostAvatar && coHostAvatar.trim().length > 0 ? coHostAvatar : defaultAvatar;
 
   // Camera off determination
   const isCameraOff = role === "publisher" 
@@ -101,11 +112,12 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
     if (role !== "publisher") return;
     if (localVideoTrack) {
       localVideoTrack.setEnabled(!videoMuted).catch(() => {});
-      if (!videoMuted && containerRef.current) {
-        localVideoTrack.play(containerRef.current);
+      const targetElem = isCoHostMode ? localContainerRef.current : containerRef.current;
+      if (!videoMuted && targetElem) {
+        localVideoTrack.play(targetElem);
       }
     }
-  }, [videoMuted, localVideoTrack, role]);
+  }, [videoMuted, localVideoTrack, role, isCoHostMode]);
 
   // Main Single Engine: Agora RTC Stream
   useEffect(() => {
@@ -127,12 +139,6 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
 
       // Diagnostic request log
       console.log(`[AGORA TOKEN REQUEST]\nURL: ${tokenUrl}\nchannelName: ${cleanChannel}\nuid: ${requestUid}\nrole: ${requestRole}`);
-      console.log("[AGORA TOKEN REQUEST]", {
-        URL: tokenUrl,
-        channelName: cleanChannel,
-        uid: requestUid,
-        role: requestRole
-      });
 
       // 1. Request Token from Backend
       let tokenData: any = null;
@@ -147,16 +153,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
 
         if (res.ok) {
           tokenData = await res.json();
-          console.log(`[AGORA TOKEN SUCCESS]\nstatus: ${res.status}\nappIdPresent: ${!!tokenData?.appId}\ntokenPresent: ${!!tokenData?.token}\nuid: ${tokenData?.uid}\nchannelName: ${tokenData?.channelName || cleanChannel}`);
-          console.log("[AGORA TOKEN SUCCESS]", {
-            status: res.status,
-            appIdPresent: !!tokenData?.appId,
-            tokenPresent: !!tokenData?.token,
-            uid: tokenData?.uid,
-            channelName: tokenData?.channelName || cleanChannel
-          });
         } else if (res.status === 401) {
-          console.error("[AGORA APP AUTH FAILED]", res.status, tokenUrl);
           if (!isUnmounted) {
             setStatus("error");
             setStatusDetails(`FAILED STEP: APP_AUTH\nHTTP STATUS: 401\nMESSAGE: User session expired or missing.`);
@@ -165,7 +162,6 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         } else {
           const errData = await res.json().catch(() => ({}));
           const errMsg = errData.error || res.statusText || "Token API error";
-          console.error("[AGORA TOKEN FAILED]", res.status, tokenUrl, errMsg);
           if (!isUnmounted) {
             setStatus("error");
             setStatusDetails(`FAILED STEP: TOKEN_API\nHTTP STATUS: ${res.status}\nREQUEST URL: ${tokenUrl}\nMESSAGE: ${errMsg}`);
@@ -174,7 +170,6 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         }
       } catch (e: any) {
         const errMsg = e.message || "Network request failed";
-        console.error("[AGORA TOKEN ERROR]", e);
         if (!isUnmounted) {
           setStatus("error");
           setStatusDetails(`FAILED STEP: TOKEN_API\nHTTP STATUS: 0\nREQUEST URL: ${tokenUrl}\nMESSAGE: ${errMsg}`);
@@ -185,7 +180,6 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
       if (isUnmounted) return;
 
       if (!tokenData || !tokenData.appId || !tokenData.token || !tokenData.uid) {
-        console.error("[AGORA ERROR] Invalid or missing Agora credentials in response:", tokenData);
         if (!isUnmounted) {
           setStatus("error");
           setStatusDetails(`FAILED STEP: TOKEN_API\nHTTP STATUS: 200\nREQUEST URL: ${tokenUrl}\nMESSAGE: Server response missing required appId, token, or uid`);
@@ -207,29 +201,11 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         const agoraRole = isPublisher ? "host" : "audience";
         await agoraClient.setClientRole(agoraRole);
 
-        // Suppress expected internal SDK exception events (e.g. ERR_REJOIN_NOT_JOINED during fast teardown)
         agoraClient.on("exception", (event) => {
           if (event && (event.code === 2025 || String(event.msg || event.code || "").includes("REJOIN"))) {
             return;
           }
         });
-
-        // Trace Log
-        if (isPublisher) {
-          console.log("[AGORA HOST JOIN]", {
-            channel: cleanChannel,
-            uid: targetUid,
-            role: "host",
-            localCameraEnabled: !videoMutedRef.current,
-            localMicEnabled: !mutedRef.current
-          });
-        } else {
-          console.log("[AGORA VIEWER JOIN]", {
-            channel: cleanChannel,
-            uid: targetUid,
-            role: "audience"
-          });
-        }
 
         // Setup Event Listeners BEFORE Joining
         const handleUserPublished = async (user: IAgoraRTCRemoteUser, mediaType: "video" | "audio") => {
@@ -246,17 +222,16 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             if (isUnmounted || currState === "DISCONNECTED" || currState === "DISCONNECTING") return;
 
             setRemoteUser(user);
-            console.log("[AGORA SUBSCRIBED]", { remoteUid: user.uid, mediaType });
 
             if (mediaType === "video") {
               setHasRemoteVideo(true);
-              if (containerRef.current) {
-                user.videoTrack?.play(containerRef.current);
+              const targetElem = isCoHostMode ? remoteContainerRef.current : containerRef.current;
+              if (targetElem) {
+                user.videoTrack?.play(targetElem);
               }
             }
             if (mediaType === "audio") {
               user.audioTrack?.play();
-              console.log("[AGORA AUDIO PLAY]", { remoteUid: user.uid });
             }
           } catch (err) {
             console.warn("[AGORA REMOTE SUBSCRIBE ERROR]", err);
@@ -307,8 +282,9 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             aTrack.setEnabled(!mutedRef.current);
             vTrack.setEnabled(!videoMutedRef.current);
 
-            if (containerRef.current && !videoMutedRef.current) {
-              vTrack.play(containerRef.current);
+            const targetElem = isCoHostMode ? localContainerRef.current : containerRef.current;
+            if (targetElem && !videoMutedRef.current) {
+              vTrack.play(targetElem);
             }
 
             // Publish tracks
@@ -328,7 +304,6 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
           setStatus("connected");
           setStatusDetails("Connected to Live Stream");
 
-          // Inspect existing remote users already broadcasting in the room
           for (const user of agoraClient.remoteUsers) {
             if (user.hasVideo) await handleUserPublished(user, "video");
             if (user.hasAudio) await handleUserPublished(user, "audio");
@@ -347,7 +322,6 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
 
     return () => {
       isUnmounted = true;
-      console.log("[AGORA LEAVE CLEANUP]", { channel: cleanChannel, role });
 
       if (activeVideoTrack) {
         try {
@@ -373,7 +347,85 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
       setRemoteUser(null);
       setHasRemoteVideo(false);
     };
-  }, [channelName, role, facingMode]);
+  }, [channelName, role, facingMode, isCoHostMode]);
+
+  if (isCoHostMode) {
+    return (
+      <div className="w-full h-full relative overflow-hidden bg-[#0a0814] flex flex-row select-none">
+        {/* LEFT HOST (HOST A / LOCAL PUBLISHER OR HOST A REMOTE) */}
+        <div className="w-1/2 h-full relative border-r border-white/10 bg-[#120d22] flex items-center justify-center overflow-hidden">
+          <div 
+            ref={localContainerRef} 
+            className="absolute inset-0 z-0 w-full h-full object-cover"
+            style={{ display: videoMuted ? "none" : "block" }}
+          />
+          {videoMuted && (
+            <div className="absolute inset-0 z-10 bg-[#120e24] flex flex-col items-center justify-center p-2 text-center overflow-hidden">
+              <img 
+                src={avatarUrl} 
+                className="absolute inset-0 w-full h-full object-cover opacity-20 blur-xl scale-125"
+                alt={hostName}
+              />
+              <div className="relative z-10 flex flex-col items-center space-y-1.5">
+                <img 
+                  src={avatarUrl} 
+                  className="w-12 h-12 md:w-16 md:h-16 rounded-full object-cover border-2 border-pink-500/70 shadow-lg"
+                  alt={hostName}
+                />
+                <span className="text-[10px] font-black text-white truncate max-w-[100px]">{hostName}</span>
+                <span className="text-[7px] text-pink-300 font-bold bg-pink-500/20 px-2 py-0.5 rounded-full border border-pink-500/30 uppercase">
+                  📷 Cam Off
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT HOST (HOST B / REMOTE CO-HOST) */}
+        <div className="w-1/2 h-full relative bg-[#0e1220] flex items-center justify-center overflow-hidden">
+          <div 
+            ref={remoteContainerRef} 
+            className="absolute inset-0 z-0 w-full h-full object-cover"
+            style={{ display: !hasRemoteVideo || coHostVideoMuted ? "none" : "block" }}
+          />
+          {(!hasRemoteVideo || coHostVideoMuted) && (
+            <div className="absolute inset-0 z-10 bg-[#0d1220] flex flex-col items-center justify-center p-2 text-center overflow-hidden">
+              <img 
+                src={coHostAvatarUrl} 
+                className="absolute inset-0 w-full h-full object-cover opacity-20 blur-xl scale-125"
+                alt={coHostName}
+              />
+              <div className="relative z-10 flex flex-col items-center space-y-1.5">
+                <img 
+                  src={coHostAvatarUrl} 
+                  className="w-12 h-12 md:w-16 md:h-16 rounded-full object-cover border-2 border-blue-500/70 shadow-lg"
+                  alt={coHostName}
+                />
+                <span className="text-[10px] font-black text-white truncate max-w-[100px]">{coHostName}</span>
+                <span className="text-[7px] text-blue-300 font-bold bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/30 uppercase">
+                  {!hasRemoteVideo ? "Connecting..." : "📷 Cam Off"}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ERROR DISPLAY */}
+        {status === "error" && (
+          <div className="absolute inset-0 z-30 bg-[#0d0918]/95 flex flex-col items-center justify-center p-4 text-center space-y-3">
+            <AlertCircle className="w-10 h-10 text-red-500 animate-pulse" />
+            <p className="text-sm font-bold text-white whitespace-pre-line">{statusDetails}</p>
+            <button 
+              onClick={() => setStatus("idle")}
+              className="px-4 py-1.5 bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs rounded-full transition-all cursor-pointer shadow-md"
+            >
+              Retry Connection
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-[#0a0814] flex items-center justify-center select-none">
