@@ -10256,110 +10256,166 @@ export default function App() {
                         ) : (
                           <>
                             {/* HOST HEADER DETAILS */}
-                            <div className="absolute top-2 left-2 right-12 z-30 flex items-center justify-between space-x-2 overflow-x-auto no-scrollbar">
-                              <div className="flex items-center space-x-1.5 bg-black/50 backdrop-blur-md px-2 py-1 rounded-full border border-white/10 shrink-0">
-                                <div className="w-6 h-6 rounded-full overflow-hidden border border-[#ff007f]">
-                                  <img src={activeHost.avatar} className="w-full h-full object-cover" alt="host" />
-                                </div>
-                                <div className="max-w-[70px]">
-                                  <p className="text-[9px] font-black text-white truncate">{activeHost.name}</p>
-                                  <p className="text-[7px] text-[#66fcf1] truncate">{likesCount} Likes</p>
-                                </div>
-                                <LevelBadgeSvg
-                                  level={activeHost.hostLevel || activeHost.level || getHostLevelFromName(activeHost.name)}
-                                  size="sm"
-                                  onClick={() => {
-                                    const hLvl = activeHost.hostLevel || activeHost.level || getHostLevelFromName(activeHost.name);
-                                    setLevelCenterUser({
-                                      fullName: activeHost.name,
-                                      username: activeHost.name.toLowerCase().replace(/[^a-z0-9]/g, ""),
-                                      avatar: activeHost.avatar,
-                                      userLevel: hLvl,
-                                      xp: getCoinsForLevel(hLvl, levelBaseCoins, levelFormula)
-                                    });
-                                    setShowLevelCenter(true);
-                                  }}
-                                  className="shrink-0 -ml-0.5 scale-90"
-                                />
-                                <button
-                                  onClick={() => {
-                                    const isFollowing = followedUsers.includes(activeHost.name);
-                                    if (isFollowing) {
-                                      setFollowedUsers(prev => prev.filter(u => u !== activeHost.name));
-                                      alert(`Unfollowed @${activeHost.name}`);
-                                    } else {
-                                      setFollowedUsers(prev => [...prev, activeHost.name]);
-                                      alert(`Successfully followed @${activeHost.name}!`);
-                                    }
-                                  }}
-                                  className={`${
-                                    followedUsers.includes(activeHost.name)
-                                      ? "bg-gray-600 hover:bg-gray-500"
-                                      : "bg-[#ff007f] hover:bg-[#ff007f]/80"
-                                  } text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full ml-1 cursor-pointer transition-colors`}
-                                >
-                                  {followedUsers.includes(activeHost.name) ? "Following" : "Follow"}
-                                </button>
+                            {(() => {
+                              const isPkOr1v1 = Boolean(
+                                activeHost.category === "pk" ||
+                                activeHost.category === "1v1" ||
+                                activeHost.subCategory === "pk" ||
+                                activeHost.subCategory === "1v1" ||
+                                activeHost.inPk ||
+                                activeHost.coHostUsername ||
+                                activeHost.coHostName
+                              );
 
-                                {/* Ranking 🔥 Button in Live Room Header */}
-                                <button
-                                  onClick={() => {
-                                    setRankingType("host");
-                                    setRankingPeriod("hourly");
-                                    setRankingSearchQuery("");
-                                    setShowRankingModal(true);
-                                  }}
-                                  className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-600 hover:brightness-110 active:scale-95 text-white text-[7.5px] font-black px-2 py-0.5 rounded-full flex items-center space-x-1 shadow border border-yellow-400/20 transition-all cursor-pointer select-none ml-1 shrink-0"
-                                  title="Open Rankings"
-                                >
-                                  <Flame className="w-2.5 h-2.5 text-yellow-300 fill-yellow-300 animate-pulse" />
-                                  <span>Ranking 🔥</span>
-                                </button>
-                              </div>
+                              const hostAName = activeHost.name || "Host_A";
+                              const hostBName = activeHost.coHostUsername || activeHost.coHostName || activeHost.opponentName || "Captain_Leo";
+                              const hostBAvatar = activeHost.coHostAvatar || activeHost.opponentAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80";
 
-                              <div className="flex items-center space-x-1.5 shrink-0">
-                                {/* Simulating Moderator/Viewer Toggle */}
-                                <button
-                                  onClick={() => {
-                                    const nextState = !isUserModerator;
-                                    setIsUserModerator(nextState);
-                                    alert(nextState 
-                                      ? "🛡️ Simulating: Moderator (You now have permission to make/remove moderators, block users, kick users, clear comments, and mute chat!)" 
-                                      : "👤 Simulating: Standard Viewer (Administrative buttons will show as locked)"
-                                    );
-                                  }}
-                                  className={`text-[8px] font-black px-2 py-1 rounded-full border transition-all cursor-pointer flex items-center space-x-1 shrink-0 ${
-                                    isUserModerator 
-                                      ? "bg-teal-600 hover:bg-teal-500 text-white border-teal-400 animate-pulse" 
-                                      : "bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700"
-                                  }`}
-                                  title="Click to toggle between standard viewer and moderator permission states for testing!"
-                                >
-                                  <span>{isUserModerator ? "🛡️ Moderator" : "👤 Viewer"}</span>
-                                </button>
-
-                                {/* Stream Top Gifters */}
-                                <div className="flex items-center space-x-1 bg-black/40 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 select-none shrink-0">
-                                  {liveRoomTopGifters.map((viewer, idx) => (
-                                    <div key={viewer.id || idx} className="flex flex-col items-center bg-transparent">
-                                      <img src={viewer.avatar} className="w-5 h-5 rounded-full border border-white/20 object-cover shadow" title={viewer.username} />
-                                      <span className="text-[6.5px] text-gray-200 font-black font-mono scale-90 mt-0.5">
-                                        {viewer.coinsContributed >= 1000 ? `${(viewer.coinsContributed / 1000).toFixed(1)}K` : viewer.coinsContributed}
-                                      </span>
+                              return (
+                                <div className="absolute top-2 left-2 right-12 z-30 flex items-center justify-between space-x-1.5 overflow-x-auto no-scrollbar pointer-events-auto">
+                                  {/* LEFT: HOST A BUBBLE */}
+                                  <div className="flex items-center space-x-1 bg-black/60 backdrop-blur-md px-2 py-1 rounded-full border border-white/10 shrink-0 shadow-lg">
+                                    <div className="w-6 h-6 rounded-full overflow-hidden border border-[#ff007f] shrink-0">
+                                      <img src={activeHost.avatar} className="w-full h-full object-cover" alt="host A" />
                                     </div>
-                                  ))}
-                                </div>
+                                    <div className="max-w-[65px]">
+                                      <p className="text-[8.5px] font-black text-white truncate">{hostAName}</p>
+                                      <p className="text-[6.5px] text-[#66fcf1] truncate">{likesCount} Likes</p>
+                                    </div>
+                                    <LevelBadgeSvg
+                                      level={activeHost.hostLevel || activeHost.level || getHostLevelFromName(hostAName)}
+                                      size="sm"
+                                      onClick={() => {
+                                        const hLvl = activeHost.hostLevel || activeHost.level || getHostLevelFromName(hostAName);
+                                        setLevelCenterUser({
+                                          fullName: hostAName,
+                                          username: hostAName.toLowerCase().replace(/[^a-z0-9]/g, ""),
+                                          avatar: activeHost.avatar,
+                                          userLevel: hLvl,
+                                          xp: getCoinsForLevel(hLvl, levelBaseCoins, levelFormula)
+                                        });
+                                        setShowLevelCenter(true);
+                                      }}
+                                      className="shrink-0 -ml-0.5 scale-90"
+                                    />
+                                    <button
+                                      onClick={() => {
+                                        const isFollowing = followedUsers.includes(hostAName);
+                                        if (isFollowing) {
+                                          setFollowedUsers(prev => prev.filter(u => u !== hostAName));
+                                          alert(`Unfollowed @${hostAName}`);
+                                        } else {
+                                          setFollowedUsers(prev => [...prev, hostAName]);
+                                          alert(`Successfully followed @${hostAName}!`);
+                                        }
+                                      }}
+                                      className={`${
+                                        followedUsers.includes(hostAName)
+                                          ? "bg-gray-600 hover:bg-gray-500"
+                                          : "bg-[#ff007f] hover:bg-[#ff007f]/80"
+                                      } text-white text-[7.5px] font-bold px-1.5 py-0.5 rounded-full ml-0.5 cursor-pointer transition-colors shrink-0`}
+                                    >
+                                      {followedUsers.includes(hostAName) ? "Following" : "Follow"}
+                                    </button>
+                                  </div>
 
-                                <div 
-                                  onClick={() => setShowActiveViewersModal(true)}
-                                  className="bg-black/50 backdrop-blur-md px-2 py-1 rounded-full text-[9px] font-bold text-white flex items-center space-x-1 border border-white/10 hover:border-pink-500/50 cursor-pointer transition-all active:scale-95 shrink-0"
-                                  title="View Active Audience List"
-                                >
-                                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span>
-                                  <span>{viewersCount}</span>
+                                  {/* CENTER: PK / 1v1 BADGE AND HOST B BUBBLE IF PK/1v1 MATCH */}
+                                  {isPkOr1v1 ? (
+                                    <>
+                                      <div className="flex flex-col items-center shrink-0">
+                                        <span className="text-[8px] font-black uppercase text-pink-400 bg-pink-950/60 px-2 py-0.5 rounded-full border border-pink-500/30 tracking-wider animate-pulse shadow-md">
+                                          ⚔️ 1v1 PK MATCH
+                                        </span>
+                                      </div>
+
+                                      {/* RIGHT: HOST B BUBBLE */}
+                                      <div className="flex items-center space-x-1 bg-black/60 backdrop-blur-md px-2 py-1 rounded-full border border-blue-500/30 shrink-0 shadow-lg">
+                                        <div className="w-6 h-6 rounded-full overflow-hidden border border-blue-400 shrink-0">
+                                          <img src={hostBAvatar} className="w-full h-full object-cover" alt="host B" />
+                                        </div>
+                                        <div className="max-w-[65px]">
+                                          <p className="text-[8.5px] font-black text-white truncate">{hostBName}</p>
+                                          <p className="text-[6.5px] text-cyan-300 truncate">{opponentLikesCount} Likes</p>
+                                        </div>
+                                        <LevelBadgeSvg
+                                          level={getHostLevelFromName(hostBName)}
+                                          size="sm"
+                                          onClick={() => {
+                                            const hLvl = getHostLevelFromName(hostBName);
+                                            setLevelCenterUser({
+                                              fullName: hostBName,
+                                              username: hostBName.toLowerCase().replace(/[^a-z0-9]/g, ""),
+                                              avatar: hostBAvatar,
+                                              userLevel: hLvl,
+                                              xp: getCoinsForLevel(hLvl, levelBaseCoins, levelFormula)
+                                            });
+                                            setShowLevelCenter(true);
+                                          }}
+                                          className="shrink-0 -ml-0.5 scale-90"
+                                        />
+                                        <button
+                                          onClick={() => {
+                                            const isFollowing = followedUsers.includes(hostBName);
+                                            if (isFollowing) {
+                                              setFollowedUsers(prev => prev.filter(u => u !== hostBName));
+                                              alert(`Unfollowed @${hostBName}`);
+                                            } else {
+                                              setFollowedUsers(prev => [...prev, hostBName]);
+                                              alert(`Successfully followed @${hostBName}!`);
+                                            }
+                                          }}
+                                          className={`${
+                                            followedUsers.includes(hostBName)
+                                              ? "bg-gray-600 hover:bg-gray-500"
+                                              : "bg-blue-600 hover:bg-blue-500"
+                                          } text-white text-[7.5px] font-bold px-1.5 py-0.5 rounded-full ml-0.5 cursor-pointer transition-colors shrink-0`}
+                                        >
+                                          {followedUsers.includes(hostBName) ? "Following" : "Follow"}
+                                        </button>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    /* Ranking 🔥 Button in Live Room Header for Solo Stream */
+                                    <button
+                                      onClick={() => {
+                                        setRankingType("host");
+                                        setRankingPeriod("hourly");
+                                        setRankingSearchQuery("");
+                                        setShowRankingModal(true);
+                                      }}
+                                      className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-600 hover:brightness-110 active:scale-95 text-white text-[7.5px] font-black px-2 py-0.5 rounded-full flex items-center space-x-1 shadow border border-yellow-400/20 transition-all cursor-pointer select-none ml-1 shrink-0"
+                                      title="Open Rankings"
+                                    >
+                                      <Flame className="w-2.5 h-2.5 text-yellow-300 fill-yellow-300 animate-pulse" />
+                                      <span>Ranking 🔥</span>
+                                    </button>
+                                  )}
+
+                                  <div className="flex items-center space-x-1 shrink-0">
+                                    {/* Stream Top Gifters */}
+                                    <div className="flex items-center space-x-1 bg-black/40 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/5 select-none shrink-0">
+                                      {liveRoomTopGifters.map((viewer, idx) => (
+                                        <div key={viewer.id || idx} className="flex flex-col items-center bg-transparent">
+                                          <img src={viewer.avatar} className="w-5 h-5 rounded-full border border-white/20 object-cover shadow" title={viewer.username} />
+                                          <span className="text-[6.5px] text-gray-200 font-black font-mono scale-90 mt-0.5">
+                                            {viewer.coinsContributed >= 1000 ? `${(viewer.coinsContributed / 1000).toFixed(1)}K` : viewer.coinsContributed}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    <div 
+                                      onClick={() => setShowActiveViewersModal(true)}
+                                      className="bg-black/50 backdrop-blur-md px-2 py-1 rounded-full text-[9px] font-bold text-white flex items-center space-x-1 border border-white/10 hover:border-pink-500/50 cursor-pointer transition-all active:scale-95 shrink-0"
+                                      title="View Active Audience List"
+                                    >
+                                      <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span>
+                                      <span>{viewersCount}</span>
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
-                            </div>
+                              );
+                            })()}
 
                             {/* ALWAYS VISIBLE VIEWER EXIT BUTTON AT TOP RIGHT */}
                             <button
@@ -10380,7 +10436,7 @@ export default function App() {
                           
                           {/* 1. SOLO VIDEO & PK LIVE BROADCAST SIMULATION */}
                           {activeHost.category !== "audio" && (
-                            <div className="absolute inset-0 flex flex-col justify-between p-3 select-none">
+                            <div className="absolute inset-0 flex flex-col justify-between p-0 select-none">
                               {/* Background Real-Time WebRTC Agora Stream */}
                               <div className="absolute inset-0 z-0 overflow-hidden">
                                 <AgoraStream
@@ -10399,56 +10455,140 @@ export default function App() {
                                   videoMuted={activeHost.cameraEnabled === false || activeHost.isCamOff === true || activeHost.cameraMuted === true}
                                   hostAvatar={activeHost.avatar || activeHost.hostAvatar || liveBroadcasterAvatar}
                                   hostName={activeHost.name || activeHost.hostUsername || liveBroadcasterName}
-                                  isCoHostMode={Boolean(activeHost.category === "pk" || activeHost.coHostUsername || activeHost.inPk)}
-                                  coHostAvatar={activeHost.coHostAvatar}
-                                  coHostName={activeHost.coHostUsername || activeHost.coHostName}
+                                  isCoHostMode={Boolean(
+                                    activeHost.category === "pk" ||
+                                    activeHost.category === "1v1" ||
+                                    activeHost.subCategory === "pk" ||
+                                    activeHost.subCategory === "1v1" ||
+                                    activeHost.coHostUsername ||
+                                    activeHost.coHostName ||
+                                    activeHost.inPk
+                                  )}
+                                  coHostAvatar={activeHost.coHostAvatar || activeHost.opponentAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"}
+                                  coHostName={activeHost.coHostUsername || activeHost.coHostName || activeHost.opponentName || "Captain_Leo"}
                                   coHostVideoMuted={activeHost.coHostCamOff}
                                 />
                               </div>
 
-                              {/* Top row overlays */}
-                              <div className="w-full z-10 flex flex-col space-y-1">
-                                <div className="flex justify-between items-center bg-transparent pt-2">
-                                  <span className="bg-red-600/80 backdrop-blur-md text-white font-mono font-black text-[7.5px] px-2 py-0.5 rounded-full uppercase tracking-widest border border-white/10 shadow-lg">
-                                    {activeHost.category === "pk" ? "⚔️ PK BATTLE LIVE" : "● LIVE"}
-                                  </span>
-                                </div>
+                              {/* FULL PK TUG-OF-WAR SCORE PROGRESS BAR (IF PK OR 1v1 MATCH) */}
+                              {(() => {
+                                const isPkMatch = Boolean(
+                                  activeHost.category === "pk" ||
+                                  activeHost.category === "1v1" ||
+                                  activeHost.subCategory === "pk" ||
+                                  activeHost.subCategory === "1v1" ||
+                                  activeHost.inPk ||
+                                  activeHost.coHostUsername ||
+                                  activeHost.coHostName
+                                );
 
-                                {activeHost.category === "pk" && (
-                                  <div className="bg-gradient-to-b from-[#12111b]/80 to-[#0c0b12]/80 border border-purple-500/15 p-1.5 rounded-lg shadow-xl space-y-1 mt-1">
-                                    <div className="flex justify-between items-center text-[9px]">
-                                      <div className="flex items-center space-x-1 font-mono font-black text-pink-400">
-                                        <span>🌹 My Room:</span>
-                                        <span>{pkScoreHost}</span>
-                                      </div>
-                                      
-                                      <div className="bg-[#ff007f]/10 border border-[#ff007f]/25 text-pink-300 font-bold px-2 py-0.5 rounded-full text-[7.5px] animate-pulse flex items-center space-x-1">
-                                        <span>⚔️ Battle Match:</span>
-                                        <span className="font-mono">{formatTime(pkTimer)}</span>
+                                if (!isPkMatch) return null;
+
+                                const scoreMy = Number(pkScoreHost) || 0;
+                                const scoreOther = Number(pkScoreOpponent) || 0;
+                                const totalScore = scoreMy + scoreOther;
+                                const myPct = totalScore > 0 ? (scoreMy / totalScore) * 100 : 50;
+
+                                return (
+                                  <>
+                                    {/* Main PK Score Progress Bar */}
+                                    <div className="absolute top-12 inset-x-0 z-20 flex flex-col bg-transparent select-none">
+                                      <div className="relative w-full h-5 flex items-center overflow-hidden border-y border-white/10 bg-black/50">
+                                        {/* Left Host A score bar (Red) */}
+                                        <div 
+                                          className="h-full bg-gradient-to-r from-red-600 via-rose-600 to-red-500 flex items-center pl-3 transition-all duration-500 ease-out shrink-0"
+                                          style={{ width: `${myPct}%` }}
+                                        >
+                                          <span className="text-white text-[9.5px] font-black font-mono tracking-wider drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,0.9)]">
+                                            {scoreMy.toLocaleString()}
+                                          </span>
+                                        </div>
+                                        
+                                        {/* Right Host B score bar (Blue) */}
+                                        <div 
+                                          className="h-full bg-gradient-to-l from-blue-600 via-cyan-600 to-blue-500 flex items-center justify-end pr-3 flex-1 transition-all duration-500 ease-out"
+                                        >
+                                          <span className="text-white text-[9.5px] font-black font-mono tracking-wider drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,0.9)]">
+                                            {scoreOther.toLocaleString()}
+                                          </span>
+                                        </div>
+
+                                        {/* Tug-of-war battle flame indicator */}
+                                        <div 
+                                          className="absolute top-0 bottom-0 z-30 transition-all duration-500 ease-out"
+                                          style={{ left: `${myPct}%` }}
+                                        >
+                                          <div className="relative h-full -translate-x-1/2 flex items-center justify-center">
+                                            <div className="absolute w-7 h-7 bg-amber-500/30 rounded-full blur-md animate-ping"></div>
+                                            <div className="w-5.5 h-5.5 rounded-full bg-gradient-to-b from-amber-400 to-red-600 border border-white flex items-center justify-center shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-pulse shrink-0">
+                                              <span className="text-[9px] select-none">🔥</span>
+                                            </div>
+                                          </div>
+                                        </div>
                                       </div>
 
-                                      <div className="flex items-center space-x-1 font-mono font-black text-indigo-400">
-                                        <span>🦁 Other:</span>
-                                        <span>{pkScoreOpponent}</span>
+                                      {/* Winning Streaks badges */}
+                                      <div className="absolute top-6 left-2 z-20 bg-red-950/70 backdrop-blur-sm px-1.5 py-0.5 rounded border border-red-500/30 text-[7px] font-black text-red-300 flex items-center space-x-0.5 shadow-md">
+                                        <span>🔥</span>
+                                        <span>3x WIN</span>
+                                      </div>
+
+                                      <div className="absolute top-6 right-2 z-20 bg-blue-950/70 backdrop-blur-sm px-1.5 py-0.5 rounded border border-blue-500/30 text-[7px] font-black text-blue-300 flex items-center space-x-0.5 shadow-md">
+                                        <span>🔥</span>
+                                        <span>1x WIN</span>
+                                      </div>
+
+                                      {/* PK Title & Countdown Timer */}
+                                      <div className="absolute top-5 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center justify-center bg-transparent select-none pointer-events-none">
+                                        <span className="text-[9.5px] font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-yellow-400 to-blue-500 uppercase italic drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,0.8)] animate-pulse">
+                                          ⚔️ PK BATTLE ⚔️
+                                        </span>
+                                        <div className="text-[8px] font-black text-white font-mono bg-black/80 border border-white/10 rounded-full px-2 py-0.5 mt-0.5 shadow-lg">
+                                          {formatTime(pkTimer)}
+                                        </div>
                                       </div>
                                     </div>
 
-                                    {/* Comparison progress bar */}
-                                    <div className="h-2 w-full bg-indigo-600 rounded-full overflow-hidden flex shadow-inner">
-                                      <div
-                                        style={{ width: `${((Number(pkScoreHost) || 0) + (Number(pkScoreOpponent) || 0)) > 0 ? (((Number(pkScoreHost) || 0) / ((Number(pkScoreHost) || 0) + (Number(pkScoreOpponent) || 0))) * 100) : 50}%` }}
-                                        className="bg-gradient-to-r from-pink-500 to-[#ff007f] h-full transition-all duration-500"
-                                      ></div>
+                                    {/* Supporter Rows at Bottom of each video frame */}
+                                    {/* Host A Supporters (Left bottom) */}
+                                    <div className="absolute bottom-12 left-2 z-20 flex items-center space-x-1 select-none bg-black/40 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/10">
+                                      <span className="text-[7px] font-bold text-pink-400 mr-0.5">Top:</span>
+                                      {(pkHostASupporters.length > 0 ? pkHostASupporters : liveRoomTopGifters.slice(0, 3)).map((sup, idx) => (
+                                        <div key={sup.id || idx} className="relative bg-transparent">
+                                          {idx === 0 && (
+                                            <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] animate-bounce z-20">👑</span>
+                                          )}
+                                          <img src={sup.avatar} className="w-5 h-5 rounded-full border border-amber-400 object-cover shadow" title={sup.username} />
+                                        </div>
+                                      ))}
                                     </div>
 
-                                    <div className="flex justify-between items-center text-[7px] text-gray-400">
-                                      <span>Streaks: My x3 Win streak</span>
-                                      <span className="font-mono text-pink-400">Task: Singer Punishment</span>
-                                      <span>Opponent Level: 35</span>
+                                    {/* Host B Supporters (Right bottom) */}
+                                    <div className="absolute bottom-12 right-2 z-20 flex items-center space-x-1 select-none bg-black/40 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/10">
+                                      <span className="text-[7px] font-bold text-cyan-400 mr-0.5">Top:</span>
+                                      {(pkHostBSupporters.length > 0 ? pkHostBSupporters : [
+                                        { id: "b1", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=50&q=80", username: "Alpha_Gifter" },
+                                        { id: "b2", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=50&q=80", username: "Lion_King" }
+                                      ]).map((sup, idx) => (
+                                        <div key={sup.id || idx} className="relative bg-transparent">
+                                          {idx === 0 && (
+                                            <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] animate-bounce z-20">👑</span>
+                                          )}
+                                          <img src={sup.avatar} className="w-5 h-5 rounded-full border border-blue-400 object-cover shadow" title={sup.username} />
+                                        </div>
+                                      ))}
                                     </div>
-                                  </div>
-                                )}
-                              </div>
+
+                                    {/* Match MVPs Floating Badge */}
+                                    <div className="absolute top-22 left-3 z-15 bg-black/50 backdrop-blur-md rounded-lg px-2 py-1 border border-white/10 flex items-center space-x-1.5 text-[7.5px] text-white shadow-lg pointer-events-none">
+                                      <span className="text-yellow-400 font-black">🏆 Match MVPs:</span>
+                                      <span className="text-gray-200">
+                                        Host A: <strong className="text-pink-400">@{pkHostASupporters[0]?.username || "Star_Gifter"}</strong> (+500 pts)
+                                      </span>
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                           )}
 
@@ -10528,6 +10668,17 @@ export default function App() {
                               className="absolute bottom-16 w-8 h-8 flex items-center justify-center animate-float-heart z-20 pointer-events-none"
                             >
                               <Heart className="w-6 h-6 text-[#ff007f] fill-[#ff007f]" />
+                            </div>
+                          ))}
+
+                          {/* DOUBLE-TAP POPPING HEARTS PARTICLES AT TAP POSITIONS */}
+                          {doubleTapHearts.map(heart => (
+                            <div
+                              key={heart.id}
+                              style={{ left: heart.x, top: heart.y }}
+                              className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50 animate-pop-heart"
+                            >
+                              <Heart className="w-9 h-9 fill-current text-pink-500 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]" style={{ color: heart.color }} />
                             </div>
                           ))}
 

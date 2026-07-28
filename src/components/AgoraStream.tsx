@@ -203,7 +203,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
         await agoraClient.setClientRole(agoraRole);
 
         agoraClient.on("exception", (event) => {
-          if (event && (event.code === 2025 || String(event.msg || event.code || "").includes("REJOIN") || String(event.msg || event.code || "").includes("WS_ABORT") || String(event.msg || event.code || "").includes("ping") || String(event.msg || event.code || "").includes("PUBLISH") || String(event.msg || event.code || "").includes("traffic_stats") || String(event.msg || event.code || "").includes("restart_ice"))) {
+          if (event && (event.code === 2025 || event.code === 2021 || String(event.msg || event.code || "").includes("REJOIN") || String(event.msg || event.code || "").includes("WS_ABORT") || String(event.msg || event.code || "").includes("ping") || String(event.msg || event.code || "").includes("PUBLISH") || String(event.msg || event.code || "").includes("traffic_stats") || String(event.msg || event.code || "").includes("restart_ice") || String(event.msg || event.code || "").includes("ERR_SUBSCRIBE_REQUEST_INVALID") || String(event.msg || event.code || "").includes("no such stream"))) {
             return;
           }
         });
@@ -214,7 +214,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
 
         // Setup Event Listeners BEFORE Joining
         const handleUserPublished = async (user: IAgoraRTCRemoteUser, mediaType: "video" | "audio") => {
-          if (isUnmounted) return;
+          if (isUnmounted || !user || !user.uid) return;
           try {
             if (agoraClient.connectionState !== "CONNECTED") return;
 
@@ -229,7 +229,7 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
             }
 
             if ((mediaType === "video" && !user.videoTrack) || (mediaType === "audio" && !user.audioTrack)) {
-              if (agoraClient.connectionState === "CONNECTED") {
+              if (agoraClient.connectionState === "CONNECTED" && user && user.uid) {
                 await agoraClient.subscribe(user, mediaType);
               }
             }
@@ -248,14 +248,21 @@ export const AgoraStream: React.FC<AgoraStreamProps> = ({
               } catch (e) {}
             }
           } catch (err: any) {
+            const errStr = String(err?.message || err?.name || err?.code || err);
             if (
               err?.code === "INVALID_OPERATION" ||
               err?.code === "WS_ABORT" ||
-              String(err?.message || err).includes("disconnected") ||
-              String(err?.message || err).includes("not published") ||
-              String(err?.message || err).includes("WS_ABORT") ||
-              String(err?.name || err).includes("INVALID_OPERATION") ||
-              String(err?.name || err).includes("WS_ABORT")
+              err?.code === "UNEXPECTED_RESPONSE" ||
+              err?.code === 2021 ||
+              errStr.includes("disconnected") ||
+              errStr.includes("not published") ||
+              errStr.includes("WS_ABORT") ||
+              errStr.includes("INVALID_OPERATION") ||
+              errStr.includes("UNEXPECTED_RESPONSE") ||
+              errStr.includes("ERR_SUBSCRIBE_REQUEST_INVALID") ||
+              errStr.includes("no such stream") ||
+              errStr.includes("Cannot use 'in' operator") ||
+              errStr.includes("search for 'name'")
             ) {
               // Ignore transient Agora race conditions when subscribing/disconnecting
               return;
