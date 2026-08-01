@@ -1,13 +1,13 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.sehrlive.app',
-  appName: 'Sehr Live',
+  appId: 'com.pardaisparty.app',
+  appName: 'Pardais Party',
   webDir: 'dist',
   server: {
     androidScheme: 'https',
     allowNavigation: [
-      'sehrlive.soulverseapps.com',
+      'pardaisparty.soulverseapps.com',
       '*.soulverseapps.com'
     ]
   }
