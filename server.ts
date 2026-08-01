@@ -29,7 +29,7 @@ app.use((req, res, next) => {
   const start = Date.now();
   res.on("finish", () => {
     const duration = Date.now() - start;
-    console.log(`[SEHR-LIVE PRODUCTION LOGGER] ${req.method} ${req.originalUrl} - Status: ${res.statusCode} - ${duration}ms`);
+    console.log(`[PARDAIS-PARTY PRODUCTION LOGGER] ${req.method} ${req.originalUrl} - Status: ${res.statusCode} - ${duration}ms`);
   });
   next();
 });
@@ -50,38 +50,104 @@ app.use(express.json());
 // ------------------------------------------------------------------
 // FILE-BASED DATABASE STATE & DURABLE CLOUD-LIKE PERSISTENCE
 // ------------------------------------------------------------------
-const DB_PATH = path.join(process.cwd(), "sehr_live_db.json");
+const DB_PATH = path.join(process.cwd(), "pardais_live_db.json");
 
 const DEFAULT_DEMO_HOSTS = [
-  {
-    id: "h-sahar_official",
-    name: "Sahar_Live 👑",
-    hostUsername: "sahar_official",
-    role: "Official Host",
-    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&h=300&q=80",
-    viewers: 1420,
-    likes: 85200,
-    category: "video",
-    isLive: true,
-    status: "live",
-    statusText: "Lahore Live Concert & Chat 🎵",
-    bio: "Welcome to Sahar Live! Official VIP Host. Spread love and positive energy!",
-    agencyId: "agency-1"
-  },
   {
     id: "h-ayesha_vip",
     name: "Ayesha_Queen 🔥",
     hostUsername: "ayesha_vip",
-    role: "VIP Streamer",
+    role: "VIP PK Champion",
     avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&h=300&q=80",
-    viewers: 980,
-    likes: 42100,
+    coHostName: "Captain_Leo ⚔️",
+    coHostUsername: "captain_leo",
+    coHostAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 1850,
+    likes: 94200,
     category: "pk",
+    subCategory: "pk",
     isLive: true,
     status: "live",
-    statusText: "1v1 PK Battle Active! Need Dragons 🐉",
-    bio: "PK Fighter & Top Ranking Streamer on Sehr Live!",
-    agencyId: "agency-1"
+    statusText: "⚔️ 1v1 PK Match vs @captain_leo 🐉",
+    bio: "PK Fighter & Top Ranking Streamer on Pardais Party!",
+    agencyId: "agency-1",
+    inPk: true,
+    pkActive: true,
+    pkScoreHost: 0,
+    pkScoreOpponent: 0,
+    isDemoHost: true
+  },
+  {
+    id: "h-sahar_official",
+    name: "Sahar_Live 👑",
+    hostUsername: "sahar_official",
+    role: "Official Star Host",
+    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&h=300&q=80",
+    coHostName: "Natasha_Star ✨",
+    coHostUsername: "natasha_star",
+    coHostAvatar: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 2420,
+    likes: 125200,
+    category: "pk",
+    subCategory: "pk",
+    isLive: true,
+    status: "live",
+    statusText: "👑 Mega 1v1 PK Championship vs @natasha_star",
+    bio: "Welcome to Sahar Live! Official VIP Host. Spread love and positive energy!",
+    agencyId: "agency-1",
+    inPk: true,
+    pkActive: true,
+    pkScoreHost: 0,
+    pkScoreOpponent: 0,
+    isDemoHost: true
+  },
+  {
+    id: "h-ali_pro",
+    name: "Ali_Pro ⚡",
+    hostUsername: "ali_pro",
+    role: "PK Battle Master",
+    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&h=300&q=80",
+    coHostName: "Maya_Fighter 🥊",
+    coHostUsername: "maya_fighter",
+    coHostAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 1240,
+    likes: 58900,
+    category: "pk",
+    subCategory: "pk",
+    isLive: true,
+    status: "live",
+    statusText: "🥊 Non-stop 1v1 PK Challenge vs @maya_fighter",
+    bio: "Challenging top hosts live!",
+    agencyId: "agency-2",
+    inPk: true,
+    pkActive: true,
+    pkScoreHost: 0,
+    pkScoreOpponent: 0,
+    isDemoHost: true
+  },
+  {
+    id: "h-usman_king",
+    name: "Usman_King 🦁",
+    hostUsername: "usman_king",
+    role: "PK Lion Broadcaster",
+    avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&h=300&q=80",
+    coHostName: "Hamza_Champ 🥊",
+    coHostUsername: "hamza_champ",
+    coHostAvatar: "https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?auto=format&fit=crop&w=300&h=300&q=80",
+    viewers: 950,
+    likes: 38400,
+    category: "pk",
+    subCategory: "pk",
+    isLive: true,
+    status: "live",
+    statusText: "🦁 Lion vs Tiger 1v1 PK Showdown!",
+    bio: "Top ranking PK challenger on Pardais Party!",
+    agencyId: "agency-2",
+    inPk: true,
+    pkActive: true,
+    pkScoreHost: 0,
+    pkScoreOpponent: 0,
+    isDemoHost: true
   },
   {
     id: "h-zain_singing",
@@ -96,7 +162,8 @@ const DEFAULT_DEMO_HOSTS = [
     status: "live",
     statusText: "Live Urdu Ghazal & Acoustic Guitar 🎸",
     bio: "Live music sessions every evening!",
-    agencyId: "agency-2"
+    agencyId: "agency-2",
+    isDemoHost: true
   },
   {
     id: "h-zara_star",
@@ -111,22 +178,8 @@ const DEFAULT_DEMO_HOSTS = [
     status: "live",
     statusText: "Chai Chat & Fun Games ☕",
     bio: "Daily live chat and fan interactions!",
-    agencyId: "agency-1"
-  },
-  {
-    id: "h-ali_pro",
-    name: "Ali_Pro ⚡",
-    hostUsername: "ali_pro",
-    role: "PK Host",
-    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&h=300&q=80",
-    viewers: 620,
-    likes: 28900,
-    category: "pk",
-    isLive: true,
-    status: "live",
-    statusText: "Non-stop 1v1 PK Challenge 🏆",
-    bio: "Challenging top hosts live!",
-    agencyId: "agency-2"
+    agencyId: "agency-1",
+    isDemoHost: true
   }
 ];
 
@@ -164,7 +217,7 @@ const DEFAULT_DEMO_PARTIES = [
       { id: 12, name: null, avatar: null, isMuted: false, isLocked: false }
     ],
     comments: [
-      { id: "c1", username: "System", message: "🎉 Welcome to Sehr Live 12-Seat Party Room!", isSystem: true, timestamp: "12:00 PM" }
+      { id: "c1", username: "System", message: "🎉 Welcome to Pardais Party 12-Seat Party Room!", isSystem: true, timestamp: "12:00 PM" }
     ]
   },
   {
@@ -223,13 +276,21 @@ async function loadDatabase() {
       const raw = fs.readFileSync(DB_PATH, "utf-8");
       const local = JSON.parse(raw);
       Object.assign(dbDataCache, local);
-      console.log("[SEHR-LIVE FIREBASE] Pre-populated in-memory cache with local database backup.");
+      console.log("[PARDAIS-PARTY FIREBASE] Pre-populated in-memory cache with local database backup.");
     }
     
     // 5. Ensure active hosts and active parties are initialized with active demo streams so feed is never empty
-    if (!Array.isArray(dbDataCache.hosts) || dbDataCache.hosts.length === 0) {
-      dbDataCache.hosts = DEFAULT_DEMO_HOSTS.map(h => ({ ...h }));
+    if (!Array.isArray(dbDataCache.hosts)) {
+      dbDataCache.hosts = [];
     }
+    DEFAULT_DEMO_HOSTS.forEach(dh => {
+      const existingIdx = dbDataCache.hosts.findIndex((h: any) => h.id === dh.id || h.hostUsername === dh.hostUsername);
+      if (existingIdx >= 0) {
+        dbDataCache.hosts[existingIdx] = { ...dh, ...dbDataCache.hosts[existingIdx], isLive: true, status: "live" };
+      } else {
+        dbDataCache.hosts.push({ ...dh });
+      }
+    });
     if (!Array.isArray(dbDataCache.parties) || dbDataCache.parties.length === 0) {
       dbDataCache.parties = DEFAULT_DEMO_PARTIES.map(p => ({ ...p }));
     }
@@ -258,7 +319,7 @@ async function loadDatabase() {
     }
     saveDatabase();
   } catch (e) {
-    console.error("[SEHR-LIVE FIREBASE] Error loading database:", e);
+    console.error("[PARDAIS-PARTY FIREBASE] Error loading database:", e);
   }
 }
 
@@ -290,7 +351,7 @@ function saveDatabase() {
       lastSavedCategoriesStr = currentCategoriesStr;
     }
   } catch (e) {
-    console.error("[SEHR-LIVE FIREBASE] Error saving database:", e);
+    console.error("[PARDAIS-PARTY FIREBASE] Error saving database:", e);
   }
 }
 
@@ -342,7 +403,7 @@ const handleAgoraTokenRequest = (req: any, res: any) => {
     const appCertificate = process.env.AGORA_APP_CERTIFICATE;
 
     if (!appId || !appCertificate) {
-      console.warn("[SEHR-LIVE AGORA] Missing AGORA_APP_ID or AGORA_APP_CERTIFICATE in environment.");
+      console.warn("[PARDAIS-PARTY AGORA] Missing AGORA_APP_ID or AGORA_APP_CERTIFICATE in environment.");
       return res.status(500).json({
         error: "Agora RTC service is unavailable. Missing AGORA_APP_ID or AGORA_APP_CERTIFICATE environment variables on server."
       });
@@ -367,7 +428,7 @@ const handleAgoraTokenRequest = (req: any, res: any) => {
       privilegeExpiredTs
     );
 
-    console.log(`[SEHR-LIVE AGORA] Generated REAL RTC token for channel ${channelName}, uid ${agoraUid}`);
+    console.log(`[PARDAIS-PARTY AGORA] Generated REAL RTC token for channel ${channelName}, uid ${agoraUid}`);
 
     return res.json({
       appId,
@@ -377,7 +438,7 @@ const handleAgoraTokenRequest = (req: any, res: any) => {
       expiresAt: privilegeExpiredTs
     });
   } catch (error: any) {
-    console.error("[SEHR-LIVE AGORA] Token generation error:", error);
+    console.error("[PARDAIS-PARTY AGORA] Token generation error:", error);
     return res.status(500).json({ error: error.message || "Failed to generate Agora token" });
   }
 };
@@ -458,7 +519,7 @@ app.post("/api/v1/auth/google-login", (req, res) => {
     isNewUser = true;
     const username = cleanEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_") || `user_${uid.substring(0, 6)}`;
     const suffix = Math.floor(1000 + Math.random() * 9000);
-    const uniqueId = `sehr_${suffix}`;
+    const uniqueId = `pardais_${suffix}`;
 
     user = {
       uid,
@@ -500,16 +561,16 @@ app.post("/api/v1/auth/google-login", (req, res) => {
     // Update user record with latest uid and Google info if needed
     user.uid = uid;
     user.email = cleanEmail;
-    if (displayName && (!user.fullName || user.fullName === "New User")) {
-      user.fullName = displayName;
+    if (displayName && displayName.trim().length > 0) {
+      user.fullName = displayName.trim();
     }
-    if (photoURL && (!user.avatar || user.avatar.includes("unsplash"))) {
-      user.avatar = photoURL;
+    if (photoURL && photoURL.trim().length > 0) {
+      user.avatar = photoURL.trim();
     }
     syncDocument("users", user.username, user);
   }
 
-  const token = `sehr_session_${user.uid}_${Math.random().toString(36).substring(2, 10)}`;
+  const token = `pardais_session_${user.uid}_${Math.random().toString(36).substring(2, 10)}`;
   const sessionData = {
     uid: user.uid,
     username: user.username,
@@ -547,7 +608,7 @@ app.post("/api/v1/auth/send-email-otp", async (req, res) => {
   };
   saveDatabase();
 
-  console.log(`[SEHR LIVE EMAIL OTP GATEWAY] Dispatched OTP [${otp}] to ${cleanEmail}`);
+  console.log(`[PARDAIS PARTY EMAIL OTP GATEWAY] Dispatched OTP [${otp}] to ${cleanEmail}`);
 
   // Send real email via nodemailer if SMTP transport is set up
   try {
@@ -563,11 +624,11 @@ app.post("/api/v1/auth/send-email-otp", async (req, res) => {
       });
 
       await transporter.sendMail({
-        from: `"Sehr Live" <${process.env.SMTP_USER}>`,
+        from: `"Pardais Party" <${process.env.SMTP_USER}>`,
         to: cleanEmail,
-        subject: "Your Sehr Live Email Verification OTP Code",
+        subject: "Your Pardais Party Email Verification OTP Code",
         html: `<div style="font-family: Arial, sans-serif; padding: 20px; background: #0f0f18; color: #ffffff; border-radius: 12px;">
-          <h2 style="color: #ff007f;">Sehr Live Email Verification</h2>
+          <h2 style="color: #ff007f;">Pardais Party Email Verification</h2>
           <p>Your 6-digit verification code is:</p>
           <div style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #00f5ff; margin: 20px 0;">${otp}</div>
           <p style="color: #8888aa; font-size: 12px;">This code will expire in 10 minutes. If you did not request this, please ignore.</p>
@@ -575,7 +636,7 @@ app.post("/api/v1/auth/send-email-otp", async (req, res) => {
       });
     }
   } catch (emailErr) {
-    console.warn("[SEHR LIVE EMAIL] SMTP transport warning:", emailErr);
+    console.warn("[PARDAIS PARTY EMAIL] SMTP transport warning:", emailErr);
   }
 
   res.json({
@@ -620,7 +681,7 @@ app.post("/api/v1/auth/verify-email-otp", (req, res) => {
     isNewUser = true;
     const username = cleanEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_") || `user_${Math.floor(1000 + Math.random() * 9000)}`;
     const suffix = Math.floor(1000 + Math.random() * 9000);
-    const uniqueId = `sehr_${suffix}`;
+    const uniqueId = `pardais_${suffix}`;
 
     user = {
       uid,
@@ -630,7 +691,7 @@ app.post("/api/v1/auth/verify-email-otp", (req, res) => {
       fullName: "",
       avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(cleanEmail)}`,
       coverPhoto: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-      bio: "Sehr Live Member 🇵🇰",
+      bio: "Pardais Party Member 🇵🇰",
       gender: "Male",
       country: "Pakistan",
       language: "Urdu / Hinglish",
@@ -660,7 +721,7 @@ app.post("/api/v1/auth/verify-email-otp", (req, res) => {
     syncDocument("users", user.username, user);
   }
 
-  const token = `sehr_session_${user.uid}_${Math.random().toString(36).substring(2, 10)}`;
+  const token = `pardais_session_${user.uid}_${Math.random().toString(36).substring(2, 10)}`;
   const sessionData = {
     uid: user.uid,
     username: user.username,
@@ -747,10 +808,10 @@ app.post("/api/v1/auth/guest-login", (req, res) => {
       user = {
         uid: requestedUid,
         username: requestedUsername,
-        uniqueId: `sehr_${Math.floor(1000 + Math.random() * 9000)}`,
-        fullName: req.body?.fullName || "Sehr Member",
+        uniqueId: `pardais_${Math.floor(1000 + Math.random() * 9000)}`,
+        fullName: req.body?.fullName || "Pardais Member",
         avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
-        bio: "Sehr Live Member 🇵🇰",
+        bio: "Pardais Party Member 🇵🇰",
         gender: "Male",
         country: "Pakistan",
         coins: 1000000,
@@ -766,7 +827,7 @@ app.post("/api/v1/auth/guest-login", (req, res) => {
       syncDocument("users", user.username, user);
     }
 
-    const token = `sehr_session_${user.uid}_${Math.random().toString(36).substring(2, 10)}`;
+    const token = `pardais_session_${user.uid}_${Math.random().toString(36).substring(2, 10)}`;
     const sessionData = {
       uid: user.uid,
       username: user.username,
@@ -779,7 +840,7 @@ app.post("/api/v1/auth/guest-login", (req, res) => {
     saveDatabase();
     syncDocument("sessions", token, sessionData);
 
-    console.log(`[SEHR-LIVE AUTH] Created/refreshed session token for user: ${user.username}`);
+    console.log(`[PARDAIS-PARTY AUTH] Created/refreshed session token for user: ${user.username}`);
     return res.json({
       success: true,
       token,
@@ -803,10 +864,10 @@ app.post("/api/v1/auth/refresh-session", (req, res) => {
     user = {
       uid: requestedUid,
       username: requestedUsername,
-      uniqueId: `sehr_${Math.floor(1000 + Math.random() * 9000)}`,
-      fullName: req.body?.fullName || "Sehr Member",
+      uniqueId: `pardais_${Math.floor(1000 + Math.random() * 9000)}`,
+      fullName: req.body?.fullName || "Pardais Member",
       avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80",
-      bio: "Sehr Live Member 🇵🇰",
+      bio: "Pardais Party Member 🇵🇰",
       gender: "Male",
       country: "Pakistan",
       coins: 1000000,
@@ -822,7 +883,7 @@ app.post("/api/v1/auth/refresh-session", (req, res) => {
     syncDocument("users", user.username, user);
   }
 
-  const token = `sehr_session_${user.uid}_${Math.random().toString(36).substring(2, 10)}`;
+  const token = `pardais_session_${user.uid}_${Math.random().toString(36).substring(2, 10)}`;
   const sessionData = {
     uid: user.uid,
     username: user.username,
@@ -895,12 +956,17 @@ app.post("/api/v1/config", (req, res) => {
 
 // Single user profiles get/update
 app.get("/api/v1/user", authenticateUser, (req: any, res) => {
-  res.json(req.user || dbData.user);
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized. Please log in." });
+  }
+  res.json(req.user);
 });
 
 app.post("/api/v1/user", authenticateUser, (req: any, res) => {
-  // Use the authenticated user profile
-  const user = req.user || dbData.user;
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized. Please log in." });
+  }
+  const user = req.user;
   
   // Server-side validation of incoming updates
   if (req.body.coins !== undefined) {
@@ -1086,25 +1152,46 @@ app.post("/api/v1/gifts/send", authenticateUser, (req, res) => {
   // Sync score with activePkSessions
   Object.values(activePkSessions).forEach((sess: any) => {
     if (sess && sess.status !== "ended") {
+      getSynchronizedPkSession(sess, Date.now());
       const recNorm = (recipient || "").toLowerCase();
       const isHostA = (sess.hostA?.username && sess.hostA.username.toLowerCase() === recNorm) ||
-                      (sess.hostA?.userId && String(sess.hostA.userId).toLowerCase() === recNorm);
+                      (sess.hostA?.userId && String(sess.hostA.userId).toLowerCase() === recNorm) ||
+                      targetHostSide === "hostA";
       const isHostB = (sess.hostB?.username && sess.hostB.username.toLowerCase() === recNorm) ||
-                      (sess.hostB?.userId && String(sess.hostB.userId).toLowerCase() === recNorm);
-      if (isHostA || targetHostSide === "hostA") {
-        sess.hostA.score = (sess.hostA.score || 0) + totalCost;
-      } else if (isHostB || targetHostSide === "hostB") {
-        sess.hostB.score = (sess.hostB.score || 0) + totalCost;
+                      (sess.hostB?.userId && String(sess.hostB.userId).toLowerCase() === recNorm) ||
+                      targetHostSide === "hostB";
+
+      if (isHostA) {
+        const multA = sess.multiplierA || 1;
+        const pts = totalCost * multA;
+        sess.hostA.score = (sess.hostA.score || 0) + pts;
+      } else if (isHostB) {
+        const multB = sess.multiplierB || 1;
+        const pts = totalCost * multB;
+        sess.hostB.score = (sess.hostB.score || 0) + pts;
+      }
+
+      // Re-synchronize session to immediately recalculate multiplierA & multiplierB
+      getSynchronizedPkSession(sess, Date.now());
+
+      if (activeHostMatch) {
+        activeHostMatch.pkScoreHost = sess.hostA?.score || 0;
+        activeHostMatch.pkScoreOpponent = sess.hostB?.score || 0;
+        activeHostMatch.multiplierA = sess.multiplierA || 1;
+        activeHostMatch.multiplierB = sess.multiplierB || 1;
+        activeHostMatch.feverPhase = sess.feverPhase;
       }
     }
   });
 
   if (activeHostMatch) {
     const isOpponent = targetHostSide === "hostB";
+    const mult = isOpponent ? (activeHostMatch.multiplierB || 1) : (activeHostMatch.multiplierA || 1);
+    const pts = totalCost * mult;
     if (isOpponent) {
-      activeHostMatch.pkScoreOpponent = (activeHostMatch.pkScoreOpponent || 0) + totalCost;
+      activeHostMatch.pkScoreOpponent = (activeHostMatch.pkScoreOpponent || 0) + pts;
     } else {
-      activeHostMatch.pkScoreHost = (activeHostMatch.pkScoreHost || 0) + totalCost;
+      activeHostMatch.pkScoreHost = (activeHostMatch.pkScoreHost || 0) + pts;
     }
 
     activeHostMatch.lastGiftEvent = {
@@ -1313,10 +1400,10 @@ const getActiveLiveSessions = () => {
   }
   const now = Date.now();
 
-  // Mark stale sessions as ended
+  // Mark stale sessions as ended (except persistent demo hosts)
   dbData.hosts.forEach((h: any) => {
     if (h && (h.isLive === true || h.status === "LIVE" || h.status === "live")) {
-      if (h.lastSeen && typeof h.lastSeen === "number" && (now - h.lastSeen > 25000)) {
+      if (!h.isDemoHost && h.lastSeen && typeof h.lastSeen === "number" && (now - h.lastSeen > 25000)) {
         console.log(`[LIVE SERVER] Session ${h.id} (@${h.hostUsername}) heartbeat expired (>25s). Marking as ENDED.`);
         h.isLive = false;
         h.status = "ENDED";
@@ -1325,6 +1412,16 @@ const getActiveLiveSessions = () => {
       }
     }
   });
+
+  // Ensure DEFAULT_DEMO_HOSTS are always in dbData.hosts
+  if (DEFAULT_DEMO_HOSTS && Array.isArray(DEFAULT_DEMO_HOSTS)) {
+    DEFAULT_DEMO_HOSTS.forEach(dh => {
+      const exists = dbData.hosts.some((h: any) => h.id === dh.id && (h.isLive === true || h.status === "live"));
+      if (!exists) {
+        dbData.hosts.push({ ...dh });
+      }
+    });
+  }
 
   const validHosts = dbData.hosts.filter((h: any) => 
     h && 
@@ -1742,11 +1839,12 @@ app.post("/api/v1/presence", (req, res) => {
 // Get Available Hosts for 1v1 Invites
 app.get("/api/v1/pk/available-hosts", (req, res) => {
   const currentUsername = String(req.query.username || "").toLowerCase();
+  const currentUserId = String(req.query.userId || req.query.username || "").toLowerCase();
   const now = Date.now();
 
-  // 1. Gather live hosts from dbData.hosts
+  // 1. Gather live real hosts from dbData.hosts
   const liveHostsList = (dbData.hosts || [])
-    .filter((h: any) => h.isLive !== false && !h.inPk && !h.inPkBattle)
+    .filter((h: any) => h.isLive !== false && !h.inPk && !h.inPkBattle && !h.isDemoHost)
     .map((h: any) => ({
       id: String(h.id || h.hostUid || h.hostUsername),
       userId: String(h.hostUid || h.id || h.hostUsername),
@@ -1766,20 +1864,21 @@ app.get("/api/v1/pk/available-hosts", (req, res) => {
       id: String(u.userId || u.username),
       userId: String(u.userId || u.username),
       username: String(u.username),
-      avatar: String(u.avatar),
+      avatar: String(u.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80"),
       level: Number(u.level || 1),
-      fans: String(u.fans || "10K fans"),
+      fans: String(u.fans || "0 fans"),
       isLive: !!u.isLive,
       inPk: false,
       status: u.isLive ? "🔴 Live Solo" : "🟢 Online"
     }));
 
-  // Combine and deduplicate by username (case-insensitive)
+  // Combine liveHostsList and onlinePresenceList, deduplicating by username and filtering out self
   const combinedMap = new Map<string, any>();
-  
+
   [...liveHostsList, ...onlinePresenceList].forEach(item => {
     const key = item.username.toLowerCase();
-    if (key !== currentUsername && !combinedMap.has(key)) {
+    const itemUserId = String(item.userId).toLowerCase();
+    if (key !== currentUsername && itemUserId !== currentUserId && !combinedMap.has(key)) {
       combinedMap.set(key, item);
     }
   });
@@ -1788,7 +1887,7 @@ app.get("/api/v1/pk/available-hosts", (req, res) => {
   res.json(result);
 });
 
-// Send PK / 1v1 Co-Host Invite
+// Send PK / 1v1 Co-Host Invite (Strict Real Host-to-Host, NO Auto-Accept Timeout)
 app.post("/api/v1/pk/invite", (req, res) => {
   const { fromUsername, fromUserId, fromAvatar, fromLevel, fromFans, toUsername, toUserId, toAvatar, toLevel, toFans, liveSessionId, channelName: customChannelName, inviteType, isPkBattle } = req.body || {};
   if (!fromUsername || !toUsername) {
@@ -1840,7 +1939,7 @@ app.post("/api/v1/pk/invite", (req, res) => {
     fromLevel: finalFromLevel,
     fromFans: finalFromFans,
     inviteeUserId: finalToUserId,
-    toUsername,
+    toUsername: toUsername,
     toUserId: finalToUserId,
     toAvatar: finalToAvatar,
     toLevel: finalToLevel,
@@ -1855,6 +1954,7 @@ app.post("/api/v1/pk/invite", (req, res) => {
   activePkInvites[inviteId] = newInvite;
   console.log(`[PK SERVER SUCCESS] Host @${fromUsername} (Lv.${finalFromLevel}) invited @${toUsername} (Lv.${finalToLevel}) (${isPk ? "PK Battle" : "Co-Host"}) (Channel: ${channelName}, InviteId: ${inviteId})`);
 
+  // REAL PROD REQUIREMENT: NO AUTOMATIC ACCEPT TIMEOUT! Host B must manually Accept or Reject.
   res.status(201).json(newInvite);
 });
 
@@ -1863,6 +1963,110 @@ app.get("/api/v1/pk/active-sessions", (req, res) => {
   const active = Object.values(activePkSessions).filter((s: any) => s && s.status !== "ended");
   res.json(active);
 });
+
+// Helper to synchronize active PK session time, states, fever multipliers, and host status
+function getSynchronizedPkSession(activeSession: any, now: number = Date.now()) {
+  if (!activeSession || activeSession.status === "ended") return null;
+
+  const duration = activeSession.duration || 180;
+  let startedAtMs = typeof activeSession.startedAt === "number"
+    ? activeSession.startedAt
+    : (activeSession.startedAt ? new Date(activeSession.startedAt).getTime() : now);
+
+  if (isNaN(startedAtMs) || !activeSession.startedAt) {
+    startedAtMs = now;
+    activeSession.startedAt = now;
+  }
+
+  if (activeSession.pkState === "pk_countdown" || (startedAtMs && now < startedAtMs)) {
+    activeSession.pkState = "pk_countdown";
+    activeSession.countdown = Math.max(0, Math.ceil((startedAtMs - now) / 1000));
+    activeSession.pkActive = false;
+    activeSession.timer = duration;
+  } else if (now >= startedAtMs && now < startedAtMs + duration * 1000) {
+    activeSession.pkState = "pk_active";
+    activeSession.pkActive = true;
+    const elapsed = Math.max(0, Math.floor((now - startedAtMs) / 1000));
+    activeSession.timer = Math.max(0, duration - elapsed);
+  } else if (now >= startedAtMs + duration * 1000) {
+    activeSession.pkState = "pk_finished";
+    activeSession.pkActive = false;
+    activeSession.timer = 0;
+    const scoreA = activeSession.hostA?.score || 0;
+    const scoreB = activeSession.hostB?.score || 0;
+    if (scoreA > scoreB) {
+      activeSession.winner = activeSession.hostA?.username;
+      activeSession.loser = activeSession.hostB?.username;
+    } else if (scoreB > scoreA) {
+      activeSession.winner = activeSession.hostB?.username;
+      activeSession.loser = activeSession.hostA?.username;
+    } else {
+      activeSession.winner = "draw";
+    }
+  }
+
+  // Calculate Fever Multipliers & Phase (Server Authoritative)
+  // Fever Time runs during Minute 2 (match timer 2:59 down to 1:59 remaining, i.e. 120 <= remainingSecs < 180)
+  const remainingSecs = activeSession.timer !== undefined ? activeSession.timer : 180;
+  let multiplierA = 1;
+  let multiplierB = 1;
+  let feverPhase = "normal"; // "normal" | "fever"
+
+  if (activeSession.pkState === "pk_active") {
+    if (remainingSecs >= 120 && remainingSecs <= 180) {
+      feverPhase = "fever";
+      const scoreA = activeSession.hostA?.score || 0;
+      const scoreB = activeSession.hostB?.score || 0;
+
+      // Host A multiplier criteria: >= 1000 => 3X, >= 500 => 2X, else 1X
+      if (scoreA >= 1000) multiplierA = 3;
+      else if (scoreA >= 500) multiplierA = 2;
+      else multiplierA = 1;
+
+      // Host B multiplier criteria: >= 1000 => 3X, >= 500 => 2X, else 1X
+      if (scoreB >= 1000) multiplierB = 3;
+      else if (scoreB >= 500) multiplierB = 2;
+      else multiplierB = 1;
+    } else if (remainingSecs > 0 && remainingSecs <= 30) {
+      // Final 30 Seconds 3X Boost Time for BOTH hosts!
+      feverPhase = "final30s";
+      multiplierA = 3;
+      multiplierB = 3;
+    } else {
+      multiplierA = 1;
+      multiplierB = 1;
+      feverPhase = "normal";
+    }
+  }
+
+  activeSession.multiplierA = multiplierA;
+  activeSession.multiplierB = multiplierB;
+  activeSession.feverPhase = feverPhase;
+
+  // Sync to dbData.hosts for viewers
+  const normA = activeSession.hostA?.username?.toLowerCase();
+  const normB = activeSession.hostB?.username?.toLowerCase();
+  if (Array.isArray(dbData.hosts)) {
+    dbData.hosts.forEach((h: any) => {
+      const hNorm = h.hostUsername?.toLowerCase() || h.name?.toLowerCase();
+      if (hNorm === normA || hNorm === normB) {
+        h.inPk = true;
+        h.category = "pk";
+        h.subCategory = activeSession.pkState === "pk_active" ? "pk" : "1v1";
+        h.pkScoreHost = activeSession.hostA?.score || 0;
+        h.pkScoreOpponent = activeSession.hostB?.score || 0;
+        h.multiplierA = multiplierA;
+        h.multiplierB = multiplierB;
+        h.feverPhase = feverPhase;
+        h.pkTimer = activeSession.timer;
+        h.pkState = activeSession.pkState;
+        h.pkActive = activeSession.pkActive;
+      }
+    });
+  }
+
+  return activeSession;
+}
 
 // Query Invites & Session Status
 app.get("/api/v1/pk/invites", (req, res) => {
@@ -1883,16 +2087,22 @@ app.get("/api/v1/pk/invites", (req, res) => {
       inv.status = "expired";
     }
 
-    const matchesTarget = (inv.toUsername && inv.toUsername.toLowerCase() === username) ||
-                          (inv.inviteeUserId && String(inv.inviteeUserId).toLowerCase() === userId) ||
-                          (inv.toUserId && String(inv.toUserId).toLowerCase() === userId);
+    const matchesTarget = (inv.toUsername && inv.toUsername.trim().toLowerCase() === username.trim()) ||
+                          (inv.toUsername && inv.toUsername.trim().toLowerCase() === userId.trim()) ||
+                          (inv.inviteeUserId && String(inv.inviteeUserId).trim().toLowerCase() === userId.trim()) ||
+                          (inv.toUserId && String(inv.toUserId).trim().toLowerCase() === userId.trim()) ||
+                          (inv.inviteeUserId && String(inv.inviteeUserId).trim().toLowerCase() === username.trim()) ||
+                          (inv.toUserId && String(inv.toUserId).trim().toLowerCase() === username.trim());
     if (matchesTarget) {
       if (inv.status === "pending") incoming = inv;
     }
 
-    const matchesSender = (inv.fromUsername && inv.fromUsername.toLowerCase() === username) ||
-                          (inv.inviterUserId && String(inv.inviterUserId).toLowerCase() === userId) ||
-                          (inv.fromUserId && String(inv.fromUserId).toLowerCase() === userId);
+    const matchesSender = (inv.fromUsername && inv.fromUsername.trim().toLowerCase() === username.trim()) ||
+                          (inv.fromUsername && inv.fromUsername.trim().toLowerCase() === userId.trim()) ||
+                          (inv.inviterUserId && String(inv.inviterUserId).trim().toLowerCase() === userId.trim()) ||
+                          (inv.fromUserId && String(inv.fromUserId).trim().toLowerCase() === userId.trim()) ||
+                          (inv.inviterUserId && String(inv.inviterUserId).trim().toLowerCase() === username.trim()) ||
+                          (inv.fromUserId && String(inv.fromUserId).trim().toLowerCase() === username.trim());
     if (matchesSender) {
       if (!outgoing || inv.createdAt > outgoing.createdAt) {
         outgoing = inv;
@@ -1901,7 +2111,7 @@ app.get("/api/v1/pk/invites", (req, res) => {
   });
 
   // Find active session
-  const activeSession = Object.values(activePkSessions).find((s: any) => 
+  const rawSession = Object.values(activePkSessions).find((s: any) => 
     s && s.status !== "ended" && 
     (
       (s.hostA?.username && s.hostA.username.toLowerCase() === username) || 
@@ -1911,24 +2121,7 @@ app.get("/api/v1/pk/invites", (req, res) => {
     )
   ) || null;
 
-  if (activeSession && activeSession.pkActive) {
-    const duration = activeSession.duration || 300;
-    let startedAtMs = typeof activeSession.startedAt === "number"
-      ? activeSession.startedAt
-      : (activeSession.startedAt ? new Date(activeSession.startedAt).getTime() : now);
-
-    if (isNaN(startedAtMs) || !activeSession.startedAt) {
-      startedAtMs = now;
-      activeSession.startedAt = now;
-    }
-
-    const elapsed = Math.max(0, Math.floor((now - startedAtMs) / 1000));
-    activeSession.timer = Math.max(0, duration - elapsed);
-
-    if (activeSession.timer <= 0) {
-      activeSession.pkActive = false;
-    }
-  }
+  const activeSession = rawSession ? getSynchronizedPkSession(rawSession, now) : null;
 
   res.json({
     incoming,
@@ -1978,7 +2171,7 @@ app.post("/api/v1/pk/invite/:id/respond", (req, res) => {
 
   if (action === "accept") {
     invite.status = "accepted";
-    const isPk = !!(invite.isPkBattle || invite.inviteType === "pk_battle");
+    const isPk = !!(invite.isPkBattle || invite.inviteType === "pk_battle" || invite.type === "pk" || invite.isPk);
 
     const normA = invite.fromUsername.toLowerCase();
     const normB = (username || invite.toUsername).toLowerCase();
@@ -1994,7 +2187,7 @@ app.post("/api/v1/pk/invite/:id/respond", (req, res) => {
       avatar: invite.fromAvatar || presenceA?.avatar || hostAObj?.hostAvatar || hostAObj?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
       level: Number(invite.fromLevel) || Number(presenceA?.level) || Number(hostAObj?.hostLevel) || 1,
       fans: invite.fromFans || presenceA?.fans || `${hostAObj?.followersCount || 0} fans` || "10K fans",
-      score: 0
+      score: 0 // ALWAYS INITIALIZE STRICTLY TO ZERO
     };
 
     const hostBUser = {
@@ -2003,81 +2196,78 @@ app.post("/api/v1/pk/invite/:id/respond", (req, res) => {
       avatar: avatar || invite.toAvatar || presenceB?.avatar || hostBObj?.hostAvatar || hostBObj?.avatar || "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=100&q=80",
       level: Number(level) || Number(invite.toLevel) || Number(presenceB?.level) || Number(hostBObj?.hostLevel) || 1,
       fans: fans || invite.toFans || presenceB?.fans || `${hostBObj?.followersCount || 0} fans` || "15K fans",
-      score: 0
+      score: 0 // ALWAYS INITIALIZE STRICTLY TO ZERO
     };
 
-    // Create or update active 1v1 / PK session
+    const pkMatchId = `pkm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const sessionId = invite.liveSessionId || `session_${invite.channelName}`;
+
     let session = activePkSessions[sessionId];
     if (session) {
+      session.pkMatchId = pkMatchId;
       session.status = "connected";
-      session.pkActive = isPk;
-      session.hostA = { ...session.hostA, ...hostAUser };
-      session.hostB = { ...session.hostB, ...hostBUser };
+      session.pkActive = false;
+      session.hostA = { ...session.hostA, ...hostAUser, score: 0 };
+      session.hostB = { ...session.hostB, ...hostBUser, score: 0 };
+      session.hostAQualifyingScore = 0;
+      session.hostBQualifyingScore = 0;
+      session.userTapContributions = {};
+      session.winner = null;
       if (isPk) {
-        session.hostA.score = session.hostA.score || 50;
-        session.hostB.score = session.hostB.score || 50;
-        session.duration = 300;
-        session.timer = 300;
-        session.startedAt = currentNow;
+        session.pkState = "pk_countdown";
+        session.countdownStartTime = currentNow;
+        session.startedAt = currentNow + 3000;
+        session.duration = 180;
+        session.timer = 180;
+      } else {
+        session.pkState = "1v1_connected";
+        session.duration = 180;
+        session.timer = 180;
       }
     } else {
       session = {
         id: sessionId,
+        pkMatchId,
         liveSessionId: sessionId,
         channelName: invite.channelName,
         hostA: hostAUser,
         hostB: hostBUser,
+        hostAQualifyingScore: 0,
+        hostBQualifyingScore: 0,
+        userTapContributions: {},
         status: "connected",
-        pkActive: isPk,
-        duration: 300,
-        timer: 300,
-        startedAt: currentNow
+        pkState: isPk ? "pk_countdown" : "1v1_connected",
+        pkActive: false,
+        countdownStartTime: currentNow,
+        duration: 180,
+        timer: 180,
+        startedAt: isPk ? currentNow + 3000 : currentNow,
+        winner: null
       };
       activePkSessions[sessionId] = session;
     }
 
-    // Mark both in PK in presence
+    getSynchronizedPkSession(session, currentNow);
+
     if (onlineUserPresence[normA]) onlineUserPresence[normA].inPk = true;
     if (onlineUserPresence[normB]) onlineUserPresence[normB].inPk = true;
 
-    // Update hosts array so viewers watching either host see 1v1 PK status
-    dbData.hosts.forEach((h: any) => {
-      const hNorm = h.hostUsername?.toLowerCase() || h.name?.toLowerCase();
-      if (hNorm === normA) {
-        h.inPk = true;
-        h.category = "pk";
-        h.coHostUsername = hostBUser.username;
-        h.coHostUserId = hostBUser.userId;
-        h.coHostAvatar = hostBUser.avatar;
-        h.coHostLevel = hostBUser.level;
-        h.coHostScore = hostBUser.score;
-        h.pkActive = isPk;
-      } else if (hNorm === normB) {
-        h.inPk = true;
-        h.category = "pk";
-        h.coHostUsername = hostAUser.username;
-        h.coHostUserId = hostAUser.userId;
-        h.coHostAvatar = hostAUser.avatar;
-        h.coHostLevel = hostAUser.level;
-        h.coHostScore = hostAUser.score;
-        h.pkActive = isPk;
-      }
-    });
-
+    saveDatabase();
     console.log(`[PK SERVER SUCCESS] @${username} (Lv.${hostBUser.level}) ACCEPTED invite from @${invite.fromUsername} (Lv.${hostAUser.level})! Session started on channel: ${invite.channelName}`);
     return res.json({ success: true, status: "accepted", invite, session });
   } else {
     invite.status = "rejected";
+    saveDatabase();
     console.log(`[PK SERVER INFO] @${username} REJECTED invite from @${invite.fromUsername}`);
     return res.json({ success: true, status: "rejected", invite });
   }
 });
 
-// Start or Toggle PK Battle in Active Session
+// Start, Request, or Toggle PK Battle in Active Session
 app.post("/api/v1/pk/start-battle", (req, res) => {
-  const { channelName, username, pkActive } = req.body || {};
+  const { channelName, username, action, pkActive } = req.body || {};
   const normUser = String(username || "").toLowerCase();
+  const currentNow = Date.now();
 
   let updatedSession: any = null;
   Object.keys(activePkSessions).forEach((sessionId) => {
@@ -2092,28 +2282,119 @@ app.post("/api/v1/pk/start-battle", (req, res) => {
     );
 
     if (matchChannel || matchUser) {
-      s.pkActive = pkActive !== undefined ? Boolean(pkActive) : true;
-      if (s.pkActive) {
-        s.duration = 300;
-        s.timer = 300;
-        s.startedAt = Date.now();
-        if (!s.hostA.score) s.hostA.score = 50;
-        if (!s.hostB.score) s.hostB.score = 50;
+      if (action === "request") {
+        s.pkRequested = true;
+        s.pkRequestedBy = username;
+        s.pkRequestStatus = "pending";
+        updatedSession = getSynchronizedPkSession(s, currentNow);
+      } else if (action === "accept" || action === "start" || pkActive === true) {
+        // NEW MATCH: ALWAYS RESET PK SCORES STRICTLY TO 0 : 0
+        s.pkMatchId = `pkm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        s.hostA.score = 0;
+        s.hostB.score = 0;
+        s.hostAQualifyingScore = 0;
+        s.hostBQualifyingScore = 0;
+        s.userTapContributions = {};
+        s.winner = null;
+        s.pkRequested = false;
+        s.pkRequestStatus = "accepted";
+        s.pkState = "pk_countdown";
+        s.countdownStartTime = currentNow;
+        s.startedAt = currentNow + 3000; // 3-second countdown
+        s.duration = 180; // 3 minutes match
+        s.timer = 180;
+        s.pkActive = false;
+        updatedSession = getSynchronizedPkSession(s, currentNow);
+      } else if (action === "reject" || action === "decline") {
+        s.pkRequested = false;
+        s.pkRequestStatus = "rejected";
+        updatedSession = getSynchronizedPkSession(s, currentNow);
+      } else if (pkActive === false) {
+        s.pkActive = false;
+        s.pkState = "1v1_connected";
+        updatedSession = getSynchronizedPkSession(s, currentNow);
       }
-      updatedSession = s;
     }
   });
 
   saveDatabase();
-  console.log(`[PK BATTLE TOGGLE] pkActive=${pkActive} for user @${username}`);
   res.json({ success: true, session: updatedSession });
 });
 
-// Increment PK Score (Double-Tap & Real-Time Likes)
+// Authenticated Real-Time Double-Tap Handler (Server-Authoritative)
+app.post("/api/v1/pk/tap", (req, res) => {
+  const { channelName, hostUsername, username, userId, targetHostSide } = req.body || {};
+  const normUser = String(username || "").toLowerCase();
+  const normUserId = String(userId || username || "").toLowerCase();
+  const normHost = String(hostUsername || "").toLowerCase();
+  const normChannel = String(channelName || "").toLowerCase();
+  const currentNow = Date.now();
+
+  let targetSession: any = null;
+  Object.values(activePkSessions).forEach((s: any) => {
+    if (!s || s.status === "ended") return;
+    const sChan = String(s.channelName || "").toLowerCase();
+    const sHostA = String(s.hostA?.username || "").toLowerCase();
+    const sHostB = String(s.hostB?.username || "").toLowerCase();
+
+    const matchChannel = normChannel && (sChan === normChannel || normChannel.includes(sChan) || sChan.includes(normChannel));
+    const matchHost = normHost && (sHostA === normHost || sHostB === normHost);
+    const matchUser = normUser && (sHostA === normUser || sHostB === normUser);
+
+    if (matchChannel || matchHost || matchUser) {
+      targetSession = s;
+    }
+  });
+
+  if (!targetSession) {
+    return res.json({ success: true, pkScoreAdded: 0, heartsAdded: 1 });
+  }
+
+  getSynchronizedPkSession(targetSession, currentNow);
+
+  const side = targetHostSide === "hostB" ? "hostB" : "hostA";
+  const matchId = targetSession.pkMatchId || targetSession.id || "match_1";
+  const userKey = `${matchId}_${normUserId}_${side}`;
+
+  if (!targetSession.userTapContributions) {
+    targetSession.userTapContributions = {};
+  }
+
+  const currentTaps = targetSession.userTapContributions[userKey] || 0;
+  let pkScoreAdded = 0;
+  let quotaReached = false;
+
+  // Real-time Double-Tap PK Score Addition: Every double tap adds +1 point directly to host score
+  if (targetSession.pkState === "pk_active" && targetSession.timer > 0) {
+    targetSession.userTapContributions[userKey] = currentTaps + 1;
+    pkScoreAdded = 1;
+
+    if (side === "hostB") {
+      targetSession.hostB.score = (targetSession.hostB.score || 0) + 1;
+    } else {
+      targetSession.hostA.score = (targetSession.hostA.score || 0) + 1;
+    }
+    getSynchronizedPkSession(targetSession, currentNow);
+  }
+
+  saveDatabase();
+
+  return res.json({
+    success: true,
+    pkScoreAdded,
+    baseTapsUsed: targetSession.userTapContributions[userKey] || 0,
+    quotaReached,
+    heartsAdded: 1,
+    session: targetSession
+  });
+});
+
+// Legacy Score Increment (Synced with getSynchronizedPkSession)
 app.post("/api/v1/pk/score", (req, res) => {
   const { channelName, username, targetHostSide, targetUsername, scoreDelta } = req.body || {};
   const normUser = String(username || "").toLowerCase();
   const delta = Number(scoreDelta) || 1;
+  const currentNow = Date.now();
 
   let updatedSession: any = null;
   Object.values(activePkSessions).forEach((s: any) => {
@@ -2127,11 +2408,23 @@ app.post("/api/v1/pk/score", (req, res) => {
     );
 
     if (matchChannel || matchUser) {
-      const isTargetB = targetHostSide === "hostB" || (targetUsername && s.hostB?.username?.toLowerCase() === targetUsername.toLowerCase());
-      if (isTargetB) {
-        s.hostB.score = (s.hostB.score || 50) + delta;
-      } else {
-        s.hostA.score = (s.hostA.score || 50) + delta;
+      getSynchronizedPkSession(s, currentNow);
+      if (s.pkState === "pk_active" && s.timer > 0) {
+        const isTargetB = targetHostSide === "hostB" || (targetUsername && s.hostB?.username?.toLowerCase() === targetUsername.toLowerCase());
+        const multiplier = isTargetB ? (s.multiplierB || 1) : (s.multiplierA || 1);
+        const pkScoreAdded = delta * multiplier;
+
+        if (isTargetB) {
+          s.hostB.score = Math.max(0, (s.hostB.score || 0) + pkScoreAdded);
+          if (s.timer > 60) {
+            s.hostBQualifyingScore = (s.hostBQualifyingScore || 0) + pkScoreAdded;
+          }
+        } else {
+          s.hostA.score = Math.max(0, (s.hostA.score || 0) + pkScoreAdded);
+          if (s.timer > 60) {
+            s.hostAQualifyingScore = (s.hostAQualifyingScore || 0) + pkScoreAdded;
+          }
+        }
       }
       updatedSession = s;
     }
@@ -2212,7 +2505,7 @@ app.post("/api/v1/parties", (req, res) => {
   const id = existingIdx !== -1 ? dbData.parties[existingIdx].id : `party-${Date.now()}`;
   const newParty = {
     id,
-    title: title || "Sehr Live Audio Lounge",
+    title: title || "Pardais Party Audio Lounge",
     hostUsername: hostUsername || "Host",
     hostAvatar: hostAvatar || "",
     category: category || "Music",
@@ -2253,13 +2546,13 @@ app.post("/api/v1/parties", (req, res) => {
     dbData.parties[existingIdx] = { ...dbData.parties[existingIdx], ...newParty, status: "active" };
     saveDatabase();
     syncDocument("parties", id, dbData.parties[existingIdx]);
-    console.log(`[SEHR-LIVE PARTY] Updated existing party room: ${id} by @${hostUsername}`);
+    console.log(`[PARDAIS-PARTY PARTY] Updated existing party room: ${id} by @${hostUsername}`);
     return res.status(200).json(dbData.parties[existingIdx]);
   } else {
     dbData.parties.push(newParty);
     saveDatabase();
     syncDocument("parties", id, newParty);
-    console.log(`[SEHR-LIVE PARTY] Created new party room: ${id} by @${hostUsername}`);
+    console.log(`[PARDAIS-PARTY PARTY] Created new party room: ${id} by @${hostUsername}`);
     return res.status(201).json(newParty);
   }
 });
@@ -2314,11 +2607,11 @@ app.post("/api/v1/parties/:id/leave", (req, res) => {
       dbData.parties = dbData.parties.filter((p: any) => p.id !== id);
       saveDatabase();
       deleteDocument("parties", id);
-      console.log(`[SEHR-LIVE PARTY] Host/all left. Closed party room: ${id}`);
+      console.log(`[PARDAIS-PARTY PARTY] Host/all left. Closed party room: ${id}`);
       return res.json({ message: "Party closed as host left", party });
     }
 
-    console.log(`[SEHR-LIVE PARTY] User ${username} left party ${id}. Seats cleared immediately.`);
+    console.log(`[PARDAIS-PARTY PARTY] User ${username} left party ${id}. Seats cleared immediately.`);
     saveDatabase();
     syncDocument("parties", id, party);
     res.json(party);
@@ -2881,7 +3174,7 @@ app.put("/api/v1/agency-requests/:id", (req, res) => {
         const newAgency = {
           id: agencyId,
           name: r.agencyName || r.applicantName,
-          ownerEmail: r.ownerEmail || `${r.applicantUsername || "applicant"}@sehr.live`,
+          ownerEmail: r.ownerEmail || `${r.applicantUsername || "applicant"}@pardais.live`,
           salaryRate: r.rate || "40% Commission + $200 Base Bonus",
           registeredHosts: 0,
           monthlyCommission: 0,
@@ -3066,7 +3359,7 @@ async function cleanupExpiredNotifications() {
     }
 
     if (expiredNotifs.length > 0) {
-      console.log(`[SEHR-LIVE NOTIFICATION CLEANER] Automatically cleaning up ${expiredNotifs.length} expired notifications.`);
+      console.log(`[PARDAIS-PARTY NOTIFICATION CLEANER] Automatically cleaning up ${expiredNotifs.length} expired notifications.`);
       dbData.notifications = activeNotifs;
       saveDatabase();
       for (const expired of expiredNotifs) {
@@ -3076,7 +3369,7 @@ async function cleanupExpiredNotifications() {
       }
     }
   } catch (err) {
-    console.error("[SEHR-LIVE NOTIFICATION CLEANER] Error during clean-up:", err);
+    console.error("[PARDAIS-PARTY NOTIFICATION CLEANER] Error during clean-up:", err);
   }
 }
 
@@ -3411,7 +3704,7 @@ app.post("/api/ai/moderate", async (req, res) => {
   }
 
   try {
-    const prompt = `You are the AI Content Moderator for "Sehr Live", a premium live streaming platform. 
+    const prompt = `You are the AI Content Moderator for "Pardais Party", a premium live streaming platform. 
 Analyze the following user chat message and determine if it violates community guidelines (e.g. hate speech, explicit abuse, scams, spam, or extreme insults).
 Respond strictly in JSON format with two keys:
 1. "flagged": boolean (true if inappropriate, false if okay)
@@ -3432,7 +3725,7 @@ Message to moderate: "${text}"`;
     return res.json({
       flagged: !!result.flagged,
       reason: result.reason || "Approved",
-      moderatorType: "Sehr Live Server AI Moderation (Gemini-3.5-Flash)"
+      moderatorType: "Pardais Party Server AI Moderation (Gemini-3.5-Flash)"
     });
   } catch (error: any) {
     console.error("AI Moderation Error:", error);
@@ -3440,7 +3733,7 @@ Message to moderate: "${text}"`;
       flagged: false,
       reason: "Error processing; default approved.",
       error: error.message,
-      moderatorType: "Sehr Live Moderator Fallback"
+      moderatorType: "Pardais Party Moderator Fallback"
     });
   }
 });
@@ -3483,14 +3776,14 @@ Text: "${text}"`;
     return res.json({
       translatedText: response.text ? response.text.trim() : text,
       sourceLanguage: "Detected Auto",
-      type: "Sehr Live AI Translator"
+      type: "Pardais Party AI Translator"
     });
   } catch (error: any) {
     console.error("AI Translation Error:", error);
     return res.json({
       translatedText: `[Translation Error] ${text}`,
       sourceLanguage: "Auto",
-      type: "Sehr Live Translation Fallback"
+      type: "Pardais Party Translation Fallback"
     });
   }
 });
@@ -3508,7 +3801,7 @@ app.post("/api/ai/host-response", async (req, res) => {
       reply = `Wow! Thank you so much for the luxury gift! This means the world to me! App sabhi log support karte rahein! 🌟✨`;
     } else {
       if (hostName.toLowerCase().includes("sahar")) {
-        reply = `Hello, welcome to Sehr Live! I am playing some sweet tunes today. Let me know what song you want to hear! 🎵`;
+        reply = `Hello, welcome to Pardais Party! I am playing some sweet tunes today. Let me know what song you want to hear! 🎵`;
       } else if (hostName.toLowerCase().includes("zain")) {
         reply = `Chalo guys! PK Battle start hone wali hai! Sabhi log double tap karo aur coin support dikhao! Let's win this PK! 🔥👊`;
       } else if (hostName.toLowerCase().includes("mehak")) {
@@ -3524,7 +3817,7 @@ app.post("/api/ai/host-response", async (req, res) => {
   }
 
   try {
-    const contextPrompt = `You are acting as "${hostName}", a popular, premium livestream host on "Sehr Live". 
+    const contextPrompt = `You are acting as "${hostName}", a popular, premium livestream host on "Pardais Party". 
 Your personality/role is: "${hostRole || 'Friendly Streaming Star'}".
 The user just sent you a message: "${userMessage}".
 ${lastAction === "gift" ? "CRITICAL: The user also just sent you a valuable gift! You must react with high energy, extreme gratitude, and excitement in your signature host style." : ""}
@@ -3539,14 +3832,14 @@ Do not wrap your answer in quotes or add metadata. Speak as the host directly.`;
     return res.json({
       reply: response.text ? response.text.trim() : "Thanks for joining my live! 💕",
       speaker: hostName,
-      type: "Sehr Live Gemini AI Host"
+      type: "Pardais Party Gemini AI Host"
     });
   } catch (error: any) {
     console.error("AI Host Error:", error);
     return res.json({
-      reply: "Thank you so much for the love and support! Let's rock Sehr Live! 🎉",
+      reply: "Thank you so much for the love and support! Let's rock Pardais Party! 🎉",
       speaker: hostName,
-      type: "Sehr Live Host Fallback"
+      type: "Pardais Party Host Fallback"
     });
   }
 });
@@ -3563,11 +3856,11 @@ function getS3Client(): S3Client {
     const endpoint = process.env.R2_ENDPOINT;
 
     if (!accessKeyId || !secretAccessKey || !endpoint) {
-      console.warn("[SEHR-LIVE R2] Missing environment credentials! Falling back to local storage for video uploads.");
+      console.warn("[PARDAIS-PARTY R2] Missing environment credentials! Falling back to local storage for video uploads.");
       throw new Error("Missing Cloudflare R2 credentials (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT). Set them on Railway!");
     }
 
-    console.log("[SEHR-LIVE R2] Initializing Cloudflare R2 S3 Client with endpoint:", endpoint);
+    console.log("[PARDAIS-PARTY R2] Initializing Cloudflare R2 S3 Client with endpoint:", endpoint);
     s3ClientInstance = new S3Client({
       region: "auto",
       endpoint: endpoint,
@@ -3589,12 +3882,12 @@ const s3MulterUpload = multer({
 
 // Production video upload endpoint to Cloudflare R2
 app.post("/api/v1/reels/upload-video", s3MulterUpload.single("video"), async (req, res) => {
-  console.log("[SEHR-LIVE R2] [UPLOAD-VIDEO] ====== UPLOAD TRANSACTION STARTED ======");
+  console.log("[PARDAIS-PARTY R2] [UPLOAD-VIDEO] ====== UPLOAD TRANSACTION STARTED ======");
 
   try {
     const file = req.file;
     if (!file) {
-      console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] FAILED: No file chunk found in multipart request data");
+      console.error("[PARDAIS-PARTY R2] [UPLOAD-VIDEO] FAILED: No file chunk found in multipart request data");
       return res.status(400).json({ success: false, error: "No video file uploaded" });
     }
 
@@ -3608,14 +3901,14 @@ app.post("/api/v1/reels/upload-video", s3MulterUpload.single("video"), async (re
       mimeType = "video/mp4";
     }
 
-    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] METADATA RECEIVED:
+    console.log(`[PARDAIS-PARTY R2] [UPLOAD-VIDEO] METADATA RECEIVED:
       - File Name: "${fileName}"
       - Received Size: ${fileSize} bytes (${(fileSize / (1024 * 1024)).toFixed(2)} MB)
       - Detected MIME: "${mimeType}"
       - Uploader User ID: "${userId}"`);
 
     if (fileSize <= 0) {
-      console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] FAILED: Received file size is 0 bytes");
+      console.error("[PARDAIS-PARTY R2] [UPLOAD-VIDEO] FAILED: Received file size is 0 bytes");
       return res.status(400).json({ success: false, error: "Uploaded video file is empty (0 bytes)" });
     }
 
@@ -3625,15 +3918,15 @@ app.post("/api/v1/reels/upload-video", s3MulterUpload.single("video"), async (re
     const ext = path.extname(fileName) || ".mp4";
     const objectKey = `reels/${userId}/${timestamp}-${uniqueId}${ext}`;
 
-    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] PREPARING UPLOAD:
+    console.log(`[PARDAIS-PARTY R2] [UPLOAD-VIDEO] PREPARING UPLOAD:
       - R2 Object Key: "${objectKey}"
-      - Target Bucket: "sehrlive-reels"`);
+      - Target Bucket: "pardaisparty-reels"`);
 
     let finalVideoUrl = "";
     
     try {
       const client = getS3Client();
-      const bucketName = process.env.R2_BUCKET_NAME || "sehrlive-reels";
+      const bucketName = process.env.R2_BUCKET_NAME || "pardaisparty-reels";
 
       const putCommand = new PutObjectCommand({
         Bucket: bucketName,
@@ -3642,18 +3935,18 @@ app.post("/api/v1/reels/upload-video", s3MulterUpload.single("video"), async (re
         ContentType: mimeType,
       });
 
-      console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] Transmitting binary buffer to Cloudflare R2 S3 API...`);
+      console.log(`[PARDAIS-PARTY R2] [UPLOAD-VIDEO] Transmitting binary buffer to Cloudflare R2 S3 API...`);
       await client.send(putCommand);
-      console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] SUCCESS: Binary written to R2 storage bucket "${bucketName}"`);
+      console.log(`[PARDAIS-PARTY R2] [UPLOAD-VIDEO] SUCCESS: Binary written to R2 storage bucket "${bucketName}"`);
 
       // Generate public CDN Delivery Domain URL
-      const publicBaseUrl = process.env.R2_PUBLIC_URL || "https://media.sehrlive.soulverseapps.com";
+      const publicBaseUrl = process.env.R2_PUBLIC_URL || "https://media.pardaisparty.soulverseapps.com";
       const cleanBase = publicBaseUrl.endsWith("/") ? publicBaseUrl.slice(0, -1) : publicBaseUrl;
       finalVideoUrl = `${cleanBase}/${objectKey}`;
 
-      console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] PUBLIC CDN DISTRIBUTION LINK GENERATED: "${finalVideoUrl}"`);
+      console.log(`[PARDAIS-PARTY R2] [UPLOAD-VIDEO] PUBLIC CDN DISTRIBUTION LINK GENERATED: "${finalVideoUrl}"`);
     } catch (r2Error: any) {
-      console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] FATAL ERROR: Cloudflare R2 Upload failed!", r2Error);
+      console.error("[PARDAIS-PARTY R2] [UPLOAD-VIDEO] FATAL ERROR: Cloudflare R2 Upload failed!", r2Error);
       
       // Strict Mode: Do not fall back to local storage and do not publish a broken Reel!
       return res.status(500).json({
@@ -3662,7 +3955,7 @@ app.post("/api/v1/reels/upload-video", s3MulterUpload.single("video"), async (re
       });
     }
 
-    console.log(`[SEHR-LIVE R2] [UPLOAD-VIDEO] ====== UPLOAD TRANSACTION COMPLETED SUCCESSFULLY ======\n`);
+    console.log(`[PARDAIS-PARTY R2] [UPLOAD-VIDEO] ====== UPLOAD TRANSACTION COMPLETED SUCCESSFULLY ======\n`);
     return res.json({
       success: true,
       url: finalVideoUrl,
@@ -3675,7 +3968,7 @@ app.post("/api/v1/reels/upload-video", s3MulterUpload.single("video"), async (re
     });
 
   } catch (error: any) {
-    console.error("[SEHR-LIVE R2] [UPLOAD-VIDEO] FATAL UNHANDLED TRANSACTION ERROR:", error);
+    console.error("[PARDAIS-PARTY R2] [UPLOAD-VIDEO] FATAL UNHANDLED TRANSACTION ERROR:", error);
     return res.status(500).json({
       success: false,
       error: error.message || "An unexpected error occurred during video upload handling"
@@ -3689,7 +3982,7 @@ app.post("/api/v1/reels/upload-video", s3MulterUpload.single("video"), async (re
 app.get("/uploads/:filename", (req, res) => {
   const filePath = path.join(process.cwd(), "public", "uploads", req.params.filename);
   if (!fs.existsSync(filePath)) {
-    console.error(`[SEHR-LIVE STREAMER] Local file not found: ${filePath}`);
+    console.error(`[PARDAIS-PARTY STREAMER] Local file not found: ${filePath}`);
     return res.status(404).send("File not found");
   }
 
@@ -3697,7 +3990,7 @@ app.get("/uploads/:filename", (req, res) => {
   const fileSize = stat.size;
   const range = req.headers.range;
 
-  console.log(`[SEHR-LIVE STREAMER] Serving local file "${req.params.filename}" (Size: ${fileSize} bytes). Requested Range: "${range || "None"}"`);
+  console.log(`[PARDAIS-PARTY STREAMER] Serving local file "${req.params.filename}" (Size: ${fileSize} bytes). Requested Range: "${range || "None"}"`);
 
   if (range) {
     const parts = range.replace(/bytes=/, "").split("-");
@@ -3755,7 +4048,7 @@ app.post("/api/v1/storage/upload", async (req, res) => {
     fs.writeFileSync(localFilePath, buffer);
 
     const publicUrl = `/uploads/${cleanFileName}`;
-    console.log(`[SEHR-LIVE LOCAL STORAGE] Successfully uploaded local asset: ${publicUrl}`);
+    console.log(`[PARDAIS-PARTY LOCAL STORAGE] Successfully uploaded local asset: ${publicUrl}`);
     
     res.json({
       success: true,
@@ -3763,7 +4056,7 @@ app.post("/api/v1/storage/upload", async (req, res) => {
       fileName: cleanFileName
     });
   } catch (error: any) {
-    console.error("[SEHR-LIVE STORAGE] Local fallback upload error:", error);
+    console.error("[PARDAIS-PARTY STORAGE] Local fallback upload error:", error);
     res.json({
       success: true,
       url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
@@ -3779,13 +4072,13 @@ app.post("/api/v1/fcm/send", async (req, res) => {
       return res.status(400).json({ error: "Missing recipient FCM token" });
     }
 
-    console.log(`[SEHR-LIVE FCM MOCK] Dispatched notification: ${title} - ${body} to ${token}`);
+    console.log(`[PARDAIS-PARTY FCM MOCK] Dispatched notification: ${title} - ${body} to ${token}`);
     res.json({
       success: true,
       messageId: `mock-msg-${Date.now()}`
     });
   } catch (error: any) {
-    console.error("[SEHR-LIVE FCM MOCK] Dispatch error:", error);
+    console.error("[PARDAIS-PARTY FCM MOCK] Dispatch error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -3824,7 +4117,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Sehr Live Server running on http://0.0.0.0:${PORT}`);
+    console.log(`Pardais Party Server running on http://0.0.0.0:${PORT}`);
   });
 }
 
@@ -3845,7 +4138,7 @@ setInterval(() => {
         
         // If seat occupant hasn't sent a heartbeat for more than 12 seconds
         if (lastTs && (now - lastTs > 12000)) {
-          console.log(`[SEHR-LIVE AUTO-PRUNE] Seat occupant ${username} on Seat ${seat.id} in party ${party.id} timed out. Clearing seat.`);
+          console.log(`[PARDAIS-PARTY AUTO-PRUNE] Seat occupant ${username} on Seat ${seat.id} in party ${party.id} timed out. Clearing seat.`);
           seat.name = null;
           seat.avatar = null;
           seat.isMuted = false;
